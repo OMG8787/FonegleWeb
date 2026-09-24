@@ -17,7 +17,7 @@ const Config = {
                     id: 2,
                     Permission: [10, 13],
                     name: "⚙️ 帳號管理",
-                    page: "page/SystemSetting/Account.html"
+                    page: "page/account.html"
                 }
             ]
         },
@@ -29,49 +29,49 @@ const Config = {
                     id: 17,
                     Permission: [3, 6],
                     name: "🧪 產品配方(未開放)",
-                    page: "page/Formula/Formula.html"
+                    page: "page/formula.html"
                 },
                 {
                     id: 10,
                     Permission: [3, 6],
                     name: "📋 庫存盤點(未開放)",
-                    page: "page/Inventory/Inventory.html"
+                    page: "page/inventory.html"
                 },
                 {
                     id: 11,
                     Permission: [3, 6],
                     name: "📦 產品管理",
-                    page: "page/Product/Product.html"
+                    page: "page/product.html"
                 },
                 {
                     id: 12,
                     Permission: [3, 6],
                     name: "🛒 訂單管理",
-                    page: "page/Order/Order.html"
+                    page: "page/order.html"
                 },
                 {
                     id: 13,
                     Permission: [3, 6],
                     name: "🚚 出貨管理(未開放)",
-                    page: "page/Shipment/Shipment.html"
+                    page: "page/shipment.html"
                 },
                 {
                     id: 14,
                     Permission: [3, 6],
                     name: "💰 收帳紀錄(未開放)",
-                    page: "page/Receivable/Receivable.html"
+                    page: "page/receivable.html"
                 },
                 {
                     id: 15,
                     Permission: [3, 6],
                     name: "🏭 生產履歷(未開放)",
-                    page: "page/ProductionLog/ProductionLog.html"
+                    page: "page/production.html"
                 },
                 {
                     id: 16,
                     Permission: [3, 6],
                     name: "🥛 原料管理",
-                    page: "page/Material/Material.html"
+                    page: "page/material.html"
                 },
             ]
         },
@@ -83,13 +83,13 @@ const Config = {
                     id: 20,
                     Permission: [3, 13],
                     name: "👨‍👩‍👧‍👦 員工及會員管理",
-                    page: "page/Member/Member.html"
+                    page: "page/member.html"
                 },
                 {
                     id: 21,
                     Permission: [3, 13],
                     name: "🏢 合作廠商資料管理",
-                    page: "page/Business/Business.html"
+                    page: "page/company.html"
                 }
             ]
         },
@@ -101,25 +101,25 @@ const Config = {
                     id: 30,
                     Permission: [3, 10, 13],
                     name: "🛒  現場點餐系統",
-                    page: "page/Order/OrderNow.html"
+                    page: "page/market-order.html"
                 },
                 {
                     id: 31,
                     Permission: [3, 10, 13],
                     name: "📊 市集報表展示",
-                    page: "page/Order/OrderReport.html"
+                    page: "page/market-report.html"
                 },
                 {
                     id: 32,
                     Permission: [3, 10, 13],
                     name: "🏷️ 品牌資訊",
-                    page: "page/Business/Brand.html"
+                    page: "page/brand.html"
                 },
                 {
                     id: 33,
                     Permission: [3, 6, 13],
                     name: "🔗 市集報名連結",
-                    page: "page/LinkTree/LinkTree.html"
+                    page: "page/market-link.html"
                 }
             ]
         },
@@ -131,7 +131,7 @@ const Config = {
                     id: 40,
                     Permission: [10, 11, 13],
                     name: "📅 行事曆",
-                    page: "page/Calendars/Calendar.html"
+                    page: "page/calendar.html"
                 }
             ]
         },
@@ -144,13 +144,7 @@ const Config = {
                     id: 50,
                     name: "🛡️ OpenClaw-Agent管理",
                     Permission: [3, 6, 8, 9, 13],
-                    page: "page/DB_Date/AgentSetting.html"
-                },
-                {
-                    id: 51,
-                    name: "🧠 Agent工具應用",
-                    Permission: [3, 6, 8, 9, 13],
-                    page: "page/DB_Date/ToolAgent.html"
+                    page: "page/agent.html"
                 }
             ]
         },
@@ -162,27 +156,14 @@ const Config = {
                     id: 60,
                     Permission: [3, 13],
                     name: "🔐 系統權限資料管理",
-                    page: "page/DB_Date/Permission.html"
+                    page: "page/permission.html"
+                },
+                {
+                    id: 61,
+                    Permission: [3],
+                    name: "✉️ 郵件寄送",
+                    page: "page/mail.html"
                 }
-                //,
-                // {
-                //     id: 82,
-                //     Permission: [3],
-                //     name: "✉️ 郵件專區(未開放)",
-                //     page: "page/Mail/mail.html"
-                // },
-                // {
-                //     id: 70,
-                //     Permission: [3],
-                //     name: "📊 報表生成(未開放)",
-                //     page: "page/Report/Report.html"
-                // },
-                // {
-                //     id: 72,
-                //     Permission: [3],
-                //     name: "📖 功能說明(未開放)",
-                //     page: "page/Help/ReadFunction.html"
-                // }
             ]
         }
     ]

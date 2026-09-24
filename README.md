@@ -175,15 +175,45 @@ Apps Script 的 `WRITE_PERMS` / `READ_PERMS`（`gas/Code.gs` 上方）決定能�
 ## 六、檔案結構
 
 ```
-index.html            入口（自動導向首頁）
-login.html            登入 / 註冊 / 忘記密碼 / 連線設定
-home.html             首頁（我的最愛）
-page/                 各功能頁面
-js/settings.js        連線設定（GAS_URL）
-js/auth.js            登入、Session、與 Apps Script 連線
-js/api.js             資料存取（list / insert / update / remove / batch）
-js/config.js          左側選單與頁面權限
-js/pages/             各頁面程式
-gas/Code.gs           Google Apps Script 後端（貼到試算表的 Apps Script）
-gas/appsscript.json   Apps Script 設定（時區等）
+index.html                入口（自動導向首頁）
+login.html                登入／註冊／忘記密碼／連線設定
+home.html                 首頁（我的最愛）
+
+page/                     功能頁面（對應的程式在 js/pages/ 同名 .js）
+  account.html            帳號設定（修改密碼、個人資料）
+  member.html             員工及會員管理
+  permission.html         系統權限資料管理
+  company.html            合作廠商資料管理
+  product.html            產品管理
+  material.html           原料管理
+  inventory.html          庫存盤點／進貨紀錄
+  formula.html            產品配方
+  order.html              訂單管理
+  shipment.html           出貨管理
+  receivable.html         收帳紀錄
+  production.html         生產履歷
+  market-order.html       市集現場點餐
+  market-report.html      市集報表
+  market-link.html        市集報名連結
+  brand.html              品牌資訊
+  calendar.html           行事曆
+  agent.html              代理人（OpenClaw）設定
+  mail.html               郵件寄送
+
+js/
+  settings.js             連線設定（GAS_URL）
+  auth.js                 登入、Session、與 Apps Script 連線
+  api.js                  資料存取（list / insert / update / remove / batch）
+  config.js               左側選單與頁面權限
+  core.js                 共用工具
+  layout.js               頁首、選單、頁尾
+  favorite.js             我的最愛
+  ai-chat.js              AI 助理（Gemini）
+  pages/                  各頁面程式；market-store.js 為市集訂單的雲端／離線同步
+
+css/layout.css            共用樣式
+img/logo.png              Logo
+
+gas/Code.gs               Google Apps Script 後端（貼到試算表的 Apps Script）
+gas/appsscript.json       Apps Script 設定（時區等）
 ```
