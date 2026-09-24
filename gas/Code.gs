@@ -214,6 +214,7 @@ function doPost(e) {
 
 const PUBLIC_ACTIONS = {
     ping: () => 'pong',
+    importData: importData_,
     login: login_,
     register: register_,
     forgetPassword: forgetPassword_
@@ -327,6 +328,87 @@ function styleSheet_(t) {
         const j = t.headers.indexOf(col);
         if (j >= 0 && rows > 0) sh.getRange(2, j + 1, rows, 1).setNumberFormat('#,##0');
     });
+}
+
+// ============================================================
+// 遠端資料匯入（一次性金鑰）
+//   1. 在編輯器執行 openImportWindow → 執行記錄會顯示金鑰（30 分鐘內有效）
+//   2. 匯入程式以該金鑰呼叫 importData，成功後金鑰立即作廢
+// ============================================================
+const IMPORT_TABLES = [
+    'Users', 'ID_UserRoles', 'ID_Permission', 'Calendar', 'CalendarDays', 'Companies', 'CrawlerSources',
+    'ID_Category', 'Products', 'Material', 'Inventory', 'Orders', 'Shipment', 'Receivable', 'ProductionLog',
+    'Formula', 'FormulaDetail', 'AgentConfig', 'ID_AgentTool', 'AgentToolPermissions'
+];
+
+function openImportWindow() {
+    const key = Utilities.getUuid().replace(/-/g, '');
+    const props = PropertiesService.getScriptProperties();
+
+    props.setProperty('IMPORT_KEY', key);
+    props.setProperty('IMPORT_KEY_EXPIRE', String(Date.now() + 30 * 60 * 1000));
+
+    Logger.log('匯入金鑰（30 分鐘內有效，使用一次後作廢）：' + key);
+    return key;
+}
+
+function importData_(req) {
+    const props = PropertiesService.getScriptProperties();
+    const key = props.getProperty('IMPORT_KEY');
+    const expire = Number(props.getProperty('IMPORT_KEY_EXPIRE') || 0);
+
+    if (!key || !req.key || req.key !== key) fail_('匯入金鑰錯誤或未開啟匯入');
+    if (Date.now() > expire) {
+        props.deleteProperty('IMPORT_KEY');
+        fail_('匯入金鑰已過期，請重新執行 openImportWindow');
+    }
+
+    const tables = req.tables || {};
+    const names = Object.keys(tables);
+
+    if (!names.length) fail_('沒有資料');
+
+    names.forEach(n => {
+        if (IMPORT_TABLES.indexOf(n) < 0) fail_('不允許匯入的資料表：' + n);
+        if (!Array.isArray(tables[n])) fail_('資料格式錯誤：' + n);
+    });
+
+    // 金鑰只能用一次
+    props.deleteProperty('IMPORT_KEY');
+    props.deleteProperty('IMPORT_KEY_EXPIRE');
+
+    setup();
+
+    return withLock_(() => {
+        const report = {};
+
+        names.forEach(n => {
+            replaceTableRows_(tbl_(n), tables[n]);
+            report[n] = tables[n].length;
+        });
+
+        return report;
+    });
+}
+
+// 清空資料（保留表頭）後整批寫入
+function replaceTableRows_(t, rows) {
+    const sh = t.sh;
+    const last = sh.getLastRow();
+
+    if (last > 1) sh.getRange(2, 1, last - 1, sh.getMaxColumns()).clearContent();
+    if (!rows.length) return;
+
+    if (sh.getMaxRows() < rows.length + 1)
+        sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+
+    t.headers.forEach((h, i) => {
+        if ((t.types[h] || 's') === 's')
+            sh.getRange(2, i + 1, rows.length, 1).setNumberFormat('@');
+    });
+
+    const values = rows.map(r => t.headers.map(h => (h in r ? toCell_(r[h], t.types[h] || 's') : '')));
+    sh.getRange(2, 1, rows.length, t.headers.length).setValues(values);
 }
 
 // ============================================================
