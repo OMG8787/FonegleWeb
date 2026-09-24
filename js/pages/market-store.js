@@ -1,16 +1,18 @@
 // =========================================================
 // 市集訂單存取（Google 試算表 MarketOrders 工作表）
-// - 送出訂單時先存本機，再上傳雲端
-// - 市集現場斷網時訂單保留在本機，下次連線自動補傳
-// - 舊版只存在瀏覽器的訂單（icecream_orders）也會自動上傳
+// - 資料一律以 Google 試算表為準，手機、電腦看到的都一樣
+// - 送出時直接寫入雲端；只有在斷線時才暫存「待上傳」，恢復連線自動補傳
+// - 舊版只存在瀏覽器的訂單（icecream_orders）會自動上傳一次
 // =========================================================
 window.MarketStore = (() => {
 
     "use strict";
 
     const TABLE = "MarketOrders";
-    const CACHE_KEY = "icecream_orders";            // 本機快取（沿用舊鍵名）
-    const PENDING_KEY = "icecream_orders_pending";  // 尚未上傳
+    const LEGACY_KEY = "icecream_orders";           // 舊版單機資料
+    const PENDING_KEY = "icecream_orders_pending";  // 斷線時待上傳
+
+    const listeners = [];
 
     function readLocal(key) {
         try {
@@ -22,7 +24,8 @@ window.MarketStore = (() => {
 
     function writeLocal(key, value) {
         try {
-            localStorage.setItem(key, JSON.stringify(value));
+            if (value.length) localStorage.setItem(key, JSON.stringify(value));
+            else localStorage.removeItem(key);
         } catch { }
     }
 
@@ -65,121 +68,121 @@ window.MarketStore = (() => {
         return new Date(a.time) - new Date(b.time);
     }
 
-    // 舊版本機訂單（沒有 id）→ 加入待上傳
-    function migrateLegacy() {
-
-        const cache = readLocal(CACHE_KEY);
-        const legacy = cache.filter(o => !o.id);
-
-        if (!legacy.length)
-            return;
-
-        legacy.forEach(o => o.id = newId(o.time));
-
-        writeLocal(CACHE_KEY, cache);
-        writeLocal(PENDING_KEY, readLocal(PENDING_KEY).concat(legacy));
+    function notify() {
+        const n = pendingCount();
+        listeners.forEach(fn => {
+            try { fn(n); } catch { }
+        });
     }
 
-    // 上傳待傳訂單，回傳成功筆數
+    // 舊版單機訂單 → 加入待上傳，並清除舊資料
+    function migrateLegacy() {
+
+        const legacy = readLocal(LEGACY_KEY);
+
+        if (!legacy.length) return;
+
+        legacy.forEach(o => o.id = o.id || newId(o.time));
+
+        const pending = readLocal(PENDING_KEY);
+        const ids = new Set(pending.map(o => o.id));
+
+        writeLocal(PENDING_KEY, pending.concat(legacy.filter(o => !ids.has(o.id))));
+        writeLocal(LEGACY_KEY, []);
+    }
+
+    function pendingCount() {
+        return readLocal(PENDING_KEY).length;
+    }
+
+    // 上傳待上傳訂單，回傳上傳筆數（失敗會拋出錯誤）
     async function syncPending() {
+
+        migrateLegacy();
 
         const pending = readLocal(PENDING_KEY);
 
-        if (!pending.length)
-            return 0;
+        if (!pending.length) return 0;
 
         const existing = new Set((await API.list(TABLE)).map(r => r.OrderKey));
         const toUpload = pending.filter(o => !existing.has(o.id));
 
         if (toUpload.length) {
-            await API.batch(toUpload.map(o => ({
-                action: "insert",
-                table: TABLE,
-                data: toRow(o)
-            })));
+            await API.batch(toUpload.map(o => ({ action: "insert", table: TABLE, data: toRow(o) })));
         }
 
         writeLocal(PENDING_KEY, []);
+        notify();
 
         return toUpload.length;
     }
 
-    // 載入全部訂單（雲端 + 未上傳）
+    // 讀取雲端全部訂單（會先補傳待上傳訂單）
     async function load() {
 
-        migrateLegacy();
+        let uploaded = 0;
 
         try {
-
-            const uploaded = await syncPending();
-
-            const cloud = (await API.list(TABLE)).map(fromRow);
-            const ids = new Set(cloud.map(o => o.id));
-            const pending = readLocal(PENDING_KEY).filter(o => !ids.has(o.id));
-            const orders = cloud.concat(pending).sort(byTime);
-
-            writeLocal(CACHE_KEY, orders);
-
-            return { orders, online: true, uploaded, pending: pending.length };
-
+            uploaded = await syncPending();
         } catch (err) {
-
-            console.error(err);
-
-            const cache = readLocal(CACHE_KEY);
-            const ids = new Set(cache.map(o => o.id));
-            const orders = cache
-                .concat(readLocal(PENDING_KEY).filter(o => !ids.has(o.id)))
-                .sort(byTime);
-
-            return { orders, online: false, error: err, pending: readLocal(PENDING_KEY).length };
+            console.warn("補傳失敗", err);
         }
+
+        const orders = (await API.list(TABLE)).map(fromRow).sort(byTime);
+
+        return { orders, uploaded, pending: pendingCount() };
     }
 
-    // 新增一筆訂單，回傳是否已上傳雲端
+    // 新增訂單：直接寫入雲端；失敗時暫存待上傳，回傳是否已寫入雲端
     async function add(order) {
 
         order.id = order.id || newId(order.time);
 
-        writeLocal(CACHE_KEY, readLocal(CACHE_KEY).concat(order));
-        writeLocal(PENDING_KEY, readLocal(PENDING_KEY).concat(order));
-
         try {
 
-            await syncPending();
+            await API.insert(TABLE, toRow(order));
+
+            // 順便補傳之前斷線的訂單
+            if (pendingCount()) syncPending().catch(() => { });
 
             return true;
 
         } catch (err) {
 
+            if (err?.code === "AUTH") throw err;
+
             console.error(err);
+
+            writeLocal(PENDING_KEY, readLocal(PENDING_KEY).concat(order));
+            notify();
 
             return false;
         }
     }
 
-    // 刪除訂單（本機 + 雲端）
+    // 刪除訂單（雲端）
     async function remove(ids) {
 
         const set = new Set(ids);
 
-        writeLocal(CACHE_KEY, readLocal(CACHE_KEY).filter(o => !set.has(o.id)));
         writeLocal(PENDING_KEY, readLocal(PENDING_KEY).filter(o => !set.has(o.id)));
+        notify();
 
-        if (!ids.length)
-            return;
+        if (!ids.length) return;
 
-        await API.batch(ids.map(id => ({
-            action: "removeWhere",
-            table: TABLE,
-            where: { OrderKey: id }
-        })));
+        await API.batch(ids.map(id => ({ action: "removeWhere", table: TABLE, where: { OrderKey: id } })));
     }
+
+    // 恢復連線時自動補傳
+    window.addEventListener("online", () => syncPending().catch(() => { }));
 
     return {
         load,
         add,
-        remove
+        remove,
+        syncPending,
+        pendingCount,
+        onPendingChange: fn => listeners.push(fn)
     };
 
 })();

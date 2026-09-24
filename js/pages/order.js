@@ -569,7 +569,8 @@ class="btn btn-danger btn-sm">
                 {
                     action: "removeWhere",
                     table: "Orders",
-                    where: { OrderNo: currentOrder.OrderNo }
+                    where: { OrderNo: currentOrder.OrderNo },
+                    replace: true
                 },
                 ...rows.map(tr => ({
                     action: "insert",

@@ -21,8 +21,9 @@ const CONFIG = {
     SESSION_HOURS: 10,                 // 登入有效時間（有操作會自動延長）
     PASSWORD_SALT: 'ABC123',           // 與舊系統相同，舊資料的密碼雜湊可直接沿用
     RESET_PASSWORD: 'Fonegle',         // 忘記密碼時重設成的密碼
-    ADMIN_PERMISSIONS: [1, 2, 3, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15], // 第一位註冊者自動取得
+    ADMIN_PERMISSIONS: [3, 12, 13, 20, 21, 22, 23, 24, 25], // 第一位註冊者自動取得
     MAIL_PERMISSIONS: [3],
+    AI_PERMISSIONS: [25],
     AI_MODEL_DEFAULT: 'gemini-2.5-flash',
     APP_NAME: '瘋菓內部管理系統'
 };
@@ -35,6 +36,7 @@ const CONFIG = {
 //   internal: 只能由本腳本存取，前端無法直接讀寫
 //   cols   : 欄位清單，「名稱:型別」，型別 n=數字 b=布林 省略=文字
 //   money  : setup 時設為千分位金額格式的欄位
+//   owner  : 個人資料（只看得到自己建立的，或 IsShared = TRUE 的）
 // ============================================================
 const SCHEMA = {
     Users: {
@@ -108,10 +110,35 @@ const SCHEMA = {
         cols: 'ShipmentID:n ShipmentNo OrderID ProductID BatchNo LogisticsCompany TrackingNumber ReceiverName ReceiverPhone ReceiverAddress ' +
             'ShippingQty:n Unit ShippingDate ReceivedDate ShippingStatus Note CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
+    // 帳務（應收帳款）：哪家店家應付多少、付了沒
     Receivable: {
         key: 'ReceivableID', seq: 'ReceivableID',
-        cols: 'ReceivableID:n OrderID MemberID PayerName PaymentMethod PaymentStatus TransactionNo InvoiceNo Amount:n DiscountAmount:n ' +
-            'TaxAmount:n RefundAmount:n PaymentDate RefundDate Note CreatedBy CreatedAt UpdatedBy UpdatedAt'
+        cols: 'ReceivableID:n CompanyId:n PayerName BillDate DueDate Item OrderID MemberID Amount:n PaidAmount:n ' +
+            'DiscountAmount:n TaxAmount:n RefundAmount:n PaymentMethod PaymentStatus TransactionNo InvoiceNo PaymentDate RefundDate Note ' +
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'Amount PaidAmount DiscountAmount TaxAmount RefundAmount'
+    },
+    // 支出表
+    Expenses: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n ExpenseDate Category ItemName Vendor CompanyId:n Amount:n PaymentMethod InvoiceNo IsPaid:b Note ' +
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'Amount'
+    },
+    // 備忘錄（個人）
+    Memos: {
+        key: 'ID', seq: 'ID', owner: true,
+        cols: 'ID:n Title Content DueDate Priority IsDone:b IsShared:b CreatedBy CreatedAt UpdatedBy UpdatedAt'
+    },
+    // AI 助理對話紀錄（個人）
+    AiChats: {
+        key: 'ID', seq: 'ID', owner: true,
+        cols: 'ID:n Role Text CreatedBy CreatedAt'
+    },
+    // AI 文案（個人）
+    AiDrafts: {
+        key: 'ID', seq: 'ID', owner: true,
+        cols: 'ID:n Title DraftType Platform Tone CalendarId:n Outline Content IsShared:b CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
     ProductionLog: {
         key: 'ProductionID', seq: 'ProductionID',
@@ -121,11 +148,13 @@ const SCHEMA = {
     Formula: {
         key: 'FormulaID', seq: 'FormulaID',
         cols: 'FormulaID:n FormulaCode ProductID FormulaName VersionNo YieldQty:n YieldUnit IsActive:b Description Remark ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt'
+            'PackagingCost:n LaborCost:n OtherCost:n TargetPrice:n TargetCostRate:n MaterialCost:n TotalCost:n UnitCost:n ' +
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'PackagingCost LaborCost OtherCost TargetPrice MaterialCost TotalCost UnitCost'
     },
     FormulaDetail: {
         key: 'FormulaDetailID', seq: 'FormulaDetailID',
-        cols: 'FormulaDetailID:n FormulaID:n MaterialID MaterialCode MaterialName Quantity:n Unit Remark CreatedBy CreatedAt UpdatedBy UpdatedAt'
+        cols: 'FormulaDetailID:n FormulaID:n MaterialID MaterialCode MaterialName Quantity:n Unit UnitCost:n LineCost:n Remark CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
     AgentConfig: {
         key: 'Id', seq: 'Id',
@@ -144,36 +173,179 @@ const SCHEMA = {
     MailLog: { key: 'ID', seq: 'ID', internal: true, cols: 'ID:n Subject Recipients Attachments SentBy CreatedAt' }
 };
 
-// 修改（新增/修改/刪除）需要的權限，沒列出的資料表不可修改
-const WRITE_PERMS = {
-    Users: [3, 13],
-    ID_UserRoles: [3, 13],
-    ID_Permission: [3, 13],
-    Calendar: [10, 11, 13],
-    CalendarDays: [10, 11, 13],
-    StallRecords: [3, 10, 13],
-    BrandCosts: [3, 10, 13],
-    Companies: [3, 13],
-    CrawlerSources: [3, 6, 13],
-    ID_Category: [3, 6],
-    Products: [3, 6],
-    Material: [3, 6],
-    Inventory: [3, 6],
-    Orders: [3, 6],
-    Shipment: [3, 6],
-    Receivable: [3, 6],
-    ProductionLog: [3, 6],
-    Formula: [3, 6],
-    FormulaDetail: [3, 6],
-    AgentConfig: [3, 6, 8, 9, 13],
-    ID_AgentTool: [3, 6, 8, 9, 13],
-    AgentToolPermissions: [3, 6, 8, 9, 13],
-    MarketOrders: [3, 10, 13]
+// ============================================================
+// 試算表說明（setup 會依此排序分頁、上色、在表頭加中文註解，並產生「📖 資料字典」）
+//   擴充方式：
+//   1. 直接在工作表最右邊新增欄位（第一列填英文欄位名稱）→ 網頁讀取時就會帶出該欄位
+//   2. 需要網頁表單使用、或需指定數字 / 布林型別時，再到 SCHEMA 的 cols 加上該欄位
+// ============================================================
+const MODULES = {
+    system: { title: '系統', color: '#6c757d' },
+    calendar: { title: '行事曆', color: '#0d6efd' },
+    market: { title: '市集營運', color: '#fd7e14' },
+    product: { title: '商品與生產', color: '#198754' },
+    sales: { title: '銷售與客戶', color: '#6f42c1' },
+    finance: { title: '財務', color: '#dc3545' },
+    ai: { title: 'AI 行銷', color: '#d63384' },
+    agent: { title: '代理人', color: '#20c997' }
 };
 
-// 讀取需要的權限（沒列出 = 登入即可讀取）
-const READ_PERMS = {
-    Users: [3, 6, 8, 9, 13]
+const TABLE_INFO = {
+    Users: ['system', '員工與會員帳號（密碼為雜湊，不可手動修改）'],
+    ID_UserRoles: ['system', '角色代碼'],
+    ID_Permission: ['system', '權限代碼'],
+    Memos: ['system', '備忘錄（個人，可共享）'],
+    Sessions: ['system', '登入紀錄（系統自動維護，請勿修改）'],
+    MailLog: ['system', '寄信紀錄'],
+    Calendar: ['calendar', '行事曆活動'],
+    CalendarDays: ['calendar', '活動每一天的營業時段'],
+    MarketOrders: ['market', '市集現場點餐（每筆一張單，Items 為品項明細 JSON）'],
+    StallRecords: ['market', '出攤紀錄（費用、收款、盈虧）'],
+    CrawlerSources: ['market', '市集報名連結'],
+    Products: ['product', '產品'],
+    ID_Category: ['product', '產品分類'],
+    Material: ['product', '原料'],
+    Formula: ['product', '配方與成本'],
+    FormulaDetail: ['product', '配方原料明細'],
+    Inventory: ['product', '進貨 / 庫存紀錄'],
+    ProductionLog: ['product', '生產履歷'],
+    Companies: ['sales', '合作廠商 / 店家'],
+    Orders: ['sales', '訂單（一列一個品項，同訂單共用 OrderNo）'],
+    Shipment: ['sales', '出貨'],
+    Receivable: ['finance', '帳務（應收帳款）'],
+    Expenses: ['finance', '支出'],
+    BrandCosts: ['finance', '品牌攤提（投入 / 回收）'],
+    AiDrafts: ['ai', 'AI 文案（個人，可共享）'],
+    AiChats: ['ai', 'AI 助理對話紀錄（個人）'],
+    AgentConfig: ['agent', '代理人設定'],
+    ID_AgentTool: ['agent', '代理人工具'],
+    AgentToolPermissions: ['agent', '代理人工具權限']
+};
+
+const COLUMN_LABELS = {
+    ID: '編號', Id: '編號', Name: '姓名', Note: '備註', Remark: '備註', Description: '說明', Status: '狀態',
+    CreatedAt: '建立時間', CreatedBy: '建立人（使用者ID）', UpdatedAt: '修改時間', UpdateAt: '修改時間',
+    UpdatedBy: '修改人（使用者ID）', UpdateLineUserId: '修改人（使用者ID）', CreateLineID: '建立人',
+    IsActive: '啟用', IsDeleted: '已取消 / 停用', IsShared: '共享給其他人', IsEnable: '啟用', Unit: '單位', Amount: '金額',
+    // 帳號
+    LineUserId: '使用者ID（主鍵）', PhoneNumber: '電話（登入帳號）', Email: 'Email', IdCardNumber: '身分證字號',
+    PassWord: '密碼雜湊（請勿修改）', BirthdayYear: '生日-年', BirthdayMonth: '生日-月', BirthdayDay: '生日-日',
+    RoleId: '角色代碼', RoleList: '權限代碼（以 | 分隔）', FavoriteFeaturesList: '我的最愛（選單編號）',
+    AccountManager: '負責專員', IsWeb: '可登入網站', IsMember: '會員', IsBlocked: '黑名單', IsMailActive: '可收發信',
+    IsPushMessage: '接受推播', IsConverted: '曾交易', OpenClaw: 'OpenClaw 聊天室ID', OpenClawAgent: '代理人編號',
+    RoleName: '角色名稱', Permission: '權限名稱', Token: '登入權杖', ExpireAt: '到期時間（毫秒）',
+    Subject: '主旨', Recipients: '收件人', Attachments: '附件', SentBy: '寄件人',
+    Title: '標題', Content: '內容', DueDate: '到期日', Priority: '優先順序', IsDone: '已完成',
+    // 行事曆
+    CalendarId: '行事曆活動編號', EventName: '活動名稱', StartEventDate: '開始時間', EndEventDate: '結束時間',
+    EventAddress: '地址', CalendarType: '類型（1公開 2會議 3私人 4其他）', UserDB_ID: '私人活動代號', Line_ID: '建立人',
+    DayId: '編號', EventDate: '日期', StartTime: '開始時間', EndTime: '結束時間',
+    // 市集
+    OrderKey: '點餐單號', Time: '點餐時間', Items: '品項明細（JSON）', Total: '應收', Received: '實收', Change: '找零',
+    Payment: '付款方式（cash 現金 / online 電子）', StallDate: '出攤日期', Location: '地點', Organizer: '主辦單位',
+    StaffCount: '人數', BoothFee: '攤位費', TransportCost: '車資', StaffCost: '人手費用', OtherCost: '其他費用',
+    CashIncome: '現金收款', ElectronicPay: '電子支付收款', PaymentFeeRate: '手續費率 %', PaymentFee: '手續費',
+    Revenue: '營業額', FoodCostRate: '食材成本 %', FoodCost: '食材成本', TotalCost: '總成本', ProfitLoss: '盈虧',
+    RevenueLow: '營業額低標', RevenueTarget: '營業額目標', SiteName: '主辦 / 廠商', BaseUrl: '連結網址',
+    // 商品與生產
+    SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
+    Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號',
+    MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
+    CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
+    OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
+    BatchNo: '批號', Warehouse: '倉庫', StockQty: '數量', ReservedQty: '保留量', AvailableQty: '可用量',
+    MfgDate: '製造日期', ExpDate: '有效日期', LastInventoryDate: '最後盤點日', FormulaCode: '配方代碼',
+    FormulaName: '配方名稱', VersionNo: '版本', YieldQty: '產量', YieldUnit: '產量單位', PackagingCost: '包材成本',
+    LaborCost: '人工成本', TargetPrice: '預計售價', TargetCostRate: '目標成本率 %', MaterialCost: '原料成本',
+    UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量', LineCost: '小計成本',
+    ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
+    ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
+    // 銷售
+    CompanyName: '公司 / 店家名稱', CompanyID: '統一編號', CompanyPhone: '公司電話', CompanyURL: '網站',
+    CompanyAddress: '地址', ContactName: '聯絡人', ContactPhone: '聯絡電話', ContactEmail: '聯絡 Email',
+    PaymentStstus: '付款評分（0-5）', TotalVisit: '拜訪次數', TotalMail: '寄信次數', Source: '資料來源',
+    OrderID: '訂單編號', OrderNo: '訂單號碼', MemberID: '會員編號', MemberName: '會員姓名', MemberPhone: '會員電話',
+    MemberEmail: '會員 Email', ShippingAddress: '收件地址', Qty: '數量', UnitPrice: '單價', DiscountAmount: '折扣',
+    ShippingFee: '運費', TotalAmount: '訂單總額', PaymentMethod: '付款方式', PaymentStatus: '付款狀態',
+    OrderStatus: '訂單狀態', ShippingStatus: '出貨狀態', SalesChannel: '銷售通路', OrderDate: '下單時間',
+    CheckoutAt: '結帳時間', ExpectedShippingDate: '預計出貨日', ShipmentID: '編號', ShipmentNo: '出貨單號',
+    LogisticsCompany: '物流公司', TrackingNumber: '物流單號', ReceiverName: '收件人', ReceiverPhone: '收件電話',
+    ReceiverAddress: '收件地址', ShippingQty: '出貨數量', ShippingDate: '出貨日期', ReceivedDate: '收貨日期',
+    // 財務
+    ReceivableID: '編號', CompanyId: '店家（廠商編號）', PayerName: '付款對象', BillDate: '帳單日期', Item: '項目',
+    PaidAmount: '已收金額', TaxAmount: '稅額', RefundAmount: '退款', TransactionNo: '交易序號', InvoiceNo: '發票號碼',
+    PaymentDate: '付款日期', RefundDate: '退款日期', ExpenseDate: '支出日期', ItemName: '項目名稱', Vendor: '廠商 / 對象',
+    IsPaid: '已付款', RecordDate: '日期', Type: '類型（支出 / 回收）', AmortizeMonths: '攤提月數',
+    // AI
+    Role: '角色（user 使用者 / model AI）', Text: '訊息內容',
+    DraftType: '文案類型', Platform: '平台', Tone: '語氣', Outline: '大綱 / 需求',
+    // 代理人
+    TargetlineUserId: '目標使用者ID', AgentKey: 'Agent Key', AgentToolsProfileName: '工具權限等級',
+    OpenClawAgentId: 'OpenClaw Agent ID', WorkspacePath: '工作區路徑', UserProFilePath: '使用者設定路徑',
+    ModelName: '模型', SessionScope: 'Session 範圍', SandboxMode: '沙盒模式', WorkspaceAccess: '工作區權限',
+    AllowMemory: '允許記憶', MaxMemoryCount: '最大記憶數', MemoryExpireDays: '記憶保存天數',
+    ToolName: '工具名稱', AgentToolName: '官方工具名稱', ToolId: '工具編號', IsAllow: '允許'
+};
+
+const TYPE_LABELS = { s: '文字', n: '數字', b: '是否（TRUE/FALSE）' };
+
+// ============================================================
+// 權限（模組制）
+//   13 最高系統管理員：全部
+//   3  系統管理（帳號、會員、權限、郵件）
+//   12 刪除資料：刪除需要此權限（備忘錄、AI 文案刪除自己的除外）
+//   16 唯讀：只能查看，不能新增、修改、刪除
+//   20 行事曆  21 市集營運  22 商品與生產  23 銷售與客戶  24 財務  25 AI 行銷
+//   6/8/9 代理人；10、11 為舊版權限（相容：行事曆、市集營運）
+//
+// read：可讀取的權限（'all' = 登入即可）；write：可新增 / 修改的權限
+// ============================================================
+const PERM = { ADMIN: 13, SYSTEM: 3, DELETE: 12, READONLY: 16 };
+
+const PERMISSION_CODES = [
+    { ID: 3, Permission: '系統管理（帳號、會員、權限、郵件）' },
+    { ID: 12, Permission: '刪除資料' },
+    { ID: 13, Permission: '最高系統管理員（全部功能）' },
+    { ID: 16, Permission: '唯讀（只能查看）' },
+    { ID: 20, Permission: '行事曆' },
+    { ID: 21, Permission: '市集營運（點餐、報表、出攤、報名連結）' },
+    { ID: 22, Permission: '商品與生產（產品、配方成本、原料、庫存、生產）' },
+    { ID: 23, Permission: '銷售與客戶（訂單、出貨、合作廠商）' },
+    { ID: 24, Permission: '財務（帳務、支出、攤提）' },
+    { ID: 25, Permission: 'AI 行銷（文案發想）' }
+];
+
+const CAL = [20, 10, 11], MARKET = [21, 10], PRODUCT = [22], SALES = [23], FINANCE = [24], AGENT = [6, 8, 9];
+
+const TABLE_PERMS = {
+    Users: { read: [3, 23].concat(AGENT), write: [3] },
+    ID_UserRoles: { read: 'all', write: [3] },
+    ID_Permission: { read: 'all', write: [3] },
+    Calendar: { read: 'all', write: CAL },
+    CalendarDays: { read: 'all', write: CAL },
+    Memos: { read: 'all', write: 'all' },
+    AiDrafts: { read: [25], write: [25] },
+    AiChats: { read: 'all', write: 'all' },
+    StallRecords: { read: MARKET.concat(FINANCE), write: MARKET },
+    MarketOrders: { read: MARKET.concat(FINANCE), write: MARKET },
+    CrawlerSources: { read: 'all', write: MARKET },
+    ID_Category: { read: 'all', write: PRODUCT },
+    Products: { read: 'all', write: PRODUCT },
+    Material: { read: PRODUCT, write: PRODUCT },
+    Inventory: { read: PRODUCT, write: PRODUCT },
+    ProductionLog: { read: PRODUCT, write: PRODUCT },
+    Formula: { read: PRODUCT, write: PRODUCT },
+    FormulaDetail: { read: PRODUCT, write: PRODUCT },
+    Companies: { read: 'all', write: SALES.concat(FINANCE) },
+    Orders: { read: SALES.concat(FINANCE), write: SALES },
+    Shipment: { read: SALES, write: SALES },
+    Receivable: { read: FINANCE, write: FINANCE },
+    Expenses: { read: FINANCE, write: FINANCE },
+    BrandCosts: { read: FINANCE, write: FINANCE },
+    AgentConfig: { read: [3].concat(AGENT), write: [3].concat(AGENT) },
+    ID_AgentTool: { read: [3].concat(AGENT), write: [3].concat(AGENT) },
+    AgentToolPermissions: { read: [3].concat(AGENT), write: [3].concat(AGENT) }
 };
 
 const CREATED_AT_COLS = ['CreatedAt'];
@@ -235,7 +407,8 @@ const PRIVATE_ACTIONS = {
     changePassword: changePassword_,
     setFavorite: setFavorite_,
     sendMail: sendMail_,
-    aiChat: aiChat_
+    aiChat: aiChat_,
+    aiGenerate: aiGenerate_
 };
 
 function handle_(req) {
@@ -291,15 +464,25 @@ function setup() {
         { ID: 13, Permission: '最高系統管理員' },
         { ID: 14, Permission: '修改資料' },
         { ID: 15, Permission: '建立資料' }
-    ]);
+    ].filter(r => !PERMISSION_CODES.some(c => c.ID === r.ID)).concat(PERMISSION_CODES));
 
-    // 美化：表頭樣式、凍結首列、欄寬、金額格式
+    // 補上新版模組權限代碼（已存在的不覆蓋）
+    const permTable = tbl_('ID_Permission');
+    const existing = readRows_(permTable).map(x => Number(x.obj.ID));
+    PERMISSION_CODES
+        .filter(c => existing.indexOf(c.ID) < 0)
+        .forEach(c => appendRow_(permTable, c));
+
+    // 美化：表頭樣式、凍結首列、欄寬、金額格式、中文註解
     Object.keys(SCHEMA).forEach(name => styleSheet_(tbl_(name)));
+
+    buildDictionary_();
+    arrangeSheets_();
 
     // 移除預設的空白工作表
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     ss.getSheets().forEach(sh => {
-        if (!SCHEMA[sh.getName()] && sh.getLastRow() === 0 && ss.getSheets().length > 1)
+        if (!SCHEMA[sh.getName()] && sh.getName() !== '📖 資料字典' && sh.getLastRow() === 0 && ss.getSheets().length > 1)
             ss.deleteSheet(sh);
     });
 
@@ -309,11 +492,16 @@ function setup() {
 function styleSheet_(t) {
     const sh = t.sh;
     const width = t.headers.length;
+    const info = TABLE_INFO[t.name] || ['system', ''];
+    const color = (MODULES[info[0]] || MODULES.system).color;
 
     sh.getRange(1, 1, 1, width)
         .setFontWeight('bold')
         .setFontColor('#ffffff')
-        .setBackground('#4d341c');
+        .setBackground('#4d341c')
+        .setNotes([t.headers.map(h => (COLUMN_LABELS[h] || '') + (t.types[h] && t.types[h] !== 's' ? '（' + TYPE_LABELS[t.types[h]] + '）' : ''))]);
+
+    sh.setTabColor(color);
 
     sh.setFrozenRows(1);
 
@@ -409,6 +597,59 @@ function replaceTableRows_(t, rows) {
 
     const values = rows.map(r => t.headers.map(h => (h in r ? toCell_(r[h], t.types[h] || 's') : '')));
     sh.getRange(2, 1, rows.length, t.headers.length).setValues(values);
+}
+
+// 「📖 資料字典」：每張表、每個欄位的中文說明
+function buildDictionary_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const name = '📖 資料字典';
+    const sh = ss.getSheetByName(name) || ss.insertSheet(name, 0);
+
+    const rows = [['模組', '工作表', '用途', '欄位', '中文名稱', '型別', '主鍵']];
+
+    Object.keys(SCHEMA).forEach(tableName => {
+        const t = tbl_(tableName);
+        const info = TABLE_INFO[tableName] || ['system', ''];
+        const module = (MODULES[info[0]] || MODULES.system).title;
+
+        t.headers.forEach((h, i) => rows.push([
+            i === 0 ? module : '',
+            i === 0 ? tableName : '',
+            i === 0 ? info[1] : '',
+            h,
+            COLUMN_LABELS[h] || '（自訂欄位）',
+            TYPE_LABELS[t.types[h] || 's'],
+            h === t.key ? '主鍵' : (h === t.seq ? '自動編號' : '')
+        ]));
+    });
+
+    sh.clear();
+    if (sh.getMaxRows() < rows.length) sh.insertRowsAfter(sh.getMaxRows(), rows.length - sh.getMaxRows());
+    if (sh.getMaxColumns() < 7) sh.insertColumnsAfter(sh.getMaxColumns(), 7 - sh.getMaxColumns());
+
+    sh.getRange(1, 1, rows.length, 7).setValues(rows);
+    sh.getRange(1, 1, 1, 7).setFontWeight('bold').setFontColor('#ffffff').setBackground('#4d341c');
+    sh.setFrozenRows(1);
+    sh.setTabColor('#212529');
+    [90, 150, 280, 170, 200, 130, 80].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+}
+
+// 依模組排序分頁：資料字典 → 各模組
+function arrangeSheets_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const order = ['📖 資料字典'].concat(
+        Object.keys(MODULES).reduce((list, m) =>
+            list.concat(Object.keys(TABLE_INFO).filter(n => TABLE_INFO[n][0] === m)), []));
+
+    order.forEach((name, i) => {
+        const sh = ss.getSheetByName(name);
+        if (!sh) return;
+        ss.setActiveSheet(sh);
+        ss.moveActiveSheet(i + 1);
+    });
+
+    const dict = ss.getSheetByName('📖 資料字典');
+    if (dict) ss.setActiveSheet(dict);
 }
 
 // ============================================================
@@ -641,14 +882,31 @@ function list_(req, ctx) {
 
     return readRows_(t)
         .map(x => publicObj_(t, x.obj))
+        .filter(o => canSeeRow_(t, o, ctx))
         .filter(o => matchWhere_(o, where));
+}
+
+// 個人資料：本人、共享或最高管理員才看得到
+function canSeeRow_(t, o, ctx) {
+    return !t.def.owner || isAdmin_(ctx) || o.CreatedBy === ctx.userId || o.IsShared === true;
+}
+
+function assertOwner_(t, o, ctx) {
+    if (t.def.owner && !isAdmin_(ctx) && o.CreatedBy !== ctx.userId)
+        fail_('🔐 只能修改或刪除自己建立的資料');
 }
 
 function getMany_(req, ctx) {
     const out = {};
 
+    // 沒有權限的資料表回傳 null，其餘照常回傳
     (req.tables || []).forEach(name => {
-        out[name] = list_({ table: name }, ctx);
+        try {
+            out[name] = list_({ table: name }, ctx);
+        } catch (e) {
+            if (!e.userMessage) throw e;
+            out[name] = null;
+        }
     });
 
     return out;
@@ -658,7 +916,9 @@ function get_(req, ctx) {
     const t = access_(req.table, ctx, 'read');
     const found = findRow_(t, req.id);
 
-    return found ? publicObj_(t, found.obj) : null;
+    if (!found || !canSeeRow_(t, found.obj, ctx)) return null;
+
+    return publicObj_(t, found.obj);
 }
 
 function insert_(req, ctx) {
@@ -674,7 +934,7 @@ function remove_(req, ctx) {
 }
 
 function removeWhere_(req, ctx) {
-    return withLock_(() => doRemoveWhere_(req.table, req.where, ctx));
+    return withLock_(() => doRemoveWhere_(req.table, req.where, ctx, false));
 }
 
 /**
@@ -696,7 +956,8 @@ function batch_(req, ctx) {
                 case 'insert': results.push(doInsert_(op.table, data, ctx)); break;
                 case 'update': results.push(doUpdate_(op.table, id, data, ctx)); break;
                 case 'remove': results.push(doRemove_(op.table, id, ctx)); break;
-                case 'removeWhere': results.push(doRemoveWhere_(op.table, op.where, ctx)); break;
+                // replace: true → 修改時整批替換明細，視為「修改」而非「刪除」
+                case 'removeWhere': results.push(doRemoveWhere_(op.table, op.where, ctx, op.replace === true)); break;
                 default: fail_('batch 不支援的操作：' + op.action);
             }
         });
@@ -758,6 +1019,8 @@ function doUpdate_(name, id, data, ctx) {
 
     if (!found) fail_('找不到資料：' + id);
 
+    assertOwner_(t, found.obj, ctx);
+
     const patch = pickKnown_(t, data);
     delete patch[t.key];
     if (t.seq) delete patch[t.seq];
@@ -777,10 +1040,12 @@ function doUpdate_(name, id, data, ctx) {
 }
 
 function doRemove_(name, id, ctx) {
-    const t = access_(name, ctx, 'write');
+    const t = access_(name, ctx, 'delete');
     const found = findRow_(t, id);
 
     if (!found) fail_('找不到資料：' + id);
+
+    assertOwner_(t, found.obj, ctx);
 
     if (HOOKS[name] && HOOKS[name].beforeRemove)
         HOOKS[name].beforeRemove(found.obj, ctx);
@@ -793,13 +1058,15 @@ function doRemove_(name, id, ctx) {
     return true;
 }
 
-function doRemoveWhere_(name, where, ctx) {
-    const t = access_(name, ctx, 'write');
+function doRemoveWhere_(name, where, ctx, isReplace) {
+    const t = access_(name, ctx, isReplace ? 'write' : 'delete');
 
     if (!where || !Object.keys(where).length)
         fail_('removeWhere 必須指定條件');
 
     const rows = readRows_(t).filter(x => matchWhere_(x.obj, where));
+
+    rows.forEach(x => assertOwner_(t, x.obj, ctx));
 
     rows.reverse().forEach(x => t.sh.deleteRow(x.row));
 
@@ -971,13 +1238,6 @@ function sendMail_(req, ctx) {
 // 在「專案設定 → 指令碼屬性」新增 GEMINI_API_KEY（可選 GEMINI_MODEL）
 // ============================================================
 function aiChat_(req, ctx) {
-    const props = PropertiesService.getScriptProperties();
-    const key = props.getProperty('GEMINI_API_KEY');
-
-    if (!key) fail_('尚未設定 GEMINI_API_KEY（Apps Script 專案設定 → 指令碼屬性）');
-
-    const model = props.getProperty('GEMINI_MODEL') || CONFIG.AI_MODEL_DEFAULT;
-
     const contents = (req.messages || [])
         .slice(-20)
         .map(m => ({
@@ -988,6 +1248,34 @@ function aiChat_(req, ctx) {
 
     if (!contents.length) fail_('請輸入訊息');
 
+    return callGemini_('你是「' + CONFIG.APP_NAME + '」的智能助理，使用繁體中文回答，回答要簡潔實用。', contents);
+}
+
+// AI 文案：前端組好需求，伺服器加上品牌設定後呼叫 Gemini
+function aiGenerate_(req, ctx) {
+    requirePerm_(ctx, CONFIG.AI_PERMISSIONS);
+
+    const prompt = String(req.prompt || '').trim().slice(0, 8000);
+    if (!prompt) fail_('請輸入文案需求');
+
+    const system = [
+        '你是台灣甜點品牌「瘋菓」的社群小編與文案企劃，使用繁體中文（台灣用語）。',
+        '瘋菓主打手作冰淇淋、機能冰品與鯛魚燒，常在各地市集擺攤。',
+        '寫作要自然、有溫度、具體，不要空泛形容詞堆疊；不要捏造未提供的價格、日期或優惠。',
+        String(req.system || '').slice(0, 2000)
+    ].join('\n');
+
+    return callGemini_(system, [{ role: 'user', parts: [{ text: prompt }] }]);
+}
+
+function callGemini_(system, contents) {
+    const props = PropertiesService.getScriptProperties();
+    const key = props.getProperty('GEMINI_API_KEY');
+
+    if (!key) fail_('尚未設定 GEMINI_API_KEY（Apps Script 專案設定 → 指令碼屬性）');
+
+    const model = props.getProperty('GEMINI_MODEL') || CONFIG.AI_MODEL_DEFAULT;
+
     const res = UrlFetchApp.fetch(
         'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',
         {
@@ -996,9 +1284,7 @@ function aiChat_(req, ctx) {
             headers: { 'x-goog-api-key': key },
             muteHttpExceptions: true,
             payload: JSON.stringify({
-                systemInstruction: {
-                    parts: [{ text: '你是「' + CONFIG.APP_NAME + '」的智能助理，使用繁體中文回答，回答要簡潔實用。' }]
-                },
+                systemInstruction: { parts: [{ text: system }] },
                 contents
             })
         });
@@ -1218,13 +1504,35 @@ function access_(name, ctx, mode) {
 
     if (!def || def.internal) fail_('無法存取資料表：' + name);
 
-    if (mode === 'read' && READ_PERMS[name] && !hasPerm_(ctx, READ_PERMS[name]))
-        fail_('🔐 無權限讀取：' + name);
+    const t = tbl_(name);
 
-    if (mode === 'write' && !(WRITE_PERMS[name] && hasPerm_(ctx, WRITE_PERMS[name])))
+    if (isAdmin_(ctx)) return t;
+
+    const rule = TABLE_PERMS[name] || {};
+    const allowed = list => list === 'all' || (Array.isArray(list) && hasPerm_(ctx, list));
+
+    if (mode === 'read') {
+        if (!allowed(rule.read === undefined ? 'all' : rule.read))
+            fail_('🔐 無權限讀取：' + name);
+        return t;
+    }
+
+    // 以下為新增 / 修改 / 刪除
+    if (ctx.perms.indexOf(PERM.READONLY) >= 0 && !def.owner)
+        fail_('🔐 唯讀帳號無法修改資料');
+
+    if (!allowed(rule.write))
         fail_('🔐 無權限修改：' + name);
 
-    return tbl_(name);
+    // 刪除需要「刪除資料」權限（個人資料刪除自己的除外）
+    if (mode === 'delete' && !def.owner && ctx.perms.indexOf(PERM.DELETE) < 0)
+        fail_('🔐 刪除資料需要「刪除資料」權限');
+
+    return t;
+}
+
+function isAdmin_(ctx) {
+    return !!ctx && ctx.perms.indexOf(PERM.ADMIN) >= 0;
 }
 
 // ============================================================
@@ -1278,7 +1586,7 @@ function parsePerms_(text) {
 }
 
 function hasPerm_(ctx, list) {
-    return list.some(p => ctx.perms.indexOf(p) >= 0);
+    return isAdmin_(ctx) || list.some(p => ctx.perms.indexOf(p) >= 0);
 }
 
 function requirePerm_(ctx, list) {

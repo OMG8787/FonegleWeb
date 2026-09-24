@@ -3,7 +3,9 @@
 (function () {
     let typingDiv = null
     let aiType = "gemini"
-    let history = JSON.parse(localStorage.getItem("aiChat") || "[]")
+    // 對話紀錄存在 Google 試算表 AiChats（個人），手機電腦同步
+    let history = []          // [{ id, role: "user" | "model", text }]
+    let loaded = false
 
     /* ===== 建立浮動按鈕 ===== */
     const btn = document.createElement("div")
@@ -106,9 +108,8 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
 `
     document.body.appendChild(chat)
 
-    /* ===== 載入歷史 ===== */
+    /* ===== 載入歷史（第一次打開時才讀取） ===== */
     const body = document.getElementById("aiBody")
-    renderHistory()
 
     document.getElementById("aiTypeSelect").value = aiType
     updateModeText()
@@ -127,7 +128,6 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     }
     document.getElementById("aiTypeSelect").onchange = e => {
         aiType = e.target.value
-        localStorage.setItem("aiType", aiType)
         updateModeText()
     }
     document.getElementById("aiSend").onclick = send
@@ -137,17 +137,57 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
             send()
         }
     })
-    document.getElementById("aiNewChat").onclick = () => {
+    document.getElementById("aiNewChat").onclick = async () => {
+        if (history.length && !confirm("清除所有對話紀錄？")) return
+        const ids = history.map(m => m.id).filter(Boolean)
         history = []
-        localStorage.removeItem("aiChat")
         body.innerHTML = ""
+        try {
+            if (ids.length)
+                await API.batch(ids.map(id => ({ action: "remove", table: "AiChats", id })))
+        } catch (err) {
+            addMessage("清除紀錄失敗：" + (err?.message || err), "ai")
+        }
     }
 
     /* ===== 功能 ===== */
     function toggle() {
-        chat.style.display = chat.style.display === "flex" ? "none" : "flex"
+        chat.style.display === "flex" ? close() : open()
     }
-    function open() { chat.style.display = "flex" }
+    function open() {
+        chat.style.display = "flex"
+        loadHistory()
+    }
+
+    async function loadHistory() {
+        if (loaded) return
+        loaded = true
+        body.innerHTML = ""
+        showTyping()
+        try {
+            const rows = await API.list("AiChats")
+            history = rows
+                .sort((a, b) => a.ID - b.ID)
+                .slice(-40)
+                .map(r => ({ id: r.ID, role: r.Role === "user" ? "user" : "model", text: r.Text || "" }))
+            hideTyping()
+            renderHistory()
+        } catch (err) {
+            hideTyping()
+            loaded = false
+            addMessage("讀取對話紀錄失敗：" + (err?.message || err), "ai")
+        }
+    }
+
+    // 寫入一則對話到試算表（失敗不影響對話）
+    async function saveMessage(entry) {
+        try {
+            const row = await API.insert("AiChats", { Role: entry.role, Text: entry.text })
+            entry.id = row.ID
+        } catch (err) {
+            console.warn("對話紀錄儲存失敗", err)
+        }
+    }
     function close() { chat.style.display = "none" }
 
     // 顯示「正在輸入…」
@@ -223,20 +263,20 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
         // 顯示使用者訊息（靠右）
         addMessage(msg, "user")
         showTyping()
-        history.push(`你: ${msg}`)
-        localStorage.setItem("aiChat", JSON.stringify(history))
+        const userEntry = { role: "user", text: msg }
+        history.push(userEntry)
+        saveMessage(userEntry)
 
         // 對話紀錄 → Gemini messages
-        const messages = history.map(m => m.startsWith("你: ")
-            ? { role: "user", text: m.slice(3) }
-            : { role: "model", text: m.replace(/^AI: /, "") })
+        const messages = history.slice(-20).map(m => ({ role: m.role, text: m.text }))
 
         try {
             const reply = await API.call("aiChat", { messages })
             hideTyping()
             addMessage(reply, "ai")
-            history.push(`AI: ${reply}`)
-            localStorage.setItem("aiChat", JSON.stringify(history))
+            const aiEntry = { role: "model", text: reply }
+            history.push(aiEntry)
+            saveMessage(aiEntry)
         } catch (err) {
             hideTyping()
             addMessage(err?.message || "系統錯誤", "ai")
@@ -269,11 +309,7 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
 
     function renderHistory() {
         body.innerHTML = ""
-        history.forEach(m => {
-            if (m.startsWith("你: ")) addMessage(m.replace("你: ", ""), "user")
-            else if (m.startsWith("AI: ")) addMessage(m.replace("AI: ", ""), "ai")
-            else addMessage(m, "ai")
-        })
+        history.forEach(m => addMessage(m.text, m.role === "user" ? "user" : "ai"))
     }
 
     /* ===== 全域控制 ===== */

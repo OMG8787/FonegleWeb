@@ -35,6 +35,9 @@ Pages.Permission = (() => {
 
         await loadPermissions();
 
+        renderPresets();
+        renderPermissions();
+
         await loadRoles();
     }
 
@@ -404,10 +407,52 @@ Pages.Permission = (() => {
         renderPermissions();
     }
 
+    // 角色範本：常見的權限組合
+    const PRESETS = [
+        { name: "👑 老闆", codes: ["13"], hint: "最高系統管理員，全部功能" },
+        { name: "🧑‍💼 店長 / 營運", codes: ["20", "21", "22", "23", "12"], hint: "行事曆、市集、商品生產、銷售，含刪除" },
+        { name: "🎪 市集人員", codes: ["20", "21"], hint: "行事曆、現場點餐、出攤紀錄" },
+        { name: "🏭 生產人員", codes: ["20", "22"], hint: "行事曆、產品、配方成本、原料、庫存" },
+        { name: "💼 會計", codes: ["24", "23"], hint: "帳務、支出、攤提，並可查看訂單與店家" },
+        { name: "📣 行銷", codes: ["20", "25"], hint: "行事曆與 AI 文案" },
+        { name: "👀 唯讀", codes: ["20", "21", "22", "16"], hint: "只能查看，不能新增修改刪除" }
+    ];
+
+    function permissionName(code) {
+        const opt = [...dom.permissionSelect.options].find(o => o.value === String(code));
+        return opt ? opt.textContent.trim() : String(code);
+    }
+
+    function renderPresets() {
+
+        const box = document.getElementById("presetButtons");
+        if (!box) return;
+
+        box.innerHTML = PRESETS.map((p, i) =>
+            `<button type="button" class="btn btn-sm btn-outline-primary" data-preset="${i}" title="${App.esc(p.hint)}">${App.esc(p.name)}</button>`
+        ).join("");
+
+        box.addEventListener("click", e => {
+            const btn = e.target.closest("[data-preset]");
+            if (!btn) return;
+            const preset = PRESETS[Number(btn.dataset.preset)];
+            selectedPermissions.length = 0;
+            preset.codes.forEach(c => selectedPermissions.push(c));
+            document.getElementById("presetHint").textContent = `${preset.name}：${preset.hint}`;
+            renderPermissions();
+        });
+
+        document.getElementById("btnClearPermission")?.addEventListener("click", () => {
+            selectedPermissions.length = 0;
+            renderPermissions();
+        });
+    }
+
     function renderPermissions() {
 
-        dom.permissionList.innerHTML =
-            selectedPermissions.join("<br>");
+        dom.permissionList.innerHTML = selectedPermissions.length
+            ? selectedPermissions.map(c => App.esc(permissionName(c))).join("<br>")
+            : `<span class="text-muted small">尚未選擇</span>`;
     }
 
     function addRoleMember() {

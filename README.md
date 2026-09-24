@@ -91,161 +91,152 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 
 ---
 
-## 三、資料表對照
+## 三、系統功能（一人公司也能完整運作）
+
+| 模組 | 頁面 | 重點 |
+|---|---|---|
+| 🏠 首頁 | 首頁 | 今天起 14 天的**行事曆提醒**（含每日時段）、**備忘錄**（到期提醒、可共享）、待收款提醒、本月收支、我的最愛 |
+| 📅 行事曆 | 行事曆 | 多日活動，每天各自設定開始／結束時間與當日備註；公開／私人活動；活動總覽可複製成文字 |
+| 🎪 市集營運 | 現場點餐、市集報表、出攤紀錄、報名連結、品牌資訊 | 點餐**直接寫入雲端**，手機電腦同步；出攤紀錄自動算營業額、手續費、食材成本、盈虧與目標達成率 |
+| 📦 商品與生產 | 產品、**配方與成本試算**、原料、庫存、生產履歷 | 配方從原料帶入成本，算出單位成本、毛利率、建議售價，並可依預計產量算原料需求 |
+| 🛒 銷售與客戶 | 訂單、出貨、合作廠商／店家 | 訂單可多品項 |
+| 💰 財務 | **帳務管理（應收）**、**支出表**、品牌攤提表 | 各店家應收／已收／未收／逾期一目了然；支出依分類統計；投資攤提與回本進度 |
+| ✨ AI 行銷 | **AI 文案發想** | 自行輸入大綱或選行事曆活動，產生預告、當日、感謝、新品貼文，或出攤日誌、行前須知；可存文案庫 |
+| 🛠️ 系統 | 帳號、員工及會員、權限管理、郵件寄送 | 角色範本一鍵套用權限 |
+
+所有資料都存在 Google 試算表，**沒有單機資料**。右下角的 AI 助理，對話紀錄也存在試算表。
+現場點餐只有在市集斷網時會暫存「待上傳」，畫面會提醒，恢復網路後自動補傳。
+
+---
+
+## 四、權限規劃（多人使用）
+
+權限以「**模組**」授權。畫面和伺服器（Apps Script）兩邊都會檢查，就算有人直接呼叫網址也無法越權。
+
+| 代碼 | 名稱 | 可使用 |
+|---|---|---|
+| 13 | 最高系統管理員 | 全部功能（老闆） |
+| 3 | 系統管理 | 員工及會員、權限管理、郵件寄送 |
+| 20 | 行事曆 | 行事曆（查看、新增、修改） |
+| 21 | 市集營運 | 現場點餐、市集報表、出攤紀錄、報名連結 |
+| 22 | 商品與生產 | 產品、配方與成本、原料、庫存、生產履歷 |
+| 23 | 銷售與客戶 | 訂單、出貨、合作廠商 |
+| 24 | 財務 | 帳務、支出、品牌攤提、首頁收支；可查看出攤與訂單 |
+| 25 | AI 行銷 | AI 文案發想 |
+| 12 | 刪除資料 | 刪除任何資料都需要這個權限（個人的備忘錄、AI 文案除外） |
+| 16 | 唯讀 | 只能查看，不能新增、修改、刪除 |
+
+- 每個人登入後都能用首頁、備忘錄、帳號設定和 AI 助理。
+- **備忘錄與 AI 文案是個人的**，只有本人看得到；勾選「共享」後，同事才看得到。
+- 舊版代碼相容：10（基本功能）＝行事曆＋市集營運；11＝行事曆；6、8、9＝代理人。
+- 在「權限管理 → 權限批次修改」可以用**角色範本**一鍵套用：老闆、店長／營運、市集人員、生產人員、會計、行銷、唯讀。
+- 要調整哪些權限可以做什麼，改 `gas/Code.gs` 的 `TABLE_PERMS`（資料權限）和 `js/config.js` 的 `Permission`（選單顯示）。
+
+---
+
+## 五、試算表格式（方便擴充與修改）
+
+執行 `setup` 後，試算表會自動整理成：
+
+- **📖 資料字典**分頁排在第一個，列出每張表、每個欄位的中文名稱、型別，以及哪個欄位是主鍵。
+- 分頁依模組排序並上色：系統灰、行事曆藍、市集橘、商品綠、銷售紫、財務紅、AI 粉、代理人青。
+- 每個表頭都有中文註解，滑鼠移過去就看得到；第一列凍結；金額欄位顯示千分位。
+- 第一列是英文欄位名稱（程式使用），**請不要修改**。
+
+**擴充方式：**
+1. **只是要多記一個欄位**：直接在該分頁最右邊加一欄，第一列填英文名稱，例如 `Supplier2`。網頁讀取時就會帶出這個欄位，不用改程式。
+2. **要讓網頁表單能輸入、或要指定為數字／是否型別**：在 `gas/Code.gs` 的 `SCHEMA` 加上欄位（`名稱:n` 為數字，`名稱:b` 為是否），在 `COLUMN_LABELS` 加上中文名稱，再重新執行 `setup`。
+3. **新增一整張表**：在 `SCHEMA`、`TABLE_INFO`、`TABLE_PERMS` 各加一行，執行 `setup` 就會自動建立。
 
 | 工作表 | 用途 | 主鍵 |
 |---|---|---|
-| Users | 員工／會員帳號（密碼為 SHA512 雜湊，不會回傳給網頁） | LineUserId |
-| Sessions | 登入 token（系統內部使用） | Token |
+| Users | 員工與會員帳號（密碼為雜湊，不會回傳給網頁） | LineUserId |
 | ID_UserRoles / ID_Permission | 角色、權限代碼 | ID |
-| Products / ID_Category | 產品、產品分類 | ID |
-| Material | 原料 | ID |
-| Inventory | 進貨紀錄 | InventoryID |
-| Orders | 訂單（一列 = 一個品項，同一張訂單共用 OrderNo） | OrderID |
-| Shipment / Receivable / ProductionLog | 出貨、收帳、生產履歷 | 各自的 ID |
-| Formula / FormulaDetail | 配方主檔、配方明細 | FormulaID / FormulaDetailID |
-| Companies | 合作廠商 | ID |
+| Memos | 備忘錄（個人） | ID |
+| Sessions / MailLog | 登入紀錄、寄信紀錄（系統自動維護） | Token / ID |
+| Calendar / CalendarDays | 行事曆活動、每日時段 | CalendarId / DayId |
+| MarketOrders | 現場點餐 | OrderKey |
+| StallRecords | 出攤紀錄 | ID |
 | CrawlerSources | 市集報名連結 | ID |
-| Calendar | 行事曆活動（UserDB_ID 空白 = 公開活動） | CalendarId |
-| CalendarDays | 活動每一天的開始／結束時間與當日備註 | DayId |
-| StallRecords | 出攤紀錄（費用、收款、食材%、目標、盈虧） | ID |
-| BrandCosts | 品牌攤提表（支出／回收、攤提月數） | ID |
-| AgentConfig / ID_AgentTool / AgentToolPermissions | 代理人設定 | Id |
-| MarketOrders | 市集現場點餐 | OrderKey |
-| MailLog | 寄信紀錄 | ID |
+| Products / ID_Category | 產品、產品分類 | ID |
+| Material | 原料（成本價供配方試算使用） | ID |
+| Formula / FormulaDetail | 配方與成本、配方原料明細 | FormulaID / FormulaDetailID |
+| Inventory / ProductionLog | 進貨庫存、生產履歷 | InventoryID / ProductionID |
+| Companies | 合作廠商／店家 | ID |
+| Orders / Shipment | 訂單（一列一品項）、出貨 | OrderID / ShipmentID |
+| Receivable | 帳務（應收帳款） | ReceivableID |
+| Expenses | 支出 | ID |
+| BrandCosts | 品牌攤提 | ID |
+| AiDrafts / AiChats | AI 文案庫、AI 助理對話紀錄（個人） | ID |
+| AgentConfig / ID_AgentTool / AgentToolPermissions | 代理人 | Id |
 
-- **產品分類**沒有管理畫面，請直接在 `ID_Category` 工作表新增，`IsActive` 填 `TRUE`。
-- 可以直接在試算表裡新增或修改資料，但**第一列欄位名稱不要改**，數字主鍵不要重複。
+- **產品分類**沒有管理畫面，請直接在 `ID_Category` 分頁新增，`IsActive` 填 `TRUE`。
 - 布林欄位填 `TRUE` / `FALSE`。
 
-### 從舊 SQL Server 匯入資料
+---
 
-專案外的 `試算表匯入` 資料夾有轉換工具，會從本機 SQL Server（FonegleData）產生 `FonegleData_試算表匯入.xlsx`，欄位已經對應成新版格式。
+## 六、從舊 SQL Server 匯入資料
 
-1. 在新的 Google 試算表選「**檔案 → 匯入 → 上傳**」，選這個 xlsx，匯入位置選「**取代試算表**」。
-2. 接著照「部署步驟」加入 Apps Script，並執行一次 `setup`（只會補上缺少的工作表，不會覆蓋匯入的資料）。
+專案外的 `試算表匯入` 資料夾有轉換工具，會唯讀讀取本機 SQL Server（FonegleData）。有兩種匯入方式，擇一即可：
 
-密碼雜湊演算法與舊系統相同（SHA512 + 相同 salt），**舊帳號匯入後可以用原密碼登入**。
-這份 xlsx 含有會員個資與密碼雜湊，**不要上傳到 GitHub**。
+**方式 A：在 Apps Script 執行（不需部署）**
+1. 執行 `python build_xlsx.py` 產生 `ImportData.gs`。
+2. 在 Apps Script 新增 `ImportData` 檔，貼上內容，執行 `importAll`，完成後刪除該檔。
+
+**方式 B：一次性金鑰遠端寫入**
+1. Apps Script 執行 `openImportWindow`，取得 30 分鐘內有效的金鑰。金鑰只能用一次。
+2. 執行 `python build_xlsx.py`，再執行 `python push_import.py 金鑰`。
+
+兩種方式都只會覆蓋舊系統有的 20 張表。新系統的資料（支出、備忘錄、AI 文案、出攤紀錄、品牌攤提、現場點餐）不會被動到。
+密碼雜湊與舊系統相同，**舊帳號匯入後可以用原密碼登入**。舊行事曆會依起訖時間自動拆成每日時段。
+匯入檔內含會員個資，**不要上傳到 GitHub**。
 
 ---
 
-## 四、權限對照
+## 七、使用限制
 
-網頁選單的 `Permission`（`js/config.js`）決定能不能開頁面。
-Apps Script 的 `WRITE_PERMS` / `READ_PERMS`（`gas/Code.gs` 上方）決定能不能讀寫資料。
-兩邊預設相同，沿用原系統選單的設定。
-
-權限代碼的名稱（`ID_Permission` 工作表）：1 FAE建立、2 業務單建立、3 權限修改、5 建立配方、6 個人代理人權限控制、8 代理人工具總開關建立、9 建立代理人、10 基本功能、11 建立更新行事曆、12 刪除資料、13 最高系統管理員、14 修改資料、15 建立資料。
-
-| 權限代碼（任一即可） | 可修改的資料 |
-|---|---|
-| 3、13 | 帳號、會員、權限、合作廠商 |
-| 3、6 | 產品、原料、庫存、訂單、出貨、收帳、生產、配方 |
-| 10、11、13 | 行事曆（含每日時段） |
-| 3、10、13 | 市集點餐、出攤紀錄、品牌攤提表 |
-| 3、6、8、9、13 | 代理人設定 |
-| 3 | 寄信 |
-
----
-
-## 五、與舊版的差異
-
-**保留的功能**：全部頁面的查詢、新增、修改、刪除，登入、註冊、忘記密碼、修改密碼、我的最愛、自動登出、頁面權限。
-
-**改善與修正**
-
-- 市集點餐（OrderNow）原本只存在瀏覽器，現在會寫進試算表 `MarketOrders`。斷網時先暫存在本機，恢復連線後自動補傳。舊版留在瀏覽器裡的訂單也會自動上傳。
-- 生產履歷、出貨管理原本頁面初始化名稱錯誤，頁面不會運作，已修正。
-- 寄信頁原本沒有載入程式，已修正。附件改由 Gmail 直接寄出。
-- 市集報名連結原本「修改」時會把爬蟲狀態反轉，已修正。
-- 配方、生產、收帳、出貨頁原本沒有「新增」按鈕，現在預設顯示新增表單，按「清除」會回到新增模式。
-- 訂單日期原本用 UTC 時間，會差 8 小時，已改用本地時間。
-- 帳號被取消「啟用」後無法登入。會員管理新增帳號時，預設會勾選「啟用」「會員」。
-- 畫面顯示的資料一律做 HTML 跳脫，避免內容破壞頁面。
-
-**已移除的 LINE 專屬功能**
-
-新版不含 LINE Bot，所以以下 LINE 專用的介面已經拿掉：
-
-- 帳號設定的「綁定 LINE」。
-- 系統權限頁的「資料庫 AI 總開關」「解鎖真人模式」「LINE 自動回應」。
-- 會員資料的「AI模式」「真人模式」「綁定ID」欄位。
-
-代理人（OpenClaw）設定頁仍可管理資料，但代理人本身的執行需要另外的伺服器，新版不包含。網頁右下角的 AI 助理使用 Gemini。
-
-**使用限制**
-
-- Apps Script 每次請求約 0.5～2 秒，比原本的 API 慢。頁面已盡量把多次讀取合併成一次。
+- Apps Script 每次請求約 0.5～2 秒。頁面已盡量把多次讀取合併成一次。
 - 一般 Gmail 帳號每天可寄約 100 封信，Google Workspace 帳號約 1500 封。
 - 單張工作表建議在數萬列以內。資料量很大時，請定期把舊資料搬到另一份試算表封存。
-- 公開的 GitHub repository 任何人都看得到原始碼，包含「品牌資訊」頁上的聯絡電話、Email 等內容。如果不想公開，請把 repository 設為 Private。免費帳號的 Private repository 無法使用 GitHub Pages，需要 GitHub Pro，或改用 Netlify、Cloudflare Pages。
+- 公開的 GitHub repository 任何人都看得到原始碼，包含「品牌資訊」頁上的聯絡資料。不想公開請設為 Private；免費帳號的 Private repository 無法使用 GitHub Pages，可改用 Netlify 或 Cloudflare Pages。
+- 已移除 LINE 專屬功能（LINE Bot、綁定 LINE、真人模式等）。代理人（OpenClaw）設定頁可以管理資料，但代理人本身的執行需要另外的伺服器。
 
 ---
 
-## 六、出攤紀錄與品牌攤提
-
-**出攤紀錄**（市集活動專區 → 出攤紀錄）
-
-- 可以從行事曆選活動，自動帶入名稱和地點；按「從現場點餐帶入當日收款」會加總當天的現金和電子支付收款。
-- 營業額 = 現金收款 + 電子支付收款；手續費 = 電子支付收款 × 手續費率（也可以手動改）。
-- 食材成本 = 營業額 × 食材 %。
-- **盈虧 = 營業額 − 攤位費 − 車資 − 人手費用 − 其他費用 − 手續費 − 食材成本**。
-- 會顯示低標、目標的達成率和每人產值；列表上方有出攤次數、總營業額、總成本、總盈虧、平均每場盈虧。
-
-**品牌攤提表**（市集活動專區 → 品牌攤提表）
-
-- 每筆記錄選「支出」或「回收」，分類有硬體、包材、食材、人力、其他。
-- 支出可以填「攤提月數」，例如冰櫃 36,000 元分 12 個月攤提，每月就是 3,000 元；空白代表當月一次認列。
-- 開啟「出攤盈虧計入回收」後，出攤紀錄的盈虧會算進已回收金額。
-- 會顯示總投入、已回收、尚待回收、本月攤提和回本進度，以及分類彙總和前後一年的每月攤提表。
-
----
-
-## 七、檔案結構
+## 八、檔案結構
 
 ```
 index.html                入口（自動導向首頁）
 login.html                登入／註冊／忘記密碼
-home.html                 首頁（我的最愛）
+home.html                 首頁（行事曆提醒、備忘錄、待收款、本月收支）
 
-page/                     功能頁面（對應的程式在 js/pages/ 同名 .js）
-  account.html            帳號設定（修改密碼、個人資料）
-  member.html             員工及會員管理
-  permission.html         系統權限資料管理（含管理員專用的資料庫連線設定）
-  company.html            合作廠商資料管理
-  product.html            產品管理
-  material.html           原料管理
-  inventory.html          庫存盤點／進貨紀錄
-  formula.html            產品配方
-  order.html              訂單管理
-  shipment.html           出貨管理
-  receivable.html         收帳紀錄
-  production.html         生產履歷
-  market-order.html       市集現場點餐
-  market-report.html      市集報表
-  market-link.html        市集報名連結
-  stall.html              出攤紀錄（費用、收款、盈虧）
-  amortization.html       品牌攤提表（投入、回收、回本進度）
-  brand.html              品牌資訊
+page/                     功能頁面（程式在 js/pages/ 同名 .js）
   calendar.html           行事曆
-  agent.html              代理人（OpenClaw）設定
-  mail.html               郵件寄送
+  market-order.html       現場點餐          market-report.html  市集報表
+  stall.html              出攤紀錄          market-link.html    市集報名連結
+  brand.html              品牌資訊
+  product.html            產品              formula.html        配方與成本試算
+  material.html           原料              inventory.html      庫存盤點
+  production.html         生產履歷
+  order.html              訂單              shipment.html       出貨
+  company.html            合作廠商／店家
+  receivable.html         帳務管理（應收）  expense.html        支出表
+  amortization.html       品牌攤提表
+  ai-writer.html          AI 文案發想
+  account.html            帳號設定          member.html         員工及會員
+  permission.html         權限管理（含角色範本、資料庫連線設定）
+  mail.html               郵件寄送          agent.html          代理人
 
 js/
   settings.js             連線設定（GAS_URL）
-  auth.js                 登入、Session、與 Apps Script 連線
+  auth.js                 登入、Session、權限判斷、與 Apps Script 連線
   api.js                  資料存取（list / insert / update / remove / batch）
   config.js               左側選單與頁面權限
-  core.js                 共用工具
-  layout.js               頁首、選單、頁尾
+  core.js / layout.js     共用工具、頁首選單頁尾
   favorite.js             我的最愛
-  ai-chat.js              AI 助理（Gemini）
-  pages/                  各頁面程式；market-store.js 為市集訂單的雲端／離線同步
+  ai-chat.js              AI 助理（對話紀錄存試算表）
+  pages/                  各頁面程式；market-store.js 為市集點餐的雲端存取
 
-css/layout.css            共用樣式
-img/logo.png              Logo
-
-gas/Code.gs               Google Apps Script 後端（貼到試算表的 Apps Script）
+gas/Code.gs               Google Apps Script 後端（資料表、權限、資料字典、AI）
 gas/appsscript.json       Apps Script 設定（時區等）
 ```

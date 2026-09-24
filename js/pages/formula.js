@@ -1,1247 +1,496 @@
 window.Pages = window.Pages || {};
 
+// =========================================================
+// 配方與成本試算（Formula + FormulaDetail）
+//   原料成本 = Σ 用量 × 單價
+//   總成本   = 原料成本 + 包材 + 人工 + 其他（皆為一批）
+//   單位成本 = 總成本 ÷ 一批產量
+// =========================================================
 Pages.Formula = (() => {
 
     "use strict";
 
-
     const dom = {};
+    const FIELDS = ["FormulaName", "FormulaCode", "VersionNo", "ProductID", "YieldQty", "YieldUnit",
+        "PackagingCost", "LaborCost", "OtherCost", "TargetPrice", "TargetCostRate", "Description"];
 
-
+    let formulas = [];
+    let allDetails = [];
+    let materials = [];
+    let products = [];
+    let rows = [];          // 編輯中的原料明細
+    let current = null;
     let listCache = [];
 
-    let detailList = [];
-
-    let currentDetail = null;
-
-    let mode = "view";
-
-
-
-
-
-    function init() {
-
+    // =========================
+    // 初始化
+    // =========================
+    async function init() {
 
         cacheDom();
-
         bindEvents();
 
+        try {
 
-        // 頁面沒有「新增」按鈕，預設顯示新增表單
-        openCreate(false);
+            const data = await API.getMany(["Formula", "FormulaDetail", "Material", "Products"]);
 
+            formulas = data.Formula || [];
+            allDetails = data.FormulaDetail || [];
+            materials = (data.Material || []).filter(m => m.IsActive !== false);
+            products = data.Products || [];
 
-        searchFormula();
+            renderProductOptions();
+            openCreate(false);
+            renderList();
 
+        } catch (err) {
 
+            App.error(err, "載入資料失敗");
+        }
     }
-
-
-
-
-
-
-
-
 
     function cacheDom() {
 
-
-
-        dom.formCard =
-            document.getElementById("formCard");
-
-
-        dom.form =
-            document.getElementById("formulaForm");
-
-
-
-        dom.editHint =
-            document.getElementById("editHint");
-
-
-
-        dom.formulaList =
-            document.getElementById("formulaList");
-
-
-        dom.emptyHint =
-            document.getElementById("emptyHint");
-
-
-
-        dom.searchTitle =
-            document.getElementById("searchTitle");
-
-
-        dom.searchCount =
-            document.getElementById("searchCount");
-
-
-
-
-        // 搜尋
-
-        dom.qFormulaName =
-            document.getElementById("qFormulaName");
-
-
-        dom.qFormulaCode =
-            document.getElementById("qFormulaCode");
-
-
-        dom.qProductID =
-            document.getElementById("qProductID");
-
-
-        dom.qInactive =
-            document.getElementById("qInactive");
-
-
-
-
-        dom.btnSearch =
-            document.getElementById("btnSearch");
-
-
-
-        dom.btnCreate =
-            document.getElementById("btnCreate");
-
-
-        dom.btnUpdate =
-            document.getElementById("btnUpdate");
-
-
-        dom.btnDelete =
-            document.getElementById("btnDelete");
-
-
-        dom.btnClear =
-            document.getElementById("btnClear");
-
-
-
-        dom.btnAddMaterial =
-            document.getElementById("btnAddMaterial");
-
-
-
-
-
-        // Formula 主表
-
-
-        dom.FormulaCode =
-            document.getElementById("FormulaCode");
-
-
-        dom.ProductID =
-            document.getElementById("ProductID");
-
-
-        dom.FormulaName =
-            document.getElementById("FormulaName");
-
-
-        dom.VersionNo =
-            document.getElementById("VersionNo");
-
-
-        dom.YieldQty =
-            document.getElementById("YieldQty");
-
-
-        dom.YieldUnit =
-            document.getElementById("YieldUnit");
-
-
-        dom.IsActive =
-            document.getElementById("IsActive");
-
-
-
-        dom.Description =
-            document.getElementById("Description");
-
-
-        dom.Remark =
-            document.getElementById("Remark");
-
-
-
-
-        // Detail
-
-
-        dom.formulaDetailList =
-            document.getElementById(
-                "formulaDetailList"
-            );
-
-
-
+        FIELDS.concat([
+            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive",
+            "formulaList", "emptyHint", "listCount", "detailList", "btnAddMaterial", "btnNew", "btnCreate",
+            "btnUpdate", "btnCopy", "btnDelete", "btnClear", "rUnitCost", "rUnitHint", "rMaterialCost",
+            "rTotalCost", "rProfit", "rMargin", "rSuggest", "planQty", "planSummary", "planList"
+        ]).forEach(id => dom[id] = document.getElementById(id));
     }
-
-
-
-
-
-
-
-
 
     function bindEvents() {
 
+        dom.qKeyword.addEventListener("input", renderList);
+        dom.qInactive.addEventListener("change", renderList);
 
+        dom.btnNew.addEventListener("click", () => openCreate(true));
+        dom.btnClear.addEventListener("click", () => openCreate(false));
+        dom.btnCreate.addEventListener("click", () => save(true));
+        dom.btnUpdate.addEventListener("click", () => save(false));
+        dom.btnCopy.addEventListener("click", copyAsNew);
+        dom.btnDelete.addEventListener("click", remove);
+        dom.btnAddMaterial.addEventListener("click", () => {
+            rows.push({ MaterialID: "", MaterialName: "", Quantity: "", Unit: "", UnitCost: "" });
+            renderRows();
+        });
 
-        dom.btnSearch?.addEventListener(
-            "click",
-            searchFormula
-        );
+        dom.ProductID.addEventListener("change", () => {
+            const p = products.find(x => String(x.ID) === dom.ProductID.value);
+            if (p && p.SalePrice !== null && p.SalePrice !== undefined) dom.TargetPrice.value = p.SalePrice;
+            calculate();
+        });
 
+        dom.formulaForm.addEventListener("input", e => {
+            if (e.target.classList.contains("calc")) calculate();
+        });
 
+        dom.planQty.addEventListener("input", renderPlan);
 
-        dom.btnCreate?.addEventListener(
-            "click",
-            submitFormula
-        );
+        dom.detailList.addEventListener("change", onDetailChange);
+        dom.detailList.addEventListener("input", onDetailChange);
+        dom.detailList.addEventListener("click", e => {
+            const btn = e.target.closest("[data-remove]");
+            if (!btn) return;
+            rows.splice(Number(btn.dataset.remove), 1);
+            renderRows();
+        });
 
-
-
-        dom.btnUpdate?.addEventListener(
-            "click",
-            submitFormula
-        );
-
-
-
-        dom.btnDelete?.addEventListener(
-            "click",
-            removeFormula
-        );
-
-
-
-        dom.btnClear?.addEventListener(
-            "click",
-            clearForm
-        );
-
-
-
-
-        dom.btnAddMaterial?.addEventListener(
-            "click",
-            addMaterialRow
-        );
-
-
-
-
-
-        dom.formulaList?.addEventListener(
-            "click",
-            async e => {
-
-
-
-                const card =
-                    e.target.closest(
-                        ".formula-card"
-                    );
-
-
-
-                if (!card)
-                    return;
-
-
-
-
-                const item =
-                    listCache[
-                    card.dataset.index
-                    ];
-
-
-
-                await loadDetail(item);
-
-
-            });
-
-
+        dom.formulaList.addEventListener("click", e => {
+            const card = e.target.closest(".formula-card");
+            if (card) loadDetail(listCache[card.dataset.index]);
+        });
     }
 
-    async function searchFormula() {
-
-        try {
-
-            const q = {
-                name: dom.qFormulaName.value.trim(),
-                code: dom.qFormulaCode.value.trim(),
-                product: dom.qProductID.value.trim()
-            };
-
-            const list = (await API.list("Formula"))
-                .filter(f =>
-                    App.like(f.FormulaName, q.name) &&
-                    App.like(f.FormulaCode, q.code) &&
-                    App.like(f.ProductID, q.product) &&
-                    (dom.qInactive.checked || f.IsActive !== false))
-                .sort((a, b) => a.FormulaID - b.FormulaID);
-
-            listCache = list;
-
-            renderList({
-                title: "🧪 配方列表",
-                count: list.length,
-                list
-            });
-
-        }
-
-        catch (err) {
-
-            App.error(err, "查詢配方失敗");
-
-        }
-
+    // =========================
+    // 計算
+    // =========================
+    function money(v, digits = 0) {
+        const n = Number(v) || 0;
+        return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
     }
 
-    function renderList(result) {
+    function lineCost(r) {
+        return App.num(r.Quantity) * App.num(r.UnitCost);
+    }
 
+    function compute() {
 
+        const materialCost = rows.reduce((s, r) => s + lineCost(r), 0);
+        const totalCost = materialCost + App.num(dom.PackagingCost.value) + App.num(dom.LaborCost.value) + App.num(dom.OtherCost.value);
+        const yieldQty = App.num(dom.YieldQty.value);
+        const unitCost = yieldQty > 0 ? totalCost / yieldQty : 0;
 
-        dom.searchTitle.textContent =
-            result.title || "配方列表";
+        return { materialCost, totalCost, yieldQty, unitCost };
+    }
 
+    function calculate() {
 
+        const c = compute();
+        const price = App.num(dom.TargetPrice.value);
+        const rate = App.num(dom.TargetCostRate.value);
 
-        dom.searchCount.textContent =
-            `共 ${result.count || result.list.length} 筆`;
+        dom.rUnitCost.textContent = c.yieldQty > 0 ? money(c.unitCost, 2) : "-";
+        dom.rUnitHint.textContent = c.yieldQty > 0 ? `每${dom.YieldUnit.value || "單位"}` : "請輸入一批產量";
+        dom.rMaterialCost.textContent = money(c.materialCost, 1);
+        dom.rTotalCost.textContent = money(c.totalCost, 1);
 
+        if (price > 0 && c.yieldQty > 0) {
+            const profit = price - c.unitCost;
+            dom.rProfit.textContent = money(profit, 2);
+            dom.rProfit.className = profit >= 0 ? "good" : "bad";
+            dom.rMargin.textContent = `${(profit / price * 100).toFixed(1)}% / ${(c.unitCost / price * 100).toFixed(1)}%`;
+        } else {
+            dom.rProfit.textContent = "-";
+            dom.rProfit.className = "";
+            dom.rMargin.textContent = "-";
+        }
 
+        dom.rSuggest.textContent = rate > 0 && c.yieldQty > 0 ? money(c.unitCost / (rate / 100), 0) : "-";
 
-        dom.formulaList.innerHTML =
-            "";
+        // 更新明細小計
+        rows.forEach((r, i) => {
+            const el = dom.detailList.querySelector(`[data-subtotal="${i}"]`);
+            if (el) el.textContent = money(lineCost(r), 1);
+        });
 
+        renderPlan();
+    }
 
+    function renderPlan() {
 
+        const plan = App.num(dom.planQty.value);
+        const c = compute();
 
-
-        if (!result.list.length) {
-
-
-            dom.emptyHint.classList.remove(
-                "d-none"
-            );
-
-
+        if (!plan || !c.yieldQty) {
+            dom.planSummary.textContent = "輸入數量後自動計算所需原料";
+            dom.planList.innerHTML = "";
             return;
-
-
         }
 
-
-
-
-        dom.emptyHint.classList.add(
-            "d-none"
-        );
-
-
-
-
-
-
-
-        result.list.forEach(
-            (item, index) => {
-
-
-
-                const div =
-                    document.createElement(
-                        "div"
-                    );
-
-
-
-                div.className =
-                    "formula-card";
-
-
-
-                div.dataset.index =
-                    index;
-
-
-
-
-
-
-                div.innerHTML = `
-
-
-                    <div class="formula-title">
-
-                        🧪 ${App.esc(item.FormulaName || "")}
-
-                    </div>
-
-
-                    <div class="formula-info">
-
-                        編號：
-                        ${App.esc(item.FormulaCode || "")}
-
-                    </div>
-
-
-                    <div class="formula-info">
-
-                        產品：
-                        ${App.esc(item.ProductID || "")}
-
-                    </div>
-
-
-                    <div class="formula-info">
-
-                        版本：
-                        ${App.esc(item.VersionNo || "")}
-
-                    </div>
-
-
-                    <div class="formula-info">
-
-                        產量：
-                        ${item.YieldQty ?? 0}
-                        ${App.esc(item.YieldUnit || "")}
-
-                    </div>
-
-
-
-                    <div class="mt-2">
-
-
-                        ${item.IsActive !== false
-
-                        ?
-
-                        `<span class="badge bg-success">
-                                啟用
-                             </span>`
-
-                        :
-
-                        `<span class="badge bg-secondary">
-                                停用
-                             </span>`
-
-                    }
-
-
-                    </div>
-
-
-                `;
-
-
-
-                dom.formulaList.appendChild(
-                    div
-                );
-
-
-            }
-        );
-
-
-
+        const factor = plan / c.yieldQty;
+        const esc = App.esc;
+
+        dom.planSummary.innerHTML = `約 <b>${factor.toFixed(2)}</b> 批，預估總成本 <b>${money(c.totalCost * factor)}</b>`;
+
+        dom.planList.innerHTML = rows
+            .filter(r => r.MaterialName || r.MaterialID)
+            .map(r => `
+<tr>
+    <td>${esc(r.MaterialName || materialName(r.MaterialID))}</td>
+    <td class="text-end">${(App.num(r.Quantity) * factor).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${esc(r.Unit || "")}</td>
+    <td class="text-end text-muted">${money(lineCost(r) * factor)}</td>
+</tr>`).join("");
     }
 
+    // =========================
+    // 原料明細
+    // =========================
+    function materialName(id) {
+        return materials.find(m => String(m.ID) === String(id))?.MaterialName || "";
+    }
 
+    function renderRows() {
 
+        const esc = App.esc;
+        const options = materials.map(m => `<option value="${m.ID}">${esc(m.MaterialName)}</option>`).join("");
 
+        dom.detailList.innerHTML = rows.map((r, i) => {
 
+            const known = r.MaterialID && materials.some(m => String(m.ID) === String(r.MaterialID));
 
+            return `
+<tr>
+    <td>
+        <select class="form-select form-select-sm" data-i="${i}" data-f="MaterialID">
+            <option value="">自訂原料</option>
+            ${options}
+        </select>
+        <input class="form-control form-control-sm mt-1 ${known ? "d-none" : ""}" data-i="${i}" data-f="MaterialName"
+            value="${esc(r.MaterialName || "")}" placeholder="原料名稱">
+    </td>
+    <td><input type="number" min="0" step="0.001" class="form-control form-control-sm" data-i="${i}" data-f="Quantity" value="${esc(r.Quantity ?? "")}"></td>
+    <td><input class="form-control form-control-sm" data-i="${i}" data-f="Unit" value="${esc(r.Unit || "")}" style="width:70px"></td>
+    <td><input type="number" min="0" step="0.01" class="form-control form-control-sm" data-i="${i}" data-f="UnitCost" value="${esc(r.UnitCost ?? "")}"></td>
+    <td class="text-end" data-subtotal="${i}">${money(lineCost(r), 1)}</td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger" data-remove="${i}">✕</button></td>
+</tr>`;
+        }).join("") || `<tr><td colspan="6" class="text-muted small">尚未加入原料</td></tr>`;
 
+        rows.forEach((r, i) => {
+            const sel = dom.detailList.querySelector(`select[data-i="${i}"]`);
+            if (sel) sel.value = materials.some(m => String(m.ID) === String(r.MaterialID)) ? String(r.MaterialID) : "";
+        });
 
+        calculate();
+    }
 
-    async function loadDetail(item) {
+    function onDetailChange(e) {
 
-        if (!item)
+        const i = Number(e.target.dataset.i);
+        const f = e.target.dataset.f;
+
+        if (isNaN(i) || !f) return;
+
+        const r = rows[i];
+
+        if (f === "MaterialID") {
+
+            const m = materials.find(x => String(x.ID) === e.target.value);
+
+            r.MaterialID = m ? m.ID : "";
+            r.MaterialName = m ? m.MaterialName : "";
+
+            if (m) {
+                r.Unit = m.Unit || r.Unit;
+                r.UnitCost = m.CostPrice ?? r.UnitCost;
+            }
+
+            if (e.type === "change") renderRows();
             return;
-
-        try {
-
-            const details =
-                await API.list("FormulaDetail", { FormulaID: item.FormulaID });
-
-            const data = {
-                ...item,
-                Detail: details.map(x => ({
-                    MaterialID: x.MaterialID || "",
-                    MaterialCode: x.MaterialCode || "",
-                    MaterialName: x.MaterialName || "",
-                    Quantity: x.Quantity ?? 0,
-                    Unit: x.Unit || "",
-                    Remark: x.Remark || ""
-                }))
-            };
-
-            currentDetail = data;
-
-            fillForm(data);
-
-            showForm();
-
-            setModeUI("edit");
-
-            scrollToForm();
-
         }
 
-        catch (err) {
-
-            App.error(err, "讀取配方資料失敗");
-
-        }
-
+        r[f] = e.target.value;
+        calculate();
     }
 
-    function fillForm(d) {
+    // =========================
+    // 列表
+    // =========================
+    function renderProductOptions() {
 
-
-
-        dom.FormulaCode.value =
-            d.FormulaCode || "";
-
-
-
-        dom.ProductID.value =
-            d.ProductID || "";
-
-
-
-        dom.FormulaName.value =
-            d.FormulaName || "";
-
-
-
-        dom.VersionNo.value =
-            d.VersionNo || "";
-
-
-
-        dom.YieldQty.value =
-            d.YieldQty ?? 0;
-
-
-
-        dom.YieldUnit.value =
-            d.YieldUnit || "";
-
-
-
-        dom.IsActive.value =
-            String(
-                d.IsActive !== false
-            );
-
-
-
-        dom.Description.value =
-            d.Description || "";
-
-
-
-        dom.Remark.value =
-            d.Remark || "";
-
-
-
-
-
-        // 複製一份，避免修改到原始資料
-        detailList =
-            (d.Detail || []).map(x => ({ ...x }));
-
-
-
-        renderDetail();
-
-
-
-
+        dom.ProductID.innerHTML = "";
+        dom.ProductID.add(new Option("（不指定）", ""));
+        products.forEach(p => dom.ProductID.add(new Option(`${p.ProductName}${p.SalePrice ? `（售價 $${p.SalePrice}）` : ""}`, p.ID)));
     }
 
+    function renderList() {
 
+        const kw = dom.qKeyword.value.trim();
+        const esc = App.esc;
 
+        listCache = formulas
+            .filter(f => dom.qInactive.checked || f.IsActive !== false)
+            .filter(f => !kw ||
+                App.like(f.FormulaName, kw) || App.like(f.FormulaCode, kw) ||
+                allDetails.some(d => d.FormulaID === f.FormulaID && App.like(d.MaterialName, kw)))
+            .sort((a, b) => String(a.FormulaName).localeCompare(String(b.FormulaName), "zh-Hant"));
 
+        dom.listCount.textContent = `${listCache.length} 筆`;
+        dom.emptyHint.classList.toggle("d-none", listCache.length > 0);
 
+        dom.formulaList.innerHTML = listCache.map((f, i) => {
 
+            const price = App.num(f.TargetPrice);
+            const unit = App.num(f.UnitCost);
+            const rate = price > 0 && unit > 0 ? unit / price : null;
 
-
-
-    function renderDetail() {
-
-
-
-        dom.formulaDetailList.innerHTML =
-            "";
-
-
-
-
-        detailList.forEach(
-            (item, index) => {
-
-
-                addMaterialRow(
-                    item,
-                    index
-                );
-
-
-            }
-        );
-
-
-
+            return `
+<div class="formula-card ${current && current.FormulaID === f.FormulaID ? "active" : ""}" data-index="${i}">
+    <div class="d-flex justify-content-between">
+        <b>🧪 ${esc(f.FormulaName || "")}</b>
+        ${f.IsActive === false ? `<span class="badge bg-secondary">停用</span>` : ""}
+    </div>
+    <div class="small text-muted">${esc(f.FormulaCode || "")} ${esc(f.VersionNo || "")}　產量 ${f.YieldQty ?? "-"} ${esc(f.YieldUnit || "")}</div>
+    <div class="small">單位成本 <b>${unit ? money(unit, 2) : "-"}</b>
+        ${rate !== null ? `　成本率 <b class="${rate <= 0.35 ? "good" : "bad"}">${(rate * 100).toFixed(1)}%</b>` : ""}</div>
+</div>`;
+        }).join("");
     }
 
-
-
-
-
-
-
-
-
-    function addMaterialRow(data = {}, index = null) {
-
-
-
-        if (index === null) {
-
-
-            detailList.push({
-
-                MaterialID: "",
-
-                MaterialCode: "",
-
-                MaterialName: "",
-
-                Quantity: 0,
-
-                Unit: "",
-
-                Remark: ""
-
-            });
-
-
-
-            index =
-                detailList.length - 1;
-
-
-        }
-
-
-
-
-
-
-        const item =
-            detailList[index];
-
-
-
-
-
-        const tr =
-            document.createElement(
-                "tr"
-            );
-
-
-
-        tr.className =
-            "formula-detail-row";
-
-
-
-        tr.dataset.index =
-            index;
-
-
-
-
-
-
-        tr.innerHTML = `
-
-
-
-            <td>
-
-
-                <input
-
-                    class="form-control material-name"
-
-                    value="${App.esc(item.MaterialName || "")}"
-
-                    data-field="MaterialName">
-
-
-            </td>
-
-
-
-
-            <td>
-
-
-                <input
-
-                    class="form-control"
-
-                    value="${App.esc(item.MaterialCode || "")}"
-
-                    data-field="MaterialCode">
-
-
-            </td>
-
-
-
-
-
-            <td>
-
-
-                <input
-
-                    type="number"
-
-                    step="0.001"
-
-                    class="form-control"
-
-                    value="${item.Quantity || 0}"
-
-                    data-field="Quantity">
-
-
-            </td>
-
-
-
-
-
-            <td>
-
-
-                <input
-
-                    class="form-control"
-
-                    value="${App.esc(item.Unit || "")}"
-
-                    data-field="Unit">
-
-
-            </td>
-
-
-
-
-
-            <td>
-
-
-                <input
-
-                    class="form-control"
-
-                    value="${App.esc(item.Remark || "")}"
-
-                    data-field="Remark">
-
-
-            </td>
-
-
-
-
-
-
-            <td>
-
-
-                <button
-
-                    type="button"
-
-                    class="btn btn-danger btn-sm btn-remove-material">
-
-
-                    ✖
-
-
-                </button>
-
-
-            </td>
-
-
-        `;
-
-
-
-
-
-
-        tr.querySelectorAll(
-            "input"
-        )
-            .forEach(input => {
-
-
-                input.addEventListener(
-                    "change",
-                    e => {
-
-
-                        const field =
-                            e.target.dataset.field;
-
-
-
-                        detailList[index][field] =
-                            e.target.value;
-
-
-
-                    }
-                );
-
-
-            });
-
-
-
-
-
-
-        tr.querySelector(
-            ".btn-remove-material"
-        )
-            .addEventListener(
-                "click",
-                () => {
-
-
-                    removeMaterialRow(
-                        index
-                    );
-
-
-                }
-            );
-
-
-
-
-
-        dom.formulaDetailList.appendChild(
-            tr
-        );
-
-
-
+    // =========================
+    // 表單
+    // =========================
+    function setMode(edit) {
+
+        dom.formTitle.textContent = edit ? "✏️ 修改配方" : "➕ 新增配方";
+        dom.editHint.classList.toggle("d-none", !edit);
+        dom.btnCreate.disabled = edit;
+        dom.btnUpdate.disabled = !edit;
+        dom.btnCopy.disabled = !edit;
+        dom.btnDelete.disabled = !edit;
     }
 
+    function openCreate(scroll) {
 
+        current = null;
+        dom.formulaForm.reset();
+        dom.IsActive.checked = true;
+        dom.planQty.value = "";
+        rows = [];
+        setMode(false);
+        renderRows();
+        renderList();
 
-
-
-
-
-
-
-    function removeMaterialRow(index) {
-
-
-
-        detailList.splice(
-            index,
-            1
-        );
-
-
-
-        renderDetail();
-
-
-
+        if (scroll) dom.formCard.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    function buildPayload() {
+    function loadDetail(f) {
+
+        if (!f) return;
+
+        current = f;
+
+        FIELDS.forEach(k => dom[k].value = f[k] ?? "");
+        dom.ProductID.value = f.ProductID ? String(f.ProductID) : "";
+        dom.IsActive.checked = f.IsActive !== false;
+
+        rows = allDetails
+            .filter(d => d.FormulaID === f.FormulaID)
+            .sort((a, b) => a.FormulaDetailID - b.FormulaDetailID)
+            .map(d => ({
+                MaterialID: d.MaterialID ?? "",
+                MaterialName: d.MaterialName || materialName(d.MaterialID),
+                Quantity: d.Quantity ?? "",
+                Unit: d.Unit || "",
+                UnitCost: d.UnitCost ?? materials.find(m => String(m.ID) === String(d.MaterialID))?.CostPrice ?? ""
+            }));
+
+        setMode(true);
+        renderRows();
+        renderList();
+
+        dom.formCard.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function buildData() {
+
+        const c = compute();
 
         return {
-            FormulaCode: dom.FormulaCode.value.trim(),
-            ProductID: dom.ProductID.value.trim(),
-            FormulaName: dom.FormulaName.value.trim(),
-            VersionNo: dom.VersionNo.value.trim(),
-            YieldQty: App.numOrNull(dom.YieldQty.value),
-            YieldUnit: dom.YieldUnit.value.trim(),
-            IsActive: dom.IsActive.value === "true",
-            Description: dom.Description.value,
-            Remark: dom.Remark.value
+            formula: {
+                FormulaName: dom.FormulaName.value.trim(),
+                FormulaCode: dom.FormulaCode.value.trim(),
+                VersionNo: dom.VersionNo.value.trim(),
+                ProductID: dom.ProductID.value,
+                YieldQty: App.numOrNull(dom.YieldQty.value),
+                YieldUnit: dom.YieldUnit.value.trim(),
+                PackagingCost: App.numOrNull(dom.PackagingCost.value),
+                LaborCost: App.numOrNull(dom.LaborCost.value),
+                OtherCost: App.numOrNull(dom.OtherCost.value),
+                TargetPrice: App.numOrNull(dom.TargetPrice.value),
+                TargetCostRate: App.numOrNull(dom.TargetCostRate.value),
+                MaterialCost: Math.round(c.materialCost * 100) / 100,
+                TotalCost: Math.round(c.totalCost * 100) / 100,
+                UnitCost: Math.round(c.unitCost * 100) / 100,
+                Description: dom.Description.value.trim(),
+                IsActive: dom.IsActive.checked
+            },
+            details: rows
+                .filter(r => r.MaterialID || String(r.MaterialName || "").trim())
+                .map(r => ({
+                    MaterialID: r.MaterialID ? String(r.MaterialID) : "",
+                    MaterialName: r.MaterialName || materialName(r.MaterialID),
+                    Quantity: App.numOrNull(r.Quantity),
+                    Unit: r.Unit || "",
+                    UnitCost: App.numOrNull(r.UnitCost),
+                    LineCost: Math.round(lineCost(r) * 100) / 100
+                }))
         };
     }
 
-    function buildDetails() {
+    async function reload() {
 
-        return detailList
-            .filter(x => x.MaterialName || x.MaterialCode || x.MaterialID)
-            .map(x => ({
-                MaterialID: x.MaterialID || "",
-                MaterialCode: x.MaterialCode || "",
-                MaterialName: x.MaterialName || "",
-                Quantity: App.num(x.Quantity),
-                Unit: x.Unit || "",
-                Remark: x.Remark || ""
-            }));
+        const data = await API.getMany(["Formula", "FormulaDetail"]);
+        formulas = data.Formula || [];
+        allDetails = data.FormulaDetail || [];
     }
 
-    async function submitFormula() {
+    async function save(isCreate, overrideName) {
 
-        const data = buildPayload();
-        const details = buildDetails();
+        const { formula, details } = buildData();
 
-        if (!data.FormulaName) {
+        if (overrideName) {
+            formula.FormulaName = overrideName;
+            formula.FormulaCode = "";
+        }
+
+        if (!formula.FormulaName) {
             alert("請輸入配方名稱");
             return;
         }
 
+        if (!formula.YieldQty) {
+            alert("請輸入一批產量（用來計算單位成本）");
+            return;
+        }
+
+        if (isCreate && formula.FormulaCode && formulas.some(f => f.FormulaCode === formula.FormulaCode)) {
+            alert("⚠️ 配方代碼已存在");
+            return;
+        }
+
         try {
 
-            if (mode === "create") {
+            let id;
 
-                if (data.FormulaCode) {
-                    const exists = (await API.list("Formula"))
-                        .some(f => f.FormulaCode === data.FormulaCode);
-                    if (exists) {
-                        alert("⚠️ 配方編號已存在");
-                        return;
-                    }
-                }
+            if (isCreate) {
 
-                // 第 0 個操作建立主檔，明細用 $0.FormulaID 取得新編號
-                await API.batch([
-                    { action: "insert", table: "Formula", data },
-                    ...details.map(x => ({
-                        action: "insert",
-                        table: "FormulaDetail",
-                        data: { ...x, FormulaID: "$0.FormulaID" }
-                    }))
+                const res = await API.batch([
+                    { action: "insert", table: "Formula", data: formula },
+                    ...details.map(d => ({ action: "insert", table: "FormulaDetail", data: { ...d, FormulaID: "$0.FormulaID" } }))
                 ]);
 
-                alert("🎉 配方建立成功");
+                id = res[0].FormulaID;
 
             } else {
 
-                const id = currentDetail.FormulaID;
+                id = current.FormulaID;
 
                 await API.batch([
-                    { action: "update", table: "Formula", id, data },
-                    { action: "removeWhere", table: "FormulaDetail", where: { FormulaID: id } },
-                    ...details.map(x => ({
-                        action: "insert",
-                        table: "FormulaDetail",
-                        data: { ...x, FormulaID: id }
-                    }))
+                    { action: "update", table: "Formula", id, data: formula },
+                    { action: "removeWhere", table: "FormulaDetail", where: { FormulaID: id }, replace: true },
+                    ...details.map(d => ({ action: "insert", table: "FormulaDetail", data: { ...d, FormulaID: id } }))
                 ]);
-
-                alert("✅ 配方修改成功");
             }
 
-            openCreate(false);
+            await reload();
 
-            await searchFormula();
+            alert(`${isCreate ? "🎉 配方已建立" : "✅ 配方已更新"}\n單位成本：${money(formula.UnitCost, 2)}`);
 
+            loadDetail(formulas.find(f => f.FormulaID === id));
+
+        } catch (err) {
+
+            App.error(err, "儲存失敗");
         }
-
-        catch (err) {
-
-            App.error(err, "儲存配方失敗");
-
-        }
-
     }
 
-    async function removeFormula() {
+    function copyAsNew() {
 
-        if (!currentDetail?.FormulaID)
-            return;
+        if (!current) return;
 
-        if (!confirm("確認刪除此配方？"))
-            return;
+        const name = prompt("新配方名稱", `${current.FormulaName}（複製）`);
+
+        if (name) save(true, name.trim());
+    }
+
+    async function remove() {
+
+        if (!current) return;
+
+        if (!confirm(`確定刪除配方「${current.FormulaName}」？`)) return;
 
         try {
 
             await API.batch([
-                { action: "removeWhere", table: "FormulaDetail", where: { FormulaID: currentDetail.FormulaID } },
-                { action: "remove", table: "Formula", id: currentDetail.FormulaID }
+                { action: "removeWhere", table: "FormulaDetail", where: { FormulaID: current.FormulaID } },
+                { action: "remove", table: "Formula", id: current.FormulaID }
             ]);
 
-            alert("🗑️ 刪除完成");
-
+            await reload();
             openCreate(false);
 
-            await searchFormula();
+            alert("🗑️ 已刪除");
 
-        }
-
-        catch (err) {
+        } catch (err) {
 
             App.error(err, "刪除失敗");
-
         }
-
     }
-
-    function openCreate(scroll = true) {
-
-        currentDetail = null;
-
-        detailList = [];
-
-        dom.form.reset();
-
-        dom.IsActive.value = "true";
-
-        dom.formulaDetailList.innerHTML = "";
-
-        showForm();
-
-        setModeUI("create");
-
-        if (scroll)
-            scrollToForm();
-
-    }
-
-    // 清除：回到新增模式
-    function clearForm() {
-
-        openCreate(false);
-
-    }
-
-    function showForm() {
-
-
-        dom.formCard.classList.remove(
-            "d-none"
-        );
-
-
-    }
-
-
-
-
-
-
-
-
-
-    function hideForm() {
-
-
-        dom.formCard.classList.add(
-            "d-none"
-        );
-
-
-    }
-
-
-
-
-
-
-
-
-
-    function scrollToForm() {
-
-
-        setTimeout(() => {
-
-
-            dom.formCard.scrollIntoView({
-
-                behavior: "smooth",
-
-                block: "start"
-
-            });
-
-
-
-        }, 100);
-
-
-
-    }
-
-
-
-
-
-
-
-
-
-    function setModeUI(newMode) {
-
-
-
-        mode =
-            newMode;
-
-
-
-
-
-
-        if (
-            mode === "create"
-        ) {
-
-
-
-            dom.editHint.classList.add(
-                "d-none"
-            );
-
-
-
-            dom.btnCreate.disabled =
-                false;
-
-
-
-            dom.btnUpdate.disabled =
-                true;
-
-
-
-            dom.btnDelete.disabled =
-                true;
-
-
-
-        }
-
-
-
-        else if (
-            mode === "edit"
-        ) {
-
-
-
-            dom.editHint.classList.remove(
-                "d-none"
-            );
-
-
-
-            dom.btnCreate.disabled =
-                true;
-
-
-
-            dom.btnUpdate.disabled =
-                false;
-
-
-
-            dom.btnDelete.disabled =
-                false;
-
-
-
-        }
-
-
-
-        else {
-
-
-
-            dom.editHint.classList.add(
-                "d-none"
-            );
-
-
-
-            dom.btnCreate.disabled =
-                true;
-
-
-
-            dom.btnUpdate.disabled =
-                true;
-
-
-
-            dom.btnDelete.disabled =
-                true;
-
-
-
-        }
-
-
-
-    }
-
-
-
-
-
-
-
-
 
     return {
-
-
-        init,
-
-
-        openCreate
-
-
+        init
     };
-
-
 
 })();

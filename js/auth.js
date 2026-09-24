@@ -340,11 +340,12 @@ const Auth = {
             .forEach(event => document.addEventListener(event, refresh));
     },
 
+    // 13 最高系統管理員擁有全部權限
     hasPermission(...ids) {
 
         const roleList = this.getRoleList();
 
-        return ids.some(id => roleList.includes(id));
+        return roleList.includes(13) || ids.some(id => roleList.includes(id));
     },
 
     // =========================

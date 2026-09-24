@@ -27,14 +27,23 @@ Pages.OrderReport = (() => {
             });
         }
     }
+    // 以本地時間（台灣）取日期，避免 UTC 造成早上 8 點前的訂單算到前一天
+    function localDay(time) {
+        const d = new Date(time);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
     async function load() {
 
-        const result = await MarketStore.load();
+        try {
 
-        orders = result.orders;
+            orders = (await MarketStore.load()).orders;
 
-        if (!result.online)
-            alert(`⚠️ 目前無法連線到 Google 試算表（${result.error?.message || "網路錯誤"}），顯示的是本機資料`);
+        } catch (err) {
+
+            orders = [];
+            App.error(err, "無法讀取 Google 試算表的訂單資料");
+        }
     }
 
     function bind() {
@@ -301,7 +310,7 @@ Pages.OrderReport = (() => {
         let map = {};
 
         list.forEach(o => {
-            const d = o.time.slice(0, 10);
+            const d = localDay(o.time);
 
             if (!map[d]) {
                 map[d] = {

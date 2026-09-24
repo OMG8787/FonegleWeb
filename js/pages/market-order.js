@@ -312,8 +312,8 @@ ${detail}
         // 寫入 Google 試算表（斷線時先暫存本機）
         MarketStore.add(order).then(ok => {
             if (!ok)
-                alert("⚠️ 目前無法連線到 Google 試算表，訂單已暫存在本機，恢復連線後會自動上傳");
-        });
+                alert("⚠️ 目前無法連線到 Google 試算表，這筆訂單暫存為「待上傳」，恢復網路後會自動上傳");
+        }).catch(err => App.error(err, "訂單上傳失敗"));
 
         // ⭐ 清空整單（但下一筆重新預設）
         currentItems = [];
@@ -510,6 +510,12 @@ ${detail}
 
         return result;
     }
+    // 以本地時間（台灣）取日期，避免 UTC 造成早上 8 點前的訂單算到前一天
+    function localDay(time) {
+        const d = new Date(time);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
     function groupOrders(orders) {
 
         const dayMap = {};
@@ -520,7 +526,7 @@ ${detail}
 
             const date = new Date(o.time);
 
-            const dayKey = date.toISOString().slice(0, 10);
+            const dayKey = localDay(date);
 
             const weekKey = getWeekKey(date);
 
@@ -748,14 +754,53 @@ ${detail}
 
     async function loadOrders() {
 
-        const result = await MarketStore.load();
+        setupPendingBanner();
 
-        orders = result.orders;
+        try {
 
-        if (!result.online)
-            alert(`⚠️ 目前無法連線到 Google 試算表（${result.error?.message || "網路錯誤"}），先使用本機資料，恢復連線後會自動上傳`);
-        else if (result.uploaded)
-            alert(`☁️ 已補上傳 ${result.uploaded} 筆離線訂單`);
+            const result = await MarketStore.load();
+
+            orders = result.orders;
+
+            if (result.uploaded)
+                alert(`☁️ 已補上傳 ${result.uploaded} 筆斷線時的訂單`);
+
+        } catch (err) {
+
+            App.error(err, "讀取雲端訂單失敗");
+        }
+    }
+
+    // 斷線待上傳提示（有待上傳訂單時才顯示）
+    function setupPendingBanner() {
+
+        const banner = document.createElement("div");
+        banner.id = "pendingBanner";
+        banner.className = "alert alert-warning d-none d-flex justify-content-between align-items-center";
+        banner.innerHTML = `<span id="pendingText"></span>
+            <button class="btn btn-sm btn-warning" id="btnRetryUpload">立即上傳</button>`;
+
+        const main = document.querySelector("#erp-main .container-fluid") || document.body;
+        main.prepend(banner);
+
+        const update = n => {
+            banner.classList.toggle("d-none", !n);
+            document.getElementById("pendingText").textContent =
+                `⚠️ 有 ${n} 筆訂單因斷線尚未上傳到 Google 試算表，恢復網路後會自動上傳`;
+        };
+
+        MarketStore.onPendingChange(update);
+        update(MarketStore.pendingCount());
+
+        document.getElementById("btnRetryUpload").addEventListener("click", async () => {
+            try {
+                const n = await MarketStore.syncPending();
+                alert(`☁️ 已上傳 ${n} 筆`);
+                orders = (await MarketStore.load()).orders;
+            } catch (err) {
+                App.error(err, "仍無法連線，請稍後再試");
+            }
+        });
     }
 
     async function deleteLastOrder() {
@@ -785,7 +830,7 @@ ${detail}
         const map = {};
 
         orders.forEach(o => {
-            const day = o.time.slice(0, 10);
+            const day = localDay(o.time);
             if (!map[day]) map[day] = [];
             map[day].push(o);
         });

@@ -3,915 +3,260 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>瘋菓內部管理系統｜產品配方(未開放)</title>
+    <title>瘋菓內部管理系統｜配方與成本試算</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- 共用樣式 -->
     <link href="../css/layout.css" rel="stylesheet">
 
     <style>
-        /* ======================================
-   Formula 配方管理
-====================================== */
-
-
-        /* 配方列表 */
-
-        .formula-list-wrapper {
-
-            max-height: calc(100vh - 350px);
-
-            overflow-y: auto;
-
-        }
-
-
-
-
-
         .formula-card {
-
-            border: 1px solid #ddd;
-
-            border-radius: 10px;
-
-            padding: 12px;
-
-            margin-bottom: 10px;
-
-            cursor: pointer;
-
-            background: #fff;
-
-            transition: all .2s ease;
-
-        }
-
-
-
-
-
-        .formula-card:hover {
-
-            background: #f8f9fa;
-
-            transform: translateY(-2px);
-
-            box-shadow: 0 3px 8px rgba(0, 0, 0, .1);
-
-        }
-
-
-
-
-
-        .formula-card.active {
-
-            border-color: #0d6efd;
-
-            background: #eef5ff;
-
-        }
-
-
-
-
-
-
-
-        .formula-title {
-
-            font-weight: bold;
-
-            font-size: 16px;
-
-            color: #333;
-
-        }
-
-
-
-
-
-        .formula-info {
-
-            font-size: 13px;
-
-            color: #777;
-
-            margin-top: 5px;
-
-        }
-
-
-
-
-
-
-
-        /* ======================================
-   配方明細表
-====================================== */
-
-
-        #formulaDetailList input {
-
-            min-width: 100px;
-
-        }
-
-
-
-        #formulaDetailList td {
-
-            vertical-align: middle;
-
-        }
-
-
-
-
-
-        #formulaDetailList .material-name {
-
-            font-weight: bold;
-
-        }
-
-
-
-
-
-        .btn-remove-material {
-
-            width: 32px;
-
-            height: 32px;
-
-            padding: 0;
-
-        }
-
-
-
-
-
-        /* ======================================
-   表單
-====================================== */
-
-
-        #formulaForm label {
-
-            font-weight: 500;
-
-        }
-
-
-
-
-
-        #formulaForm textarea {
-
-            resize: vertical;
-
-        }
-
-
-
-
-
-        #formulaForm h5 {
-
-            font-size: 17px;
-
-            border-left: 4px solid #0d6efd;
-
-            padding-left: 10px;
-
-        }
-
-
-
-
-
-
-
-        /* ======================================
-   卡片
-====================================== */
-
-
-        .section-card {
-
+            border: 1px solid #e5e5e5;
             border-radius: 12px;
-
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #fff;
+            cursor: pointer;
+            transition: .15s;
         }
 
+        .formula-card:hover,
+        .formula-card.active {
+            border-color: #198754;
+            box-shadow: 0 4px 12px rgba(25, 135, 84, .15);
+        }
 
-
-
-
-        .section-header {
-
-
-            padding: 15px;
-
-            font-size: 18px;
-
+        .section-title {
             font-weight: bold;
-
+            margin: 18px 0 8px;
+            padding-bottom: 4px;
             border-bottom: 1px solid #eee;
-
-            background: #fafafa;
-
-
         }
 
-
-
-
-
-        .section-body {
-
-            padding: 15px;
-
+        .cost-box {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 14px;
         }
 
-
-
-
-
-
-
-        /* ======================================
-   明細新增動畫
-====================================== */
-
-
-        .formula-detail-row {
-
-
-            animation:
-
-                fadeIn .25s ease;
-
-
+        .cost-box .big {
+            font-size: 1.6rem;
+            font-weight: bold;
         }
 
-
-
-        @keyframes fadeIn {
-
-
-            from {
-
-                opacity: 0;
-
-                transform: translateY(-5px);
-
-            }
-
-
-            to {
-
-                opacity: 1;
-
-                transform: translateY(0);
-
-            }
-
-
+        .detail-table input,
+        .detail-table select {
+            min-width: 80px;
         }
 
-
-
-
-
-
-
-        /* ======================================
-   小螢幕
-====================================== */
-
-
-        @media(max-width:992px) {
-
-
-            .formula-list-wrapper {
-
-                max-height: 300px;
-
-            }
-
-
+        .good {
+            color: #198754;
         }
 
-        .search-area {
-            padding: 15px;
-        }
-
-        .empty-area {
-
-            text-align: center;
-
-            padding: 30px;
-
-            color: #888;
-
+        .bad {
+            color: #dc3545;
         }
     </style>
 </head>
 
 <body>
 
-    <!-- 頁首 -->
     <div id="headerArea"></div>
 
-    <!-- 主架構 -->
     <div id="erp-layout">
 
-        <!-- 導覽列 -->
         <div id="sidebarArea"></div>
 
-        <!-- 主內容 -->
         <div id="erp-main">
 
             <div class="container-fluid">
 
-                <!-- 標題 -->
                 <div class="card border-0 shadow-sm mb-3">
-                    <div class="card-body">
-                        <h2 class="mb-1">產品配方(未開放)</h2>
-                        <p class="text-muted mb-0">
-                            紀錄配方細節資料
-                        </p>
+                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="mb-1">🧪 配方與成本試算</h2>
+                            <p class="text-muted mb-0">原料用量、成本、毛利與生產量試算</p>
+                        </div>
+                        <button id="btnNew" class="btn btn-success">＋ 新增配方</button>
                     </div>
                 </div>
 
-                <!-- 內容在這 -->
-                <div class="row">
+                <div class="row g-3">
 
-
-                    <!-- 左側：配方搜尋與列表 -->
+                    <!-- 列表 -->
                     <div class="col-lg-4">
-
-
-                        <div class="card section-card shadow-sm mb-3">
-
-
-                            <div class="section-header">
-
-                                🧪 配方查詢
-
-                            </div>
-
-
-
-                            <div class="search-area">
-
-
-                                <input id="qFormulaName" class="form-control mb-2" placeholder="🧪 配方名稱">
-
-
-                                <input id="qFormulaCode" class="form-control mb-2" placeholder="📄 配方編號">
-
-
-                                <input id="qProductID" class="form-control mb-2" placeholder="📦 產品ID">
-
-
-
-                                <div class="form-check form-switch mb-3">
-
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <input id="qKeyword" class="form-control mb-2" placeholder="🔍 配方名稱 / 代碼 / 原料">
+                                <div class="form-check form-switch mb-2">
                                     <input id="qInactive" class="form-check-input" type="checkbox">
-
-
-                                    <label class="form-check-label">
-
-                                        顯示停用配方
-
-                                    </label>
-
+                                    <label class="form-check-label small" for="qInactive">顯示停用配方</label>
                                 </div>
-
-
-
-                                <button id="btnSearch" class="btn btn-primary w-100">
-
-                                    🔍 查詢配方
-
-                                </button>
-
-
+                                <div class="d-flex justify-content-between small text-muted mb-2">
+                                    <span>配方列表</span>
+                                    <span id="listCount"></span>
+                                </div>
+                                <div id="formulaList"></div>
+                                <div id="emptyHint" class="text-muted small d-none">查無配方</div>
                             </div>
-
-
-
-
-
-
-                            <div class="section-body">
-
-
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-
-
-                                    <span id="searchTitle" class="fw-bold">
-                                    </span>
-
-
-
-                                    <span id="searchCount" class="badge bg-primary">
-                                    </span>
-
-
-                                </div>
-
-
-
-
-
-                                <div id="formulaList" class="formula-list-wrapper">
-
-
-                                </div>
-
-
-
-
-                                <div id="emptyHint" class="empty-area d-none">
-
-                                    查無配方資料
-
-                                </div>
-
-
-
-                            </div>
-
-
-
                         </div>
-
-
                     </div>
 
-
-
-
-
-
-
-
-
-                    <!-- 右側：配方資料 -->
+                    <!-- 表單 -->
                     <div class="col-lg-8">
-
-
-
-                        <div id="formCard" class="card section-card shadow-sm d-none">
-
-
-
-                            <div class="section-header d-flex justify-content-between align-items-center">
-
-
-                                <span>
-
-                                    🧪 配方資料
-
-                                </span>
-
-
-
-                                <span id="editHint" class="badge bg-warning text-dark d-none">
-
-                                    編輯模式
-
-                                </span>
-
-
-
-                            </div>
-
-
-
-
-
-
-                            <div class="section-body">
-
-
-                                <form id="formulaForm">
-
-
-
-                                    <!-- 基本資料 -->
-
-                                    <h5 class="mb-3">
-
-                                        📋 配方基本資料
-
-                                    </h5>
-
-
-
-
-                                    <div class="row">
-
-
-
-                                        <div class="col-md-4 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                配方編號
-
-                                            </label>
-
-
-                                            <input id="FormulaCode" class="form-control">
-
-
-                                        </div>
-
-
-
-
-                                        <div class="col-md-4 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                產品ID
-
-                                            </label>
-
-
-                                            <input id="ProductID" class="form-control">
-
-
-                                        </div>
-
-
-
-
-
-                                        <div class="col-md-4 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                版本
-
-                                            </label>
-
-
-                                            <input id="VersionNo" class="form-control">
-
-
-                                        </div>
-
-
-
-
-
-                                        <div class="col-md-8 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                配方名稱
-
-                                            </label>
-
-
+                        <div id="formCard" class="card border-0 shadow-sm">
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 id="formTitle" class="mb-0">➕ 新增配方</h5>
+                                    <span id="editHint" class="badge bg-warning text-dark d-none">編輯中</span>
+                                </div>
+
+                                <form id="formulaForm" onsubmit="return false">
+
+                                    <div class="section-title">📋 基本資料</div>
+                                    <div class="row g-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small">配方名稱 *</label>
                                             <input id="FormulaName" class="form-control">
-
-
                                         </div>
-
-
-
-
-                                        <div class="col-md-2 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                產量
-
-                                            </label>
-
-
-                                            <input id="YieldQty" type="number" step="0.001" class="form-control">
-
-
+                                        <div class="col-md-3">
+                                            <label class="form-label small">配方代碼</label>
+                                            <input id="FormulaCode" class="form-control">
                                         </div>
-
-
-
-
-                                        <div class="col-md-2 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                單位
-
-                                            </label>
-
-
-                                            <input id="YieldUnit" class="form-control">
-
-
+                                        <div class="col-md-3">
+                                            <label class="form-label small">版本</label>
+                                            <input id="VersionNo" class="form-control" placeholder="v1">
                                         </div>
-
-
-
+                                        <div class="col-md-6">
+                                            <label class="form-label small">對應產品（選填，帶入售價）</label>
+                                            <select id="ProductID" class="form-select"></select>
+                                        </div>
+                                        <div class="col-6 col-md-3">
+                                            <label class="form-label small">一批產量 *</label>
+                                            <input id="YieldQty" type="number" min="0" step="0.01" class="form-control calc">
+                                        </div>
+                                        <div class="col-6 col-md-3">
+                                            <label class="form-label small">產量單位</label>
+                                            <input id="YieldUnit" class="form-control" placeholder="杯 / 份 / 支">
+                                        </div>
                                     </div>
 
-
-
-
-
-                                    <hr>
-
-
-
-
-
-
-
-                                    <!-- 明細 -->
-
-
-                                    <h5 class="mb-3">
-
-                                        🥛 原料配方明細
-
-                                    </h5>
-
-
-
-
-
+                                    <div class="section-title d-flex justify-content-between align-items-center">
+                                        <span>🥛 原料明細（一批）</span>
+                                        <button type="button" id="btnAddMaterial" class="btn btn-sm btn-outline-primary">＋ 加入原料</button>
+                                    </div>
                                     <div class="table-responsive">
-
-
-                                        <table class="table table-bordered">
-
-
+                                        <table class="table table-sm align-middle detail-table">
                                             <thead class="table-light">
-
-
                                                 <tr>
-
-
-                                                    <th>
-                                                        原料名稱
-                                                    </th>
-
-
-                                                    <th>
-                                                        MaterialCode
-                                                    </th>
-
-
-                                                    <th>
-                                                        使用量
-                                                    </th>
-
-
-                                                    <th>
-                                                        單位
-                                                    </th>
-
-
-                                                    <th>
-                                                        備註
-                                                    </th>
-
-
-                                                    <th width="80">
-                                                        操作
-                                                    </th>
-
-
+                                                    <th style="min-width:180px">原料</th>
+                                                    <th>用量</th>
+                                                    <th>單位</th>
+                                                    <th>單價（每單位）</th>
+                                                    <th class="text-end">小計</th>
+                                                    <th></th>
                                                 </tr>
-
-
                                             </thead>
-
-
-
-
-                                            <tbody id="formulaDetailList">
-
-
-                                            </tbody>
-
-
-
+                                            <tbody id="detailList"></tbody>
                                         </table>
-
-
-
+                                    </div>
+                                    <div class="small text-muted">
+                                        選擇原料會自動帶入「原料管理」的單位與成本價；也可選「自訂原料」手動輸入。
                                     </div>
 
-
-
-
-
-
-                                    <button type="button" id="btnAddMaterial"
-                                        class="btn btn-outline-primary btn-sm mb-3">
-
-
-                                        ➕ 加入原料
-
-
-                                    </button>
-
-
-
-
-
-
-                                    <hr>
-
-
-
-
-
-
-
-
-                                    <!-- 狀態 -->
-
-
-                                    <h5 class="mb-3">
-
-                                        ⚙️ 設定
-
-                                    </h5>
-
-
-
-
-                                    <div class="row">
-
-
-
-                                        <div class="col-md-6 mb-3">
-
-
-                                            <label class="form-label">
-
-                                                啟用狀態
-
-                                            </label>
-
-
-                                            <select id="IsActive" class="form-select">
-
-
-                                                <option value="true">
-                                                    啟用
-                                                </option>
-
-
-                                                <option value="false">
-                                                    停用
-                                                </option>
-
-
-                                            </select>
-
-
+                                    <div class="section-title">📦 其他成本（一批）</div>
+                                    <div class="row g-2">
+                                        <div class="col-4">
+                                            <label class="form-label small">包材</label>
+                                            <input id="PackagingCost" type="number" min="0" class="form-control calc">
                                         </div>
-
-
-
+                                        <div class="col-4">
+                                            <label class="form-label small">人工</label>
+                                            <input id="LaborCost" type="number" min="0" class="form-control calc">
+                                        </div>
+                                        <div class="col-4">
+                                            <label class="form-label small">其他</label>
+                                            <input id="OtherCost" type="number" min="0" class="form-control calc">
+                                        </div>
                                     </div>
 
-
-
-
-
-
-                                    <h5 class="mb-3">
-
-                                        📝 說明
-
-                                    </h5>
-
-
-
-
-                                    <textarea id="Description" class="form-control mb-3" rows="4">
-                    </textarea>
-
-
-
-
-
-                                    <textarea id="Remark" class="form-control" rows="3" placeholder="備註">
-                    </textarea>
-
-
-
-
-
-
-                                    <hr>
-
-
-
-
-
-
-                                    <div class="d-flex gap-2">
-
-
-
-                                        <button type="button" id="btnCreate" class="btn btn-success">
-
-
-                                            ➕ 新增
-
-
-                                        </button>
-
-
-
-
-
-                                        <button type="button" id="btnUpdate" class="btn btn-primary">
-
-
-                                            💾 修改
-
-
-                                        </button>
-
-
-
-
-
-                                        <button type="button" id="btnDelete" class="btn btn-danger">
-
-
-                                            🗑 刪除
-
-
-                                        </button>
-
-
-
-
-
-                                        <button type="button" id="btnClear" class="btn btn-secondary">
-
-
-                                            🔄 清空
-
-
-                                        </button>
-
-
-
+                                    <div class="section-title">💹 成本試算</div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-6 col-md-4">
+                                            <label class="form-label small">預計售價（每單位）</label>
+                                            <input id="TargetPrice" type="number" min="0" class="form-control calc">
+                                        </div>
+                                        <div class="col-6 col-md-4">
+                                            <label class="form-label small">目標成本率 %</label>
+                                            <input id="TargetCostRate" type="number" min="1" max="100" class="form-control calc" placeholder="例如 30">
+                                        </div>
+                                    </div>
+                                    <div class="cost-box">
+                                        <div class="row g-3">
+                                            <div class="col-md-4 text-center">
+                                                <div class="small text-muted">單位成本</div>
+                                                <div id="rUnitCost" class="big">$0</div>
+                                                <div id="rUnitHint" class="small text-muted"></div>
+                                            </div>
+                                            <div class="col-md-8 small">
+                                                <div class="d-flex justify-content-between"><span>原料成本（一批）</span><b id="rMaterialCost">$0</b></div>
+                                                <div class="d-flex justify-content-between"><span>總成本（一批）</span><b id="rTotalCost">$0</b></div>
+                                                <div class="d-flex justify-content-between"><span>每單位毛利</span><b id="rProfit">-</b></div>
+                                                <div class="d-flex justify-content-between"><span>毛利率 / 成本率</span><b id="rMargin">-</b></div>
+                                                <div class="d-flex justify-content-between"><span>依目標成本率建議售價</span><b id="rSuggest">-</b></div>
+                                            </div>
+                                        </div>
                                     </div>
 
+                                    <div class="section-title">🏭 生產量試算</div>
+                                    <div class="row g-2 align-items-end mb-2">
+                                        <div class="col-6 col-md-4">
+                                            <label class="form-label small">預計生產數量</label>
+                                            <input id="planQty" type="number" min="0" class="form-control">
+                                        </div>
+                                        <div class="col-6 col-md-8 small text-muted" id="planSummary">輸入數量後自動計算所需原料</div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <tbody id="planList"></tbody>
+                                        </table>
+                                    </div>
 
+                                    <div class="section-title">📝 其他</div>
+                                    <div class="row g-2">
+                                        <div class="col-md-9">
+                                            <textarea id="Description" rows="2" class="form-control" placeholder="作法、注意事項"></textarea>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="form-check form-switch mt-2">
+                                                <input id="IsActive" class="form-check-input" type="checkbox" checked>
+                                                <label class="form-check-label" for="IsActive">啟用</label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2 mt-3">
+                                        <button id="btnCreate" class="btn btn-success">新增</button>
+                                        <button id="btnUpdate" class="btn btn-primary">儲存修改</button>
+                                        <button id="btnCopy" class="btn btn-outline-primary">複製為新配方</button>
+                                        <button id="btnDelete" class="btn btn-outline-danger">刪除</button>
+                                        <button id="btnClear" class="btn btn-outline-secondary ms-auto">清除 / 新增</button>
+                                    </div>
 
                                 </form>
-
-
                             </div>
-
-
                         </div>
-
-
                     </div>
 
-
                 </div>
-
             </div>
-
         </div>
-
     </div>
-    <!-- 頁尾 -->
+
     <div id="footerArea"></div>
 
-    <!-- 共用 layout -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../js/settings.js"></script>
     <script src="../js/auth.js"></script>
     <script>
@@ -923,7 +268,6 @@
     <script src="../js/core.js"></script>
     <script src="../js/ai-chat.js"></script>
     <script src="../js/favorite.js"></script>
-
     <script src="../js/pages/formula.js"></script>
 
     <script>

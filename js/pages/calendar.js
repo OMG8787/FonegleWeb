@@ -658,7 +658,7 @@ title="活動:${esc(e.name)}
 
                 await API.batch([
                     { action: "update", table: "Calendar", id: editingId, data: event },
-                    { action: "removeWhere", table: "CalendarDays", where: { CalendarId: editingId } },
+                    { action: "removeWhere", table: "CalendarDays", where: { CalendarId: editingId }, replace: true },
                     ...days.map(d => ({ action: "insert", table: "CalendarDays", data: { ...d, CalendarId: editingId } }))
                 ]);
             }
