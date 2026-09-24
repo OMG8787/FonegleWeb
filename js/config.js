@@ -120,6 +120,18 @@ const Config = {
                     Permission: [3, 6, 13],
                     name: "🔗 市集報名連結",
                     page: "page/market-link.html"
+                },
+                {
+                    id: 34,
+                    Permission: [3, 10, 13],
+                    name: "🧾 出攤紀錄",
+                    page: "page/stall.html"
+                },
+                {
+                    id: 35,
+                    Permission: [3, 10, 13],
+                    name: "📒 品牌攤提表",
+                    page: "page/amortization.html"
                 }
             ]
         },

@@ -105,7 +105,10 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 | Formula / FormulaDetail | 配方主檔、配方明細 | FormulaID / FormulaDetailID |
 | Companies | 合作廠商 | ID |
 | CrawlerSources | 市集報名連結 | ID |
-| Calendar | 行事曆（UserDB_ID 空白 = 公開活動） | CalendarId |
+| Calendar | 行事曆活動（UserDB_ID 空白 = 公開活動） | CalendarId |
+| CalendarDays | 活動每一天的開始／結束時間與當日備註 | DayId |
+| StallRecords | 出攤紀錄（費用、收款、食材%、目標、盈虧） | ID |
+| BrandCosts | 品牌攤提表（支出／回收、攤提月數） | ID |
 | AgentConfig / ID_AgentTool / AgentToolPermissions | 代理人設定 | Id |
 | MarketOrders | 市集現場點餐 | OrderKey |
 | MailLog | 寄信紀錄 | ID |
@@ -138,8 +141,8 @@ Apps Script 的 `WRITE_PERMS` / `READ_PERMS`（`gas/Code.gs` 上方）決定能�
 |---|---|
 | 3、13 | 帳號、會員、權限、合作廠商 |
 | 3、6 | 產品、原料、庫存、訂單、出貨、收帳、生產、配方 |
-| 10、11、13 | 行事曆 |
-| 3、10、13 | 市集點餐 |
+| 10、11、13 | 行事曆（含每日時段） |
+| 3、10、13 | 市集點餐、出攤紀錄、品牌攤提表 |
 | 3、6、8、9、13 | 代理人設定 |
 | 3 | 寄信 |
 
@@ -179,7 +182,26 @@ Apps Script 的 `WRITE_PERMS` / `READ_PERMS`（`gas/Code.gs` 上方）決定能�
 
 ---
 
-## 六、檔案結構
+## 六、出攤紀錄與品牌攤提
+
+**出攤紀錄**（市集活動專區 → 出攤紀錄）
+
+- 可以從行事曆選活動，自動帶入名稱和地點；按「從現場點餐帶入當日收款」會加總當天的現金和電子支付收款。
+- 營業額 = 現金收款 + 電子支付收款；手續費 = 電子支付收款 × 手續費率（也可以手動改）。
+- 食材成本 = 營業額 × 食材 %。
+- **盈虧 = 營業額 − 攤位費 − 車資 − 人手費用 − 其他費用 − 手續費 − 食材成本**。
+- 會顯示低標、目標的達成率和每人產值；列表上方有出攤次數、總營業額、總成本、總盈虧、平均每場盈虧。
+
+**品牌攤提表**（市集活動專區 → 品牌攤提表）
+
+- 每筆記錄選「支出」或「回收」，分類有硬體、包材、食材、人力、其他。
+- 支出可以填「攤提月數」，例如冰櫃 36,000 元分 12 個月攤提，每月就是 3,000 元；空白代表當月一次認列。
+- 開啟「出攤盈虧計入回收」後，出攤紀錄的盈虧會算進已回收金額。
+- 會顯示總投入、已回收、尚待回收、本月攤提和回本進度，以及分類彙總和前後一年的每月攤提表。
+
+---
+
+## 七、檔案結構
 
 ```
 index.html                入口（自動導向首頁）
@@ -202,6 +224,8 @@ page/                     功能頁面（對應的程式在 js/pages/ 同名 .js
   market-order.html       市集現場點餐
   market-report.html      市集報表
   market-link.html        市集報名連結
+  stall.html              出攤紀錄（費用、收款、盈虧）
+  amortization.html       品牌攤提表（投入、回收、回本進度）
   brand.html              品牌資訊
   calendar.html           行事曆
   agent.html              代理人（OpenClaw）設定

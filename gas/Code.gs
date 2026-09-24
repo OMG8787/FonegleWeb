@@ -34,6 +34,7 @@ const CONFIG = {
 //   hidden : 永遠不回傳給前端的欄位
 //   internal: 只能由本腳本存取，前端無法直接讀寫
 //   cols   : 欄位清單，「名稱:型別」，型別 n=數字 b=布林 省略=文字
+//   money  : setup 時設為千分位金額格式的欄位
 // ============================================================
 const SCHEMA = {
     Users: {
@@ -49,6 +50,26 @@ const SCHEMA = {
     Calendar: {
         key: 'CalendarId', seq: 'CalendarId',
         cols: 'CalendarId:n EventName StartEventDate EndEventDate EventAddress Note CalendarType:n IsDeleted:b UserDB_ID Line_ID CreatedAt UpdatedAt'
+    },
+    // 活動每一天的營業時段
+    CalendarDays: {
+        key: 'DayId', seq: 'DayId',
+        cols: 'DayId:n CalendarId:n EventDate StartTime EndTime Note CreatedAt UpdatedAt'
+    },
+    // 出攤紀錄
+    StallRecords: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n CalendarId:n StallDate EventName Location Organizer StaffCount:n ' +
+            'BoothFee:n TransportCost:n StaffCost:n OtherCost:n CashIncome:n ElectronicPay:n PaymentFeeRate:n PaymentFee:n ' +
+            'Revenue:n FoodCostRate:n FoodCost:n TotalCost:n ProfitLoss:n RevenueLow:n RevenueTarget:n Note ' +
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'BoothFee TransportCost StaffCost OtherCost CashIncome ElectronicPay PaymentFee Revenue FoodCost TotalCost ProfitLoss RevenueLow RevenueTarget'
+    },
+    // 品牌攤提表（支出 / 回收）
+    BrandCosts: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n RecordDate Type Category ItemName Amount:n AmortizeMonths:n Vendor Note CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'Amount'
     },
     Companies: {
         key: 'ID', seq: 'ID',
@@ -129,6 +150,9 @@ const WRITE_PERMS = {
     ID_UserRoles: [3, 13],
     ID_Permission: [3, 13],
     Calendar: [10, 11, 13],
+    CalendarDays: [10, 11, 13],
+    StallRecords: [3, 10, 13],
+    BrandCosts: [3, 10, 13],
     Companies: [3, 13],
     CrawlerSources: [3, 6, 13],
     ID_Category: [3, 6],
@@ -268,6 +292,9 @@ function setup() {
         { ID: 15, Permission: '建立資料' }
     ]);
 
+    // 美化：表頭樣式、凍結首列、欄寬、金額格式
+    Object.keys(SCHEMA).forEach(name => styleSheet_(tbl_(name)));
+
     // 移除預設的空白工作表
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     ss.getSheets().forEach(sh => {
@@ -276,6 +303,30 @@ function setup() {
     });
 
     return '初始化完成';
+}
+
+function styleSheet_(t) {
+    const sh = t.sh;
+    const width = t.headers.length;
+
+    sh.getRange(1, 1, 1, width)
+        .setFontWeight('bold')
+        .setFontColor('#ffffff')
+        .setBackground('#4d341c');
+
+    sh.setFrozenRows(1);
+
+    t.headers.forEach((h, i) => {
+        const type = t.types[h] || 's';
+        sh.setColumnWidth(i + 1, type === 'b' ? 90 : type === 'n' ? 100 : Math.min(260, Math.max(110, h.length * 11)));
+    });
+
+    const rows = sh.getMaxRows() - 1;
+
+    String(t.def.money || '').split(/\s+/).filter(String).forEach(col => {
+        const j = t.headers.indexOf(col);
+        if (j >= 0 && rows > 0) sh.getRange(2, j + 1, rows, 1).setNumberFormat('#,##0');
+    });
 }
 
 // ============================================================
