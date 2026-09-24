@@ -4,8 +4,8 @@
 window.APP_SETTINGS = {
 
     // Apps Script「部署為網頁應用程式」後取得的網址（結尾是 /exec）
-    // 填在這裡 → 所有使用者都會套用
-    // 留空 → 第一次開啟登入頁時可在「連線設定」貼上（只存在該瀏覽器）
+    // 所有使用者都會套用；管理員可在「系統權限資料管理 → 連線設定」
+    // 對自己的瀏覽器暫時改用其他網址（例如測試新版部署）
     GAS_URL: "https://script.google.com/macros/s/AKfycbx2p0uqxtTvViYa7sSbdgc4Upo4RQvdxeSBa1orwd80FTlBjDoqUqa__Y2lV1d3l5ZHgg/exec",
 
     // 自動登出時間（小時）
@@ -20,16 +20,20 @@ window.APP_SETTINGS.ROOT = (() => {
     return src.replace(/js\/settings\.js(\?.*)?$/, "");
 })();
 
-// 未寫在程式裡時，使用登入頁「連線設定」儲存的網址
+// 管理員在「連線設定」為此瀏覽器指定的網址（優先使用）
 (() => {
 
     const s = window.APP_SETTINGS;
 
-    if (!s.GAS_URL) {
-        try {
-            s.GAS_URL = localStorage.getItem("fonegle_gas_url") || "";
-        } catch {
-            s.GAS_URL = "";
+    s.GAS_URL_DEFAULT = s.GAS_URL;
+    s.GAS_SOURCE = s.GAS_URL ? "settings" : "none";
+
+    try {
+        const override = localStorage.getItem("fonegle_gas_url") || "";
+
+        if (/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(override)) {
+            s.GAS_URL = override;
+            s.GAS_SOURCE = "override";
         }
-    }
+    } catch { }
 })();

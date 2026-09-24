@@ -159,16 +159,6 @@
 
             </div>
 
-            <div class="text-center mt-2">
-
-                <a href="#" class="small text-muted" onclick="showPanel('setup')">
-
-                    ⚙ 連線設定
-
-                </a>
-
-            </div>
-
         </div>
 
         <!-- REGISTER -->
@@ -384,40 +374,6 @@
 
         </div>
 
-        <!-- SETUP：Google 試算表連線 -->
-        <div id="setupPanel" style="display:none">
-
-            <div class="alert alert-info small">
-                請貼上 Google Apps Script「網頁應用程式」網址（結尾為 <b>/exec</b>）。<br>
-                部署方式請看 GitHub 專案的 README。
-            </div>
-
-            <input id="setupUrl" class="form-control mb-3"
-                placeholder="https://script.google.com/macros/s/.../exec">
-
-            <button class="btn btn-primary w-100 mb-2" onclick="saveSetup()">
-
-                測試連線並儲存
-
-            </button>
-
-            <div class="small text-muted">
-                此設定只存在這台裝置的瀏覽器。若要讓所有人自動套用，請把網址填入
-                <code>js/settings.js</code> 的 <code>GAS_URL</code>。
-            </div>
-
-            <div class="text-center mt-3">
-
-                <a href="#" onclick="showPanel('login')">
-
-                    回登入
-
-                </a>
-
-            </div>
-
-        </div>
-
         <div id="msg"></div>
 
     </div>
@@ -446,12 +402,6 @@
             document.getElementById("forgetPanel")
                 .style.display = "none";
 
-            document.getElementById("setupPanel")
-                .style.display = "none";
-
-            if (type === "setup")
-                document.getElementById("setupUrl").value =
-                    window.APP_SETTINGS.GAS_URL || "";
 
             document.getElementById(type + "Panel")
                 .style.display = "block";
@@ -610,49 +560,10 @@
             }
         }
 
-        // =========================
-        // 連線設定
-        // =========================
-        async function saveSetup() {
-
-            const url = setupUrl.value.trim();
-
-            if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec$/.test(url)) {
-                setMsg("網址格式不正確，應為 https://script.google.com/macros/s/.../exec");
-                return;
-            }
-
-            const old = window.APP_SETTINGS.GAS_URL;
-
-            try {
-
-                setMsg("連線測試中...");
-
-                window.APP_SETTINGS.GAS_URL = url;
-
-                const pong = await Auth.request("ping");
-
-                if (pong !== "pong")
-                    throw new Error("回應不正確，請確認貼上的是本系統的 Apps Script 網址");
-
-                localStorage.setItem("fonegle_gas_url", url);
-
-                alert("✅ 連線成功，已儲存設定");
-
-                showPanel("login");
-
-            } catch (ex) {
-
-                window.APP_SETTINGS.GAS_URL = old;
-
-                setMsg("連線失敗：" + (ex.message || ex) +
-                    "（請確認 Apps Script 已部署為網頁應用程式，且存取權為「所有人」）");
-            }
-        }
-
-        // 尚未設定連線時，直接顯示設定畫面
+        // 尚未設定連線：只提示，不提供設定入口
         if (!window.APP_SETTINGS.GAS_URL) {
-            document.addEventListener("DOMContentLoaded", () => showPanel("setup"));
+            document.addEventListener("DOMContentLoaded", () =>
+                setMsg("系統尚未設定資料庫連線，請聯絡系統管理員"));
         }
 
         // =========================

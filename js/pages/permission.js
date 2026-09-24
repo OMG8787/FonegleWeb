@@ -19,6 +19,9 @@ Pages.Permission = (() => {
 
         cacheDom();
 
+        if (!isAdmin())
+            document.getElementById("connectionItem")?.remove();
+
         bindEvents();
 
         // 一次取回所有需要的資料表
@@ -119,6 +122,19 @@ Pages.Permission = (() => {
 
         document.getElementById("btnSubmitRole")
             ?.addEventListener("click", submitRole);
+
+        document.querySelector("#btnToggleConnection")
+            ?.closest(".setting-header")
+            .addEventListener("click", toggleConnectionArea);
+
+        document.getElementById("btnConnTest")
+            ?.addEventListener("click", () => testConnection(false));
+
+        document.getElementById("btnConnSave")
+            ?.addEventListener("click", () => testConnection(true));
+
+        document.getElementById("btnConnReset")
+            ?.addEventListener("click", resetConnection);
     }
 
     // =========================================
@@ -131,9 +147,127 @@ Pages.Permission = (() => {
 
         dom.permissionArea.classList.add("d-none");
         dom.roleArea.classList.add("d-none");
+        document.getElementById("connectionArea")?.classList.add("d-none");
 
         document.getElementById("btnTogglePermission").innerText = "▶";
         document.getElementById("btnToggleRole").innerText = "▶";
+
+        const t = document.getElementById("btnToggleConnection");
+        if (t) t.innerText = "▶";
+    }
+
+    // =========================================
+    // 資料庫連線設定（僅管理員）
+    // =========================================
+    const CONN_KEY = "fonegle_gas_url";
+    const CONN_PATTERN = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+
+    function isAdmin() {
+        return Auth.hasPermission(3, 13);
+    }
+
+    function toggleConnectionArea() {
+
+        const area = document.getElementById("connectionArea");
+        const isHidden = area.classList.contains("d-none");
+
+        closeAllAreas();
+
+        if (isHidden) {
+            area.classList.remove("d-none");
+            document.getElementById("btnToggleConnection").innerText = "▼";
+            renderConnection();
+        }
+    }
+
+    function renderConnection() {
+
+        const s = window.APP_SETTINGS;
+        const source = document.getElementById("connSource");
+
+        document.getElementById("connCurrent").textContent = s.GAS_URL || "（未設定）";
+        document.getElementById("connUrl").value = s.GAS_URL || "";
+
+        source.textContent = s.GAS_SOURCE === "override" ? "此瀏覽器自訂" : "預設（settings.js）";
+        source.className = "badge ms-1 " + (s.GAS_SOURCE === "override" ? "bg-warning text-dark" : "bg-secondary");
+    }
+
+    function showConnResult(ok, text) {
+
+        const el = document.getElementById("connResult");
+        el.className = "small mt-2 " + (ok ? "text-success" : "text-danger");
+        el.textContent = text;
+    }
+
+    async function testConnection(apply) {
+
+        if (!isAdmin()) return;
+
+        const url = document.getElementById("connUrl").value.trim();
+
+        if (!CONN_PATTERN.test(url)) {
+            showConnResult(false, "網址格式不正確，應為 https://script.google.com/macros/s/.../exec");
+            return;
+        }
+
+        showConnResult(true, "連線測試中...");
+
+        try {
+
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ action: "ping" })
+            });
+
+            const data = await res.json();
+
+            if (data?.data !== "pong")
+                throw new Error("回應不正確，請確認是本系統的 Apps Script 網址");
+
+        } catch (err) {
+
+            showConnResult(false, "連線失敗：" + (err.message || err) + "（請確認已部署為網頁應用程式，存取權為「所有人」）");
+            return;
+        }
+
+        if (!apply) {
+            showConnResult(true, "✅ 連線成功");
+            return;
+        }
+
+        if (url === window.APP_SETTINGS.GAS_URL_DEFAULT) {
+            resetConnection();
+            return;
+        }
+
+        if (!confirm("確定此瀏覽器改用這個網址？\n\n切換到不同的試算表後需要重新登入。"))
+            return;
+
+        localStorage.setItem(CONN_KEY, url);
+
+        alert("✅ 已套用，請重新登入");
+        Auth.logout();
+    }
+
+    function resetConnection() {
+
+        if (!isAdmin()) return;
+
+        const had = localStorage.getItem(CONN_KEY);
+
+        localStorage.removeItem(CONN_KEY);
+
+        if (had && had !== window.APP_SETTINGS.GAS_URL_DEFAULT) {
+            alert("✅ 已改回預設網址，請重新登入");
+            Auth.logout();
+            return;
+        }
+
+        window.APP_SETTINGS.GAS_URL = window.APP_SETTINGS.GAS_URL_DEFAULT;
+        window.APP_SETTINGS.GAS_SOURCE = "settings";
+        renderConnection();
+        showConnResult(true, "目前已是預設網址");
     }
 
     function togglePermissionArea() {

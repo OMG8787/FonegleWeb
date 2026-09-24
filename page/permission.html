@@ -301,6 +301,56 @@
 
                             </div>
 
+                            <!-- 連線設定（管理員） -->
+                            <div class="list-group-item" id="connectionItem">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+
+                                        <div class="fw-bold">
+                                            🔌 資料庫連線設定
+                                        </div>
+
+                                        <small class="text-muted">
+                                            Google 試算表（Apps Script）連線網址，僅管理員可見
+                                        </small>
+
+                                    </div>
+
+                                    <span id="btnToggleConnection" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <div id="connectionArea" class="d-none mt-3">
+
+                                    <div class="small mb-2">
+                                        目前連線：<code id="connCurrent" class="text-break"></code>
+                                        <span id="connSource" class="badge ms-1"></span>
+                                    </div>
+
+                                    <div class="small text-muted mb-3">
+                                        預設網址寫在 <code>js/settings.js</code>，所有使用者都會套用。
+                                        下方設定只會影響<b>這台電腦的這個瀏覽器</b>，適合測試新版部署。
+                                    </div>
+
+                                    <input id="connUrl" class="form-control mb-2"
+                                        placeholder="https://script.google.com/macros/s/.../exec">
+
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button id="btnConnTest" class="btn btn-outline-primary btn-sm">測試連線</button>
+                                        <button id="btnConnSave" class="btn btn-primary btn-sm">測試並套用到此瀏覽器</button>
+                                        <button id="btnConnReset" class="btn btn-outline-secondary btn-sm">改回預設網址</button>
+                                    </div>
+
+                                    <div id="connResult" class="small mt-2"></div>
+
+                                </div>
+
+                            </div>
+
 
                         </div>
 

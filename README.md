@@ -57,13 +57,14 @@ Google 試算表（每張資料表 = 一個工作表）
 
 ### 5. 設定試算表連線
 
-打開網站後，登入頁會自動顯示「**連線設定**」。貼上第 3 步複製的 `/exec` 網址，按「測試連線並儲存」。
-
-這個設定只存在該台裝置的瀏覽器。如果要讓所有人打開網站就能直接使用，請把網址寫進 `js/settings.js`，再推上 GitHub：
+把第 3 步複製的 `/exec` 網址寫進 `js/settings.js`，再推上 GitHub：
 
 ```js
 GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 ```
+
+- 一般使用者看不到任何連線設定。網址沒設定時，登入頁只會提示「請聯絡系統管理員」。
+- 管理員（權限 3 或 13）可以在「**系統權限資料管理 → 資料庫連線設定**」測試連線，或讓自己的瀏覽器暫時改用其他網址（例如測試新版部署）。這個設定只影響該台電腦的瀏覽器，隨時可以「改回預設網址」。
 
 > Apps Script 網址本來就會出現在瀏覽器的網路請求中，寫在公開的 repository 裡沒有額外風險。資料的保護靠的是登入與權限檢查。
 
@@ -205,13 +206,13 @@ Apps Script 的 `WRITE_PERMS` / `READ_PERMS`（`gas/Code.gs` 上方）決定能�
 
 ```
 index.html                入口（自動導向首頁）
-login.html                登入／註冊／忘記密碼／連線設定
+login.html                登入／註冊／忘記密碼
 home.html                 首頁（我的最愛）
 
 page/                     功能頁面（對應的程式在 js/pages/ 同名 .js）
   account.html            帳號設定（修改密碼、個人資料）
   member.html             員工及會員管理
-  permission.html         系統權限資料管理
+  permission.html         系統權限資料管理（含管理員專用的資料庫連線設定）
   company.html            合作廠商資料管理
   product.html            產品管理
   material.html           原料管理
