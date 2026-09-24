@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜代理人工具(未開放)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 共用樣式 -->
+    <link href="../../css/layout.css" rel="stylesheet">
+
+    <style>
+
+    </style>
+</head>
+
+<body>
+
+    <!-- 頁首 -->
+    <div id="headerArea"></div>
+
+    <!-- 主架構 -->
+    <div id="erp-layout">
+
+        <!-- 導覽列 -->
+        <div id="sidebarArea"></div>
+
+        <!-- 主內容 -->
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">各式代理人工具(未開放)</h2>
+                        <p class="text-muted mb-0">
+                            包含各種代理人，會議記錄、文案生成、剪片等
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 內容在這 -->
+                <!-- AI Agent 工作台 -->
+                <div class="card border-0 shadow-sm">
+
+                    <div class="card-body">
+
+                        <div class="row">
+
+                            <!-- ===================== -->
+                            <!-- 左側功能選單 -->
+                            <!-- ===================== -->
+                            <div class="col-lg-3 mb-3">
+
+                                <div class="card border">
+
+                                    <div class="card-header bg-light fw-bold">
+                                        🤖 AI Agent 工作台
+                                    </div>
+
+                                    <div class="list-group list-group-flush" id="agentMenu">
+
+                                        <button class="list-group-item list-group-item-action active" data-page="image">
+                                            🖼️ 圖片生成
+                                            <div class="small text-muted">
+                                                AI 圖像、商品圖、Banner
+                                            </div>
+                                        </button>
+
+                                        <button class="list-group-item list-group-item-action" data-page="article">
+                                            ✍️ 文案生成
+                                            <div class="small text-muted">
+                                                社群貼文、廣告、Email
+                                            </div>
+                                        </button>
+
+                                        <button class="list-group-item list-group-item-action" data-page="meeting">
+                                            🎙️ 會議代理人
+                                            <div class="small text-muted">
+                                                自動加入並整理會議
+                                            </div>
+                                        </button>
+
+                                        <button class="list-group-item list-group-item-action disabled">
+                                            🎥 影片生成
+                                            <div class="small text-muted">
+                                                Coming Soon
+                                            </div>
+                                        </button>
+
+                                        <button class="list-group-item list-group-item-action disabled">
+                                            📄 PDF 整理
+                                            <div class="small text-muted">
+                                                Coming Soon
+                                            </div>
+                                        </button>
+
+                                        <button class="list-group-item list-group-item-action disabled">
+                                            📊 Excel 分析
+                                            <div class="small text-muted">
+                                                Coming Soon
+                                            </div>
+                                        </button>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                            <!-- ===================== -->
+                            <!-- 右側內容 -->
+                            <!-- ===================== -->
+                            <div class="col-lg-9">
+
+                                <div class="card border">
+
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+
+                                        <div>
+
+                                            <h5 id="agentTitle" class="mb-1">
+                                                🖼️ 圖片生成
+                                            </h5>
+
+                                            <small class="text-muted" id="agentSubTitle">
+                                                使用 AI 快速建立圖片
+                                            </small>
+
+                                        </div>
+
+                                        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse"
+                                            data-bs-target="#advanceSetting">
+
+                                            ⚙️ 進階設定
+
+                                        </button>
+
+                                    </div>
+
+                                    <div class="card-body">
+
+                                        <!-- 動態內容 -->
+                                        <div id="agentContent">
+
+                                            <!-- JS renderImage() 填入 -->
+
+                                        </div>
+
+                                        <!-- ===================== -->
+                                        <!-- 共用進階設定 -->
+                                        <!-- ===================== -->
+                                        <div class="collapse mt-4" id="advanceSetting">
+
+                                            <hr>
+
+                                            <h6 class="mb-3">
+                                                ⚙️ AI 進階設定
+                                            </h6>
+
+                                            <div class="row">
+
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">
+                                                        使用代理人
+                                                    </label>
+
+                                                    <select class="form-select" id="agentSelect">
+                                                        <option>預設代理人</option>
+                                                    </select>
+                                                </div>
+
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">
+                                                        AI模型
+                                                    </label>
+
+                                                    <select class="form-select" id="modelSelect">
+                                                        <option>GPT-5.5</option>
+                                                        <option>GPT-5</option>
+                                                        <option>Gemini</option>
+                                                        <option>Claude</option>
+                                                    </select>
+                                                </div>
+
+                                                <div class="col-md-6 mb-3">
+
+                                                    <label class="form-label">
+                                                        Temperature
+                                                    </label>
+
+                                                    <input type="number" class="form-control" value="0.7" step="0.1">
+
+                                                </div>
+
+                                                <div class="col-md-6 mb-3">
+
+                                                    <label class="form-label">
+                                                        Max Tokens
+                                                    </label>
+
+                                                    <input type="number" class="form-control" value="4000">
+
+                                                </div>
+
+                                            </div>
+
+                                            <div class="form-check form-switch">
+
+                                                <input class="form-check-input" type="checkbox" checked>
+
+                                                <label class="form-check-label">
+
+                                                    儲存此次任務紀錄
+
+                                                </label>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+    <!-- 頁尾 -->
+    <div id="footerArea"></div>
+
+    <!-- 共用 layout -->
+    <script src="../../js/settings.js"></script>
+    <script src="../../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../../js/config.js"></script>
+    <script src="../../js/api.js"></script>
+    <script src="../../js/layout.js"></script>
+    <script src="../../js/core.js"></script>
+    <script src="../../js/ai_chat.js"></script>
+    <script src="../../js/favorite.js"></script>
+
+    <script src="../../js/pages/DB_Date/ToolAgent.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("ToolAgent");
+        });
+    </script>
+
+</body>
+
+</html>

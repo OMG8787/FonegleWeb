@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜品牌資訊</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 共用樣式 -->
+    <link href="../../css/layout.css" rel="stylesheet">
+
+    <style>
+        .copy-btn {
+            cursor: pointer;
+            margin-left: 6px;
+            color: #6c757d;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+
+        .copy-btn:hover {
+            color: #000;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 頁首 -->
+    <div id="headerArea"></div>
+
+    <!-- 主架構 -->
+    <div id="erp-layout">
+
+        <!-- 導覽列 -->
+        <div id="sidebarArea"></div>
+
+        <!-- 主內容 -->
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">品牌資訊</h2>
+                        <p class="text-muted mb-0">報名或介紹專用</p>
+                    </div>
+                </div>
+
+                <!-- 基本資料 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+
+                        <h5 class="mb-3">市集報名資訊</h5>
+
+                        <div class="row g-3">
+
+                            <div class="col-md-6">
+
+                                <div>
+                                    <strong>📌 品牌名稱：</strong>瘋菓研究室、瘋菓冰品研究室
+                                    <span class="copy-btn" onclick="copyText('瘋菓冰品研究室')">📋</span>
+                                </div>
+
+                                <div><strong>🚀 食品登陸字號：</strong>F-202342760-00000-8 <span class="copy-btn"
+                                        onclick="copyText('F-202342760-00000-8')">📋</span>
+                                </div>
+
+                                <div><strong>🚀 聯絡人：</strong>董峻宏 <span class="copy-btn"
+                                        onclick="copyText('董峻宏')">📋</span>
+                                </div>
+
+                                <div><strong>📞 電話：</strong>0923212212 <span class="copy-btn"
+                                        onclick="copyText('0923212212')">📋</span></div>
+
+                                <div><strong>💬 LINE ID：</strong>handsomeboy41505 <span class="copy-btn"
+                                        onclick="copyText('handsomeboy41505')">📋</span></div>
+
+                                <div><strong>📧 Email：</strong>garydong41505@gmail.com <span class="copy-btn"
+                                        onclick="copyText('garydong41505@gmail.com')">📋</span></div>
+
+                                <div><strong>📄 統一編號：</strong>60005166 <span class="copy-btn"
+                                        onclick="copyText('60005166')">📋</span></div>
+
+                                <div><strong>🖥️ 抬頭：</strong>瘋菓貿易社 <span class="copy-btn"
+                                        onclick="copyText('瘋菓貿易社')">📋</span></div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 連結 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+
+                        <h5 class="mb-3">🔗 品牌連結</h5>
+
+                        <ul class="list-group">
+
+                            <li class="list-group-item">
+                                🌐 官網：
+                                <a href="https://fonegle.waca.store/" target="_blank"> https://fonegle.waca.store/</a>
+                                <span class="copy-btn" onclick="copyText('https://fonegle.waca.store/')">📋</span>
+                            </li>
+
+                            <li class="list-group-item">
+                                📸 IG：
+                                <a href="https://www.instagram.com/fonegle_dessert/"
+                                    target="_blank">https://www.instagram.com/fonegle_dessert/</a>
+                                <span class="copy-btn"
+                                    onclick="copyText('https://www.instagram.com/fonegle_dessert/')">📋</span>
+                            </li>
+
+                            <li class="list-group-item">
+                                💬 LINE：
+                                <a href="https://line.me/R/ti/p/@764zeuav" target="_blank"> @764zeuav </a>
+                                <span class="copy-btn" onclick="copyText('@764zeuav')">📋</span>
+                            </li>
+
+                            <li class="list-group-item">
+                                🔗 LinkTree：
+                                <a href="https://linktr.ee/fonegle_dessert"
+                                    target="_blank">https://linktr.ee/fonegle_dessert</a>
+                                <span class="copy-btn" onclick="copyText('https://linktr.ee/fonegle_dessert')">📋</span>
+                            </li>
+
+                            <li class="list-group-item">
+                                📧 Email：
+                                <a href="mailto:austin.fonegle@gmail.com">austin.fonegle@gmail.com</a>
+                                <span class="copy-btn" onclick="copyText('austin.fonegle@gmail.com')">📋</span>
+                            </li>
+
+                        </ul>
+
+                    </div>
+                    <div class="card-body">
+
+                        <h5 class="mb-3">🏷️ 圖片連結</h5>
+
+                        <ul class="list-group">
+
+                            <li class="list-group-item">
+                                🌐 出攤陳列：
+                                <a href="https://drive.google.com/drive/folders/1A42MJjqPFjzfdse6fzl3Mc8mqeVDYL4Z?usp=drive_link"
+                                    target="_blank">
+                                    https://drive.google.com/drive/folders/1A42MJjqPFjzfdse6fzl3Mc8mqeVDYL4Z?usp=drive_link</a>
+                                <span class="copy-btn"
+                                    onclick="copyText('https://drive.google.com/drive/folders/1A42MJjqPFjzfdse6fzl3Mc8mqeVDYL4Z?usp=drive_link')">📋</span>
+                            </li>
+
+                            <li class="list-group-item">
+                                📸 產品圖片：
+                                <a href="https://drive.google.com/drive/folders/14W8IGhWC85dA-Amz5KeXaXFpCbI5T9gY"
+                                    target="_blank">https://drive.google.com/drive/folders/14W8IGhWC85dA-Amz5KeXaXFpCbI5T9gY</a>
+                                <span class="copy-btn"
+                                    onclick="copyText('https://drive.google.com/drive/folders/14W8IGhWC85dA-Amz5KeXaXFpCbI5T9gY')">📋</span>
+                            </li>
+                        </ul>
+
+                    </div>
+                </div>
+
+                <!-- 電力 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+
+                        <h5 class="mb-3">🔌電力需求 ⚡</h5>
+
+                        <div class="mb-2">
+                            攜帶設備電池 14000W（220V / 2000~2500W）
+                            <span class="copy-btn" onclick="copyText('攜帶設備電池14000W（220V / 2000~2500W）')">📋</span>
+                        </div>
+
+                        <ul class="list-group">
+
+                            <li class="list-group-item">
+                                🧊 冰品展示櫃(大7盆)：220V / 10A / 1700W
+                                <span class="copy-btn" onclick="copyText('冰品展示櫃：220V / 10A / 1700W')">📋</span>
+                            </li>
+                            <li class="list-group-item">🧊 冰品展示櫃(大3盆)：220V / 1.5A / 300W
+                                <span class="copy-btn" onclick="copyText('冰品展示櫃：220V / 1.5A / 300W')">📋</span>
+                            </li>
+                            <li class="list-group-item">❄️ 冰品展示櫃(小12盆)：220V / 2A / 400W
+                                <span class="copy-btn" onclick="copyText('冰品展示櫃：220V / 2A / 400W')">📋</span>
+                            </li>
+                            <li class="list-group-item">🍰 鯛魚燒機(3入)：110V / 15A / 1500W<span class="copy-btn"
+                                    onclick="copyText('鯛魚燒機：110V / 15A / 1500W')">📋</span></li>
+                            <li class="list-group-item">🎂 雞蛋糕機(14入)：110V / 15A / 1500W<span class="copy-btn"
+                                    onclick="copyText('雞蛋糕機：110V / 15A / 1500W')">📋</span></li>
+                            <li class="list-group-item">🍪 可麗餅機：110V / 10A / 1000W<span class="copy-btn"
+                                    onclick="copyText('可麗餅機：110V / 10A / 1000W')">📋</span></li>
+                            <li class="list-group-item">🍩 蛋捲機：220V / 10A / 2200W<span class="copy-btn"
+                                    onclick="copyText('蛋捲機：220V / 10A / 2200W')">📋</span></li>
+
+                        </ul>
+
+                    </div>
+                </div>
+
+                <!-- 品牌介紹 -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+
+                        <h5 class="mb-3">🏷️ 品牌介紹</h5>
+
+                        <p>
+                            瘋菓不只是提供冰品，而是傳遞一種風格與態度。
+                            讓每一次品嚐，都像穿上一件精心挑選的禮服，用冰涼詮釋高雅生活。
+                        </p>
+
+                        <p>
+                            重新定義冰淇淋，讓它成為展現品味的最佳語言。致力用甜點傳遞幸福，將傳統手作與現代養生理念結合！甜點或許無法解決所有問題，卻能夠在重要時刻帶來片刻寧靜。
+                        </p>
+
+                        <p>
+                            致力用甜點傳遞幸福，將傳統手作與現代養生理念結合。
+                        </p>
+
+                        <span class="copy-btn"
+                            onclick="copyText('瘋菓不只是提供冰品，而是傳遞一種風格與態度。讓每一次品嚐，都像穿上一件精心挑選的禮服，用冰涼詮釋高雅生活。重新定義冰淇淋，讓它成為展現品味的最佳語言。致力用甜點傳遞幸福，將傳統手作與現代養生理念結合！甜點或許無法解決所有問題，卻能夠在重要時刻帶來片刻寧靜。致力用甜點傳遞幸福，將傳統手作與現代養生理念結合。')">
+                            📋 複製品牌介紹
+                        </span>
+
+                    </div>
+                    <br>
+                    <hr>
+                    <div class="card-body">
+
+                        <h5 class="mb-3">🍦 主打商品</h5>
+
+                        <p>
+                            高蛋白、膳食纖維等機能冰品，注重身材的人也品嘗冰的美味。
+                            融合傳統與創新的小魚奶油燒。
+                            以精緻的法式點心技藝為靈感，結合中式象徵吉祥的魚形造型，寓意「年年有餘」，寄託著人們對新年的美好期望。
+                            每口鯛魚燒皆使用新鮮食材製作，外層金黃酥脆，
+                            內餡綿密柔軟，散發著濃郁的奶香與甜蜜，讓人一吃愛上。
+                        </p>
+
+                        <span class="copy-btn"
+                            onclick="copyText('高蛋白、膳食纖維等機能冰品，注重身材的人也品嘗冰的美味。融合傳統與創新的小魚奶油燒。以精緻的法式點心技藝為靈感，結合中式象徵吉祥的魚形造型，寓意「年年有餘」，寄託著人們對新年的美好期望。每口鯛魚燒皆使用新鮮食材製作，外層金黃酥脆，內餡綿密柔軟，散發著濃郁的奶香與甜蜜，讓人一吃愛上。')">
+                            📋 主打商品
+                        </span>
+
+                    </div>
+                    <br>
+                    <hr>
+
+                    <div class="card-body">
+
+                        <h5 class="mb-3">🍦 冰淇淋系列｜Gelato Core Series</h5>
+                        <h6 class="mb-3">🍃 茶韻經典｜Classic Tea Series</h6>
+
+                        <p>
+                            定位：以台灣茶文化為核心的穩定系風味，香氣沉穩、耐吃不膩，是品牌基礎靈魂。
+                        </p>
+
+                        <p>
+                            濃韻鐵觀音｜深焙茶香厚實回甘，入口沉穩、尾韻乾淨。<span class="copy-btn"
+                                onclick="copyText('濃韻鐵觀音｜深焙茶香厚實回甘，入口沉穩、尾韻乾淨。')">📋</span><br><br>
+
+                            桂花烏龍｜花香與茶韻平衡，清香輕盈、接受度高。<span class="copy-btn"
+                                onclick="copyText('桂花烏龍｜花香與茶韻平衡，清香輕盈、接受度高。')">📋</span><br><br>
+
+                            抹茶紅豆｜日系經典結合台灣甜感，濃郁卻穩定耐吃。<span class="copy-btn"
+                                onclick="copyText('抹茶紅豆｜日系經典結合台灣甜感，濃郁卻穩定耐吃。')">📋</span><br><br>
+
+                            白玉抹茶｜抹茶苦甜基底＋Q彈白玉，口感層次升級。<span class="copy-btn"
+                                onclick="copyText('白玉抹茶｜抹茶苦甜基底＋Q彈白玉，口感層次升級。')">📋</span>
+                        </p>
+
+                    </div>
+
+                    <br>
+                    <div class="card-body">
+
+                        <h6 class="mb-3">🧋 台味記憶｜Taiwan Classic Series</h6>
+
+                        <p>
+                            定位：最熟悉的台灣味轉譯，穩定爆款區，高接受度核心產品。
+                        </p>
+
+                        <p>
+                            珍珠奶茶｜奶香滑順＋Q彈口感，最具代表性台灣風味。<span class="copy-btn" onclick="copyText('珍珠奶茶')">📋</span><br><br>
+
+                            牛奶脆片｜濃郁奶香搭配酥脆口感，層次豐富。<span class="copy-btn" onclick="copyText('牛奶脆片')">📋</span><br><br>
+
+                            黑糖鮮奶｜黑糖焦香與奶香融合，甜感厚實不膩。<span class="copy-btn" onclick="copyText('黑糖鮮奶')">📋</span>
+                        </p>
+
+                    </div>
+
+                    <br>
+                    <div class="card-body">
+
+                        <h6 class="mb-3">🍓 果香清爽｜Fruit Refresh Series</h6>
+
+                        <p>
+                            定位：夏季主力清爽系，解膩、易入口。
+                        </p>
+
+                        <p>
+                            愛戀草莓｜酸甜平衡，經典人氣款。<span class="copy-btn" onclick="copyText('愛戀草莓')">📋</span><br><br>
+
+                            白桃烏龍｜果香與茶韻融合，清爽柔和。<span class="copy-btn" onclick="copyText('白桃烏龍')">📋</span><br><br>
+
+                            富桂柑橘｜柑橘酸香＋桂花香氣，成熟系果香風味。<span class="copy-btn" onclick="copyText('富桂柑橘')">📋</span><br><br>
+
+                            白玉鳳芒冰茶｜鳳梨芒果熱帶風味＋Q彈白玉。<span class="copy-btn" onclick="copyText('白玉鳳芒冰茶')">📋</span><br><br>
+
+                            西瓜雪酪｜清爽水感果香，極致解暑系。<span class="copy-btn" onclick="copyText('西瓜雪酪')">📋</span><br><br>
+
+                            百香芒果｜酸甜爆發型熱帶果香組合。<span class="copy-btn" onclick="copyText('百香芒果')">📋</span><br><br>
+
+                            桑葚葡萄｜濃郁果酸與莓香交錯，成熟果系。<span class="copy-btn" onclick="copyText('桑葚葡萄')">📋</span><br><br>
+
+                            盛夏百香｜酸甜刺激味蕾，清爽收尾。<span class="copy-btn" onclick="copyText('盛夏百香')">📋</span>
+                        </p>
+
+                    </div>
+                    <br>
+
+                    <div class="card-body">
+
+                        <h6 class="mb-3">🍫 濃醇甜點｜Dessert Rich Series</h6>
+
+                        <p>
+                            定位：大人系甜點風味，濃郁、療癒、高毛利區。
+                        </p>
+
+                        <p>
+                            古典可可｜濃厚可可香氣，成熟穩重風味。<span class="copy-btn" onclick="copyText('古典可可')">📋</span><br><br>
+
+                            焦糖布丁｜奶香與焦糖甜感，經典療癒系。<span class="copy-btn" onclick="copyText('焦糖布丁')">📋</span><br><br>
+
+                            焦糖海鹽｜甜鹹交錯，層次感強烈。<span class="copy-btn" onclick="copyText('焦糖海鹽')">📋</span><br><br>
+
+                            茶香肉桂｜普洱茶底＋香料溫暖風味，冬季限定感。<span class="copy-btn" onclick="copyText('茶香肉桂')">📋</span>
+                        </p>
+
+                    </div>
+
+                    <br>
+                    <div class="card-body">
+
+                        <h6 class="mb-3">🌸 特色風味｜Signature Series</h6>
+
+                        <p>
+                            定位：品牌辨識度核心，打造記憶點與話題性。
+                        </p>
+
+                        <p>
+                            接骨木花｜清香花果調性，輕盈高級感。<span class="copy-btn" onclick="copyText('接骨木花')">📋</span><br><br>
+
+                            洛神酸梅｜微酸花香與熟果感，獨特記憶點。<span class="copy-btn" onclick="copyText('洛神酸梅')">📋</span><br><br>
+
+                            雪白椰奶｜熱帶奶香滑順溫潤，清爽系基底。<span class="copy-btn" onclick="copyText('雪白椰奶')">📋</span>
+                        </p>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+    <!-- 頁尾 -->
+    <div id="footerArea"></div>
+
+    <!-- 共用 layout -->
+    <script src="../../js/settings.js"></script>
+    <script src="../../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../../js/config.js"></script>
+    <script src="../../js/api.js"></script>
+    <script src="../../js/layout.js"></script>
+    <script src="../../js/core.js"></script>
+    <script src="../../js/ai_chat.js"></script>
+    <script src="../../js/favorite.js"></script>
+    <script src="../../js/pages/Business/Brand.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Brand");
+        });
+    </script>
+
+</body>
+
+</html>

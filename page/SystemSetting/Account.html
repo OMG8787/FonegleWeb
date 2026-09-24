@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜帳號管理</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 共用樣式 -->
+    <link href="../../css/layout.css" rel="stylesheet">
+
+    <style>
+        #profileArea .form-control {
+
+            height: 44px;
+
+            border-radius: 10px;
+        }
+
+        #profileArea {
+
+            border-top: 1px solid #eee;
+
+            padding-top: 20px;
+        }
+
+        #profileArea input:disabled {
+
+            background: #f1f5f9;
+
+            color: #475569;
+
+            cursor: not-allowed;
+
+            opacity: 1;
+        }
+
+        .toggle-arrow {
+
+            border: none !important;
+
+            background: transparent !important;
+
+            box-shadow: none !important;
+
+            padding: 0;
+
+            font-size: 20px;
+
+            font-weight: bold;
+
+            color: #64748b;
+
+            transition: 0.2s;
+        }
+
+        .toggle-arrow:hover {
+
+            color: #0f172a;
+
+            transform: scale(1.1);
+        }
+
+        .setting-header {
+
+            cursor: pointer;
+
+            padding: 10px;
+
+            border-radius: 10px;
+
+            transition: 0.2s;
+        }
+
+        .setting-header:hover {
+
+            background: #f8fafc;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 頁首 -->
+    <div id="headerArea"></div>
+
+    <!-- 主架構 -->
+    <div id="erp-layout">
+
+        <!-- 導覽列 -->
+        <div id="sidebarArea"></div>
+
+        <!-- 主內容 -->
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">帳號管理</h2>
+                        <p class="text-muted mb-0">
+                            修改會員資料/密碼管理/綁定資料
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 設定清單 -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+
+                        <h5 class="mb-3">個人資料設定</h5>
+
+                        <div class="list-group">
+
+                            <!-- 修改密碼 -->
+                            <div class="list-group-item">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+                                        <div class="fw-bold">修改密碼</div>
+                                        <small class="text-muted">
+                                            更新登入密碼以提升帳號安全
+                                        </small>
+                                    </div>
+
+                                    <span id="btnTogglePassword" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <!-- 展開區 -->
+                                <div id="passwordArea" class="d-none mt-3">
+
+                                    <div class="input-group mb-2">
+
+                                        <input id="currentPassword" type="password" class="form-control"
+                                            placeholder="目前密碼">
+
+                                        <button class="btn btn-outline-secondary" type="button"
+                                            onclick="Pages.Account.togglePassword('currentPassword', this)">
+
+                                            👁
+
+                                        </button>
+
+                                    </div>
+
+                                    <div class="input-group mb-2">
+
+                                        <input id="newPassword" type="password" class="form-control" placeholder="新密碼">
+
+                                        <button class="btn btn-outline-secondary" type="button"
+                                            onclick="Pages.Account.togglePassword('newPassword', this)">
+
+                                            👁
+
+                                        </button>
+
+                                    </div>
+
+                                    <div class="input-group mb-2">
+
+                                        <input id="confirmPassword" type="password" class="form-control"
+                                            placeholder="確認新密碼">
+
+                                        <button class="btn btn-outline-secondary" type="button"
+                                            onclick="Pages.Account.togglePassword('confirmPassword', this)">
+
+                                            👁
+
+                                        </button>
+
+                                    </div>
+
+                                    <button id="btnSubmitPassword" class="btn btn-primary btn-sm">
+                                        送出修改
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                            <!-- 會員資料 -->
+                            <div class="list-group-item">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+                                        <div class="fw-bold">會員資料修改</div>
+                                        <small class="text-muted">
+                                            更新姓名、電話、信箱等基本資料
+                                        </small>
+                                    </div>
+
+                                    <span id="btnToggleProfile" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <!-- 展開區 -->
+                                <div id="profileArea" class="d-none mt-4">
+
+                                    <div class="text-danger small mb-3">
+                                        * 為必填欄位
+                                    </div>
+
+                                    <div class="row">
+
+                                        <!-- 姓名 -->
+                                        <div class="col-md-6 mb-3">
+
+                                            <label class="form-label fw-bold">
+                                                姓名
+                                                <span class="text-danger">*</span>
+                                            </label>
+
+                                            <input class="form-control" id="userName" placeholder="請輸入真實姓名">
+
+                                        </div>
+
+                                        <!-- 電話 -->
+                                        <div class="col-md-6 mb-3">
+
+                                            <label class="form-label fw-bold">
+                                                電話(帳號使用)
+                                                <span class="text-danger">*</span>
+                                            </label>
+
+                                            <input class="form-control" id="phone" placeholder="請輸入電話(09**)">
+
+                                        </div>
+
+                                    </div>
+
+                                    <!-- Email -->
+                                    <div class="mb-3">
+
+                                        <label class="form-label fw-bold">
+                                            電子郵件
+                                            <span class="text-danger">*</span>
+                                        </label>
+
+                                        <input type="email" class="form-control" id="email" placeholder="請輸入 Email">
+
+                                    </div>
+
+                                    <div class="row">
+
+                                        <!-- 身分證 -->
+                                        <div class="col-md-6 mb-3">
+
+                                            <label class="form-label fw-bold">
+                                                身分證字號
+                                            </label>
+
+                                            <input class="form-control" id="idCard" placeholder="請完整輸入">
+
+                                        </div>
+
+                                        <!-- 帳號ID -->
+                                        <div class="col-md-6 mb-3">
+
+                                            <label class="form-label fw-bold">
+                                                此帳號ID
+                                            </label>
+
+                                            <input class="form-control" id="lineUserId" readonly>
+
+                                            <small class="text-muted">
+
+                                                此辨識碼不可修改
+
+                                            </small>
+
+                                        </div>
+
+                                    </div>
+
+                                    <!-- 生日 -->
+                                    <div class="mb-3">
+
+                                        <label class="form-label fw-bold">
+                                            生日
+                                        </label>
+
+                                        <div class="row">
+
+                                            <div class="col">
+
+                                                <input class="form-control" id="birthYear" placeholder="西元年">
+
+                                            </div>
+
+                                            <div class="col">
+
+                                                <input class="form-control" id="birthMonth" placeholder="月">
+
+                                            </div>
+
+                                            <div class="col">
+
+                                                <input class="form-control" id="birthDay" placeholder="日">
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+                                    <!-- 推播 -->
+                                    <div class="mb-3">
+
+                                        <div class="form-check">
+
+                                            <input class="form-check-input" type="checkbox" id="pushNotify">
+
+                                            <label class="form-check-label">
+
+                                                接受推播通知
+
+                                            </label>
+
+                                        </div>
+
+                                    </div>
+
+                                    <button id="btnSubmitProfile" class="btn btn-warning">
+
+                                        確認修改
+
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+
+
+            </div>
+
+        </div>
+
+    </div>
+    <!-- 頁尾 -->
+    <div id="footerArea"></div>
+
+    <!-- docx -->
+    <script src="https://cdn.jsdelivr.net/npm/docx@7.7.0/build/index.js"></script>
+
+    <!-- 共用 layout -->
+    <script src="../../js/settings.js"></script>
+    <script src="../../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../../js/config.js"></script>
+    <script src="../../js/api.js"></script>
+    <script src="../../js/layout.js"></script>
+    <script src="../../js/favorite.js"></script>
+    <script src="../../js/core.js"></script>
+    <script src="../../js/ai_chat.js"></script>
+
+    <script src="../../js/pages/SystemSetting/Account.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Account");
+        });
+    </script>
+
+</body>
+
+</html>
