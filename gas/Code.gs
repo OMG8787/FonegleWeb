@@ -21,7 +21,7 @@ const CONFIG = {
     SESSION_HOURS: 10,                 // 登入有效時間（有操作會自動延長）
     PASSWORD_SALT: 'ABC123',           // 與舊系統相同，舊資料的密碼雜湊可直接沿用
     RESET_PASSWORD: 'Fonegle',         // 忘記密碼時重設成的密碼
-    ADMIN_PERMISSIONS: [3, 6, 8, 9, 10, 11, 13, 14], // 第一位註冊者自動取得
+    ADMIN_PERMISSIONS: [1, 2, 3, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15], // 第一位註冊者自動取得
     MAIL_PERMISSIONS: [3],
     AI_MODEL_DEFAULT: 'gemini-2.5-flash',
     APP_NAME: '瘋菓內部管理系統'
@@ -239,24 +239,33 @@ function setup() {
         rows.forEach(r => appendRow_(t, r));
     };
 
+    // 預設資料與原 SQL Server（FonegleData）相同
     seed('ID_UserRoles', [
-        { ID: 1, RoleName: '訪客 Guest' },
-        { ID: 2, RoleName: '會員 Member' },
-        { ID: 3, RoleName: 'B2C' },
-        { ID: 4, RoleName: 'B2B' },
-        { ID: 5, RoleName: '員工 Staff' },
-        { ID: 6, RoleName: '管理員 Admin' }
+        { ID: 1, RoleName: '一般客戶' },
+        { ID: 2, RoleName: '會員' },
+        { ID: 3, RoleName: 'B2C 商家' },
+        { ID: 4, RoleName: 'B2B 合作商' },
+        { ID: 5, RoleName: '員工' },
+        { ID: 6, RoleName: '系統管理員' },
+        { ID: 7, RoleName: 'FAE' },
+        { ID: 8, RoleName: '業務' },
+        { ID: 9, RoleName: '負責人' }
     ]);
 
     seed('ID_Permission', [
-        { ID: 3, Permission: '系統管理（帳號、會員、權限）' },
-        { ID: 6, Permission: '資料管理（產品、訂單、原料）' },
-        { ID: 8, Permission: '代理人使用' },
-        { ID: 9, Permission: '代理人建立' },
-        { ID: 10, Permission: '市集活動 / 行事曆' },
-        { ID: 11, Permission: '行事曆' },
-        { ID: 13, Permission: '管理階層' },
-        { ID: 14, Permission: '庫存盤點' }
+        { ID: 1, Permission: 'FAE建立' },
+        { ID: 2, Permission: '業務單建立' },
+        { ID: 3, Permission: '權限修改' },
+        { ID: 5, Permission: '建立配方' },
+        { ID: 6, Permission: '個人代理人權限控制' },
+        { ID: 8, Permission: '代理人工具總開關建立' },
+        { ID: 9, Permission: '建立代理人' },
+        { ID: 10, Permission: '基本功能' },
+        { ID: 11, Permission: '建立更新行事曆' },
+        { ID: 12, Permission: '刪除資料' },
+        { ID: 13, Permission: '最高系統管理員' },
+        { ID: 14, Permission: '修改資料' },
+        { ID: 15, Permission: '建立資料' }
     ]);
 
     // 移除預設的空白工作表
