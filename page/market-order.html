@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜現場點餐系統</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 共用樣式 -->
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        /* 避免污染 Bootstrap */
+        .order-ui {
+            max-width: 1000px;
+            margin: auto;
+        }
+
+        /* grid */
+        .order-ui .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        /* 卡片 */
+        .order-ui .o-card {
+            background: #fff7ed;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .order-ui .o-card2 {
+            background: #fff1f2;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        /* 標題 */
+        .order-ui h2 {
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        /* item */
+        .order-ui .item {
+            background: white;
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+            border: 1px solid #f1f5f9;
+        }
+
+        .order-ui .item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        /* price */
+        .order-ui .price {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        /* summary */
+        .order-ui .summary {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .order-ui .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .order-ui .total {
+            border-top: 2px solid #eee;
+            padding-top: 12px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+
+        /* 按鈕 */
+        .report-btn {
+            margin-top: 10px;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+            transition: all 0.25s ease;
+
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* hover 動畫 */
+        .report-btn:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 6px 18px rgba(99, 102, 241, 0.4);
+        }
+
+        /* 點擊感 */
+        .report-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* RWD */
+        @media (max-width: 768px) {
+            .order-ui .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 頁首 -->
+    <div id="headerArea"></div>
+
+    <!-- 主架構 -->
+    <div id="erp-layout">
+
+        <!-- 導覽列 -->
+        <div id="sidebarArea"></div>
+
+        <!-- 主內容 -->
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">🧋 現場點餐系統</h2>
+                        <button id="goReportBtn" class="report-btn">
+                            📊 前往報表分析
+                        </button>
+                        <!-- <p class="text-muted mb-0">
+                            出貨狀況/訂單資訊
+                        </p> -->
+                    </div>
+                </div>
+
+                <!-- 內容在這 -->
+                <div class="order-ui mt-3">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <div class="grid">
+
+                                <!-- 左 -->
+                                <div class="o-card">
+
+                                    <label class="item" style="background:#dbeafe;margin-bottom:20px;">
+                                        <div>
+                                            <div>只單點鯛魚燒</div>
+                                            <small>不選擇冰淇淋</small>
+                                        </div>
+                                        <div>
+                                            <input type="checkbox" id="taiyakiOnlyMode">
+                                        </div>
+                                    </label>
+
+                                    <h2>冰淇淋</h2>
+
+                                    <label class="item">
+                                        <div>
+                                            <div>單球冰淇淋</div>
+                                        </div>
+                                        <div>
+                                            <span class="price">$90</span>
+                                            <input type="radio" name="icecream" value="90" checked>
+                                        </div>
+                                    </label>
+
+                                    <label class="item">
+                                        <div>
+                                            <div>雙球冰淇淋</div>
+                                        </div>
+                                        <div>
+                                            <span class="price">$150</span>
+                                            <input type="radio" name="icecream" value="150">
+                                        </div>
+                                    </label>
+
+                                    <label class="item">
+                                        <div>
+                                            <div>三球冰淇淋</div>
+                                        </div>
+                                        <div>
+                                            <span class="price">$200</span>
+                                            <input type="radio" name="icecream" value="200">
+                                        </div>
+                                    </label>
+
+                                    <label class="item" style="background:#ecfeff;">
+                                        <div>
+                                            <div>加購甜筒</div>
+                                        </div>
+                                        <div>
+                                            <span class="price">+$10</span>
+                                            <input type="checkbox" id="addCone">
+                                        </div>
+                                    </label>
+
+                                    <div class="item"
+                                        style="background:#fef9c3;flex-direction:column;align-items:flex-start;">
+                                        <div class="mb-2">加購鯛魚燒</div>
+
+                                        <div class="btn-group w-100" id="addTaiyakiGroup">
+                                            <button class="btn btn-outline-secondary active" data-value="0">不加購</button>
+                                            <button class="btn btn-outline-secondary" data-value="20">加1
+                                                +$20</button>
+                                            <button class="btn btn-outline-secondary" data-value="40">加2
+                                                +$40</button>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <!-- 右 -->
+                                <div class="o-card2">
+
+                                    <h2>單點鯛魚燒</h2>
+
+                                    <div class="btn-group w-100 mb-3" id="taiyakiOnlyGroup">
+                                        <button class="btn btn-outline-secondary active" data-value="0">不加購</button>
+                                        <button class="btn btn-outline-secondary" data-value="60">1條 $60</button>
+                                        <button class="btn btn-outline-secondary" data-value="100">2條 $100</button>
+                                    </div>
+
+                                    <input type="number" id="customAmount" placeholder="自訂金額" class="form-control mb-3">
+
+                                    <div class="summary">
+
+                                        <div class="summary-row">
+                                            <span>冰淇淋</span>
+                                            <span id="icePrice">$90</span>
+                                        </div>
+
+                                        <div class="summary-row">
+                                            <span>加購鯛魚燒</span>
+                                            <span id="addPrice">$0</span>
+                                        </div>
+
+                                        <div class="summary-row">
+                                            <span>單點鯛魚燒</span>
+                                            <span id="taiyakiPrice">$0</span>
+                                        </div>
+
+                                        <div class="summary-row">
+                                            <span>甜筒</span>
+                                            <span id="conePrice">$0</span>
+                                        </div>
+
+                                        <div class="summary-row total">
+                                            <span>本組金額</span>
+                                            <span id="currentTotal">$90</span>
+                                        </div>
+                                        <div class="summary-row total">
+                                            <span>總金額</span>
+                                            <span id="grandTotal">$0</span>
+                                        </div>
+
+                                        <div class="summary-row">
+                                            <span>應收</span>
+                                            <span id="shouldPay">$0</span>
+                                        </div>
+
+                                        <input type="number" id="receivedAmount" placeholder="收多少錢"
+                                            class="form-control mt-2">
+
+                                        <div class="summary-row">
+                                            <span>找零</span>
+                                            <span id="change">$0</span>
+                                        </div>
+                                    </div>
+
+                                    <h2 class="mt-3">支付方式</h2>
+
+                                    <div class="btn-group w-100 mb-3" id="paymentGroup">
+                                        <button class="btn btn-outline-dark active" data-value="cash">現金</button>
+                                        <button class="btn btn-outline-dark" data-value="online">電子支付</button>
+                                    </div>
+
+                                    <button id="addItem" class="btn btn-primary w-100 mt-3">加入購物車</button>
+
+                                    <div id="itemList" class="mt-3"></div>
+
+                                    <button id="submitOrder" class="btn btn-dark w-100 mt-3">確認送出訂單</button>
+                                    <button id="downloadReport" class="btn btn-warning w-100 mt-2">下載報表</button>
+                                    <button id="deleteLastOrder" class="btn btn-danger w-100 mt-2">刪除最後一筆</button>
+
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 頁尾 -->
+    <div id="footerArea"></div>
+
+    <!-- 共用 layout -->
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/pages/market-store.js"></script>
+    <script src="../js/pages/market-order.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("OrderNow");
+        });
+    </script>
+
+</body>
+
+</html>

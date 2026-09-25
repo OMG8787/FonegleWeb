@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜帳務管理</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        .stat-card .value {
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .table td,
+        .table th {
+            white-space: nowrap;
+        }
+
+        tr.clickable {
+            cursor: pointer;
+        }
+
+        .section-title {
+            font-weight: bold;
+            margin: 14px 0 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="headerArea"></div>
+
+    <div id="erp-layout">
+
+        <div id="sidebarArea"></div>
+
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="mb-1">💰 帳務管理（應收）</h2>
+                            <p class="text-muted mb-0">記錄各店家應付款項，掌握誰付了、誰還沒付</p>
+                        </div>
+                        <button id="btnNew" class="btn btn-success">＋ 新增帳款</button>
+                    </div>
+                </div>
+
+                <!-- 統計 -->
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">應收總額</div><div id="sumAmount" class="value">$0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">已收</div><div id="sumPaid" class="value text-success">$0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">未收</div><div id="sumUnpaid" class="value text-warning">$0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">逾期未收</div><div id="sumOverdue" class="value text-danger">$0</div>
+                        <div id="sumOverdueCount" class="small text-muted"></div>
+                    </div></div></div>
+                </div>
+
+                <div class="row g-3">
+
+                    <div class="col-lg-8">
+
+                        <!-- 店家彙總 -->
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-body">
+                                <h5 class="mb-3">🏢 各店家帳款（點選可篩選）</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>店家</th>
+                                                <th class="text-end">筆數</th>
+                                                <th class="text-end">應收</th>
+                                                <th class="text-end">已收</th>
+                                                <th class="text-end">未收</th>
+                                                <th class="text-end">逾期</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="storeBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 明細 -->
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6 col-md-3">
+                                        <select id="qStatus" class="form-select form-select-sm">
+                                            <option value="">全部狀態</option>
+                                            <option value="unpaid">未收清（含部分）</option>
+                                            <option value="overdue">逾期</option>
+                                            <option value="已付款">已付款</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 col-md-3">
+                                        <select id="qStore" class="form-select form-select-sm"></select>
+                                    </div>
+                                    <div class="col-6 col-md-3">
+                                        <input id="qMonth" type="month" class="form-control form-control-sm" title="帳單月份">
+                                    </div>
+                                    <div class="col-6 col-md-3">
+                                        <input id="qKeyword" class="form-control form-control-sm" placeholder="項目 / 發票 / 備註">
+                                    </div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>帳單日</th>
+                                                <th>店家</th>
+                                                <th>項目</th>
+                                                <th class="text-end">應收</th>
+                                                <th class="text-end">已收</th>
+                                                <th>到期日</th>
+                                                <th>狀態</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="listBody"></tbody>
+                                    </table>
+                                </div>
+                                <div id="emptyHint" class="text-muted small d-none">沒有符合的帳款</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 表單 -->
+                    <div class="col-lg-4">
+                        <div id="formCard" class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 id="formTitle" class="mb-0">➕ 新增帳款</h5>
+                                    <span id="editHint" class="badge bg-warning text-dark d-none">編輯中</span>
+                                </div>
+
+                                <form id="arForm" onsubmit="return false">
+                                    <div class="row g-2">
+                                        <div class="col-12">
+                                            <label class="form-label small">店家 *</label>
+                                            <select id="CompanyId" class="form-select"></select>
+                                            <input id="PayerName" class="form-control mt-1 d-none" placeholder="店家 / 付款對象名稱">
+                                            <div class="small text-muted">店家清單來自「合作廠商 / 店家」</div>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">項目 *</label>
+                                            <input id="Item" class="form-control" placeholder="例如：9 月寄賣冰品貨款">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">帳單日期 *</label>
+                                            <input id="BillDate" type="date" class="form-control">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">到期日</label>
+                                            <input id="DueDate" type="date" class="form-control">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">應收金額 *</label>
+                                            <input id="Amount" type="number" min="0" class="form-control">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">已收金額</label>
+                                            <div class="input-group">
+                                                <input id="PaidAmount" type="number" min="0" class="form-control">
+                                                <button type="button" id="btnPaidFull" class="btn btn-outline-success" title="全額收款">全額</button>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">付款方式</label>
+                                            <select id="PaymentMethod" class="form-select">
+                                                <option value="">—</option>
+                                                <option>匯款</option>
+                                                <option>現金</option>
+                                                <option>LINE Pay / 電子支付</option>
+                                                <option>支票</option>
+                                                <option>其他</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">付款日期</label>
+                                            <input id="PaymentDate" type="date" class="form-control">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">發票號碼</label>
+                                            <input id="InvoiceNo" class="form-control">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">狀態（自動）</label>
+                                            <input id="statusPreview" class="form-control bg-light" readonly>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">備註</label>
+                                            <textarea id="Note" rows="2" class="form-control"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2 mt-3">
+                                        <button id="btnCreate" class="btn btn-success">新增</button>
+                                        <button id="btnUpdate" class="btn btn-primary">儲存修改</button>
+                                        <button id="btnDelete" class="btn btn-outline-danger">刪除</button>
+                                        <button id="btnClear" class="btn btn-outline-secondary ms-auto">清除</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="footerArea"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/pages/receivable.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Receivable");
+        });
+    </script>
+
+</body>
+
+</html>

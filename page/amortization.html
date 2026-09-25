@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜品牌攤提表</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        .stat-card .value {
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .profit {
+            color: #198754;
+        }
+
+        .loss {
+            color: #dc3545;
+        }
+
+        .table td,
+        .table th {
+            white-space: nowrap;
+        }
+
+        .type-badge-支出 {
+            background: #dc3545;
+        }
+
+        .type-badge-回收 {
+            background: #198754;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="headerArea"></div>
+
+    <div id="erp-layout">
+
+        <div id="sidebarArea"></div>
+
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="mb-1">📒 品牌攤提表</h2>
+                            <p class="text-muted mb-0">硬體、包材、食材、人力等投入與回收，掌握回本進度</p>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="includeStall" checked>
+                            <label class="form-check-label" for="includeStall">出攤盈虧計入回收</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 統計 -->
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-lg">
+                        <div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                            <div class="text-muted small">總投入</div>
+                            <div id="sumInvest" class="value">$0</div>
+                        </div></div>
+                    </div>
+                    <div class="col-6 col-lg">
+                        <div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                            <div class="text-muted small">已回收</div>
+                            <div id="sumRecovered" class="value profit">$0</div>
+                            <div id="sumRecoveredNote" class="small text-muted"></div>
+                        </div></div>
+                    </div>
+                    <div class="col-6 col-lg">
+                        <div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                            <div class="text-muted small">尚待回收</div>
+                            <div id="sumRemain" class="value loss">$0</div>
+                        </div></div>
+                    </div>
+                    <div class="col-6 col-lg">
+                        <div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                            <div class="text-muted small">本月攤提</div>
+                            <div id="sumMonthly" class="value">$0</div>
+                        </div></div>
+                    </div>
+                    <div class="col-12 col-lg">
+                        <div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                            <div class="text-muted small">回本進度</div>
+                            <div id="sumPayback" class="value">0%</div>
+                            <div class="progress" style="height:8px">
+                                <div id="paybackBar" class="progress-bar bg-success" style="width:0%"></div>
+                            </div>
+                        </div></div>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+
+                    <!-- 表單 -->
+                    <div class="col-lg-4">
+                        <div id="formCard" class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 id="formTitle" class="mb-0">➕ 新增項目</h5>
+                                    <span id="editHint" class="badge bg-warning text-dark d-none">編輯中</span>
+                                </div>
+
+                                <form id="costForm" onsubmit="return false">
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label small">日期 *</label>
+                                            <input id="RecordDate" type="date" class="form-control">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">類型 *</label>
+                                            <select id="Type" class="form-select">
+                                                <option value="支出">支出（投入）</option>
+                                                <option value="回收">回收（收入）</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">分類 *</label>
+                                            <select id="Category" class="form-select">
+                                                <option value="硬體">硬體</option>
+                                                <option value="包材">包材</option>
+                                                <option value="食材">食材</option>
+                                                <option value="人力">人力</option>
+                                                <option value="其他">其他</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">金額 *</label>
+                                            <input id="Amount" type="number" min="0" class="form-control">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">項目名稱 *</label>
+                                            <input id="ItemName" class="form-control" placeholder="例如：冰品展示櫃、杯子 1000 個">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">攤提月數</label>
+                                            <input id="AmortizeMonths" type="number" min="0" class="form-control" placeholder="空白＝一次認列">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">每月攤提</label>
+                                            <input id="monthlyPreview" class="form-control bg-light" readonly>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">廠商 / 來源</label>
+                                            <input id="Vendor" class="form-control">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">備註</label>
+                                            <textarea id="Note" rows="2" class="form-control"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2 mt-3">
+                                        <button id="btnCreate" class="btn btn-success">新增</button>
+                                        <button id="btnUpdate" class="btn btn-primary">儲存修改</button>
+                                        <button id="btnDelete" class="btn btn-outline-danger">刪除</button>
+                                        <button id="btnClear" class="btn btn-outline-secondary ms-auto">清除</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-8">
+
+                        <!-- 分類彙總 -->
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-body">
+                                <h5 class="mb-3">📦 分類彙總</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>分類</th>
+                                                <th class="text-end">投入</th>
+                                                <th>占比</th>
+                                                <th class="text-end">回收</th>
+                                                <th class="text-end">已攤提</th>
+                                                <th class="text-end">未攤提</th>
+                                                <th class="text-end">本月攤提</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="categoryBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 每月攤提 -->
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-body">
+                                <h5 class="mb-3">🗓️ 每月攤提與回收（前 5 個月 ～ 後 6 個月）</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>月份</th>
+                                                <th class="text-end">攤提支出</th>
+                                                <th class="text-end">回收</th>
+                                                <th class="text-end">出攤盈虧</th>
+                                                <th class="text-end">當月淨額</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="monthBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 明細 -->
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                                    <h5 class="mb-0 me-auto">📋 明細</h5>
+                                    <select id="qType" class="form-select form-select-sm" style="width:auto">
+                                        <option value="">全部類型</option>
+                                        <option value="支出">支出</option>
+                                        <option value="回收">回收</option>
+                                    </select>
+                                    <select id="qCategory" class="form-select form-select-sm" style="width:auto">
+                                        <option value="">全部分類</option>
+                                        <option>硬體</option>
+                                        <option>包材</option>
+                                        <option>食材</option>
+                                        <option>人力</option>
+                                        <option>其他</option>
+                                    </select>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>日期</th>
+                                                <th>類型</th>
+                                                <th>分類</th>
+                                                <th>項目</th>
+                                                <th class="text-end">金額</th>
+                                                <th class="text-end">攤提</th>
+                                                <th class="text-end">未攤提</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="entryBody"></tbody>
+                                    </table>
+                                </div>
+                                <div id="emptyHint" class="text-muted d-none">尚無資料</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="footerArea"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/pages/amortization.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Amortization");
+        });
+    </script>
+
+</body>
+
+</html>

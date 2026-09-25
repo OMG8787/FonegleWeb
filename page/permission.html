@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜系統權限管理</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 共用樣式 -->
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        #profileArea .form-control {
+
+            height: 44px;
+
+            border-radius: 10px;
+        }
+
+        #profileArea {
+
+            border-top: 1px solid #eee;
+
+            padding-top: 20px;
+        }
+
+        #profileArea input:disabled {
+
+            background: #f1f5f9;
+
+            color: #475569;
+
+            cursor: not-allowed;
+
+            opacity: 1;
+        }
+
+        .toggle-arrow {
+
+            border: none !important;
+
+            background: transparent !important;
+
+            box-shadow: none !important;
+
+            padding: 0;
+
+            font-size: 20px;
+
+            font-weight: bold;
+
+            color: #64748b;
+
+            transition: 0.2s;
+        }
+
+        .toggle-arrow:hover {
+
+            color: #0f172a;
+
+            transform: scale(1.1);
+        }
+
+        .setting-header {
+
+            cursor: pointer;
+
+            padding: 10px;
+
+            border-radius: 10px;
+
+            transition: 0.2s;
+        }
+
+        .setting-header:hover {
+
+            background: #f8fafc;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 頁首 -->
+    <div id="headerArea"></div>
+
+    <!-- 主架構 -->
+    <div id="erp-layout">
+
+        <!-- 導覽列 -->
+        <div id="sidebarArea"></div>
+
+        <!-- 主內容 -->
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">權限管理</h2>
+                        <p class="text-muted mb-0">
+                            系統管理者功能設定
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 設定清單 -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+
+                        <h5 class="mb-3">系統設定</h5>
+                        <div class="list-group">
+
+                            <!-- 權限修改 -->
+                            <div class="list-group-item">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+
+                                        <div class="fw-bold">
+                                            權限修改
+                                        </div>
+
+                                        <small class="text-muted">
+                                            批次設定會員權限
+                                        </small>
+
+                                    </div>
+
+                                    <span id="btnTogglePermission" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <div id="permissionArea" class="d-none mt-4">
+
+                                    <!-- 成員 -->
+                                    <label class="form-label fw-bold">
+                                        手動輸入或選擇成員
+                                    </label>
+
+                                    <div class="d-flex gap-2 mb-2">
+
+                                        <input id="memberInput" class="form-control" placeholder="輸入帳號ID">
+
+                                        <select id="memberSelect" class="form-select">
+
+                                            <option value="">
+                                                請選擇成員
+                                            </option>
+
+                                        </select>
+
+                                        <button id="btnAddMember" class="btn btn-primary">
+
+                                            加入
+
+                                        </button>
+
+                                    </div>
+
+                                    <!-- 已選成員 -->
+                                    <div id="memberList" class="border rounded p-2 mb-4 bg-light">
+
+                                    </div>
+
+                                    <!-- 權限 -->
+                                    <label class="form-label fw-bold">
+                                        權限功能
+                                    </label>
+
+                                    <div class="d-flex gap-2 mb-2">
+
+                                        <select id="permissionSelect" class="form-select">
+
+                                            <option value="">
+                                                請選擇權限
+                                            </option>
+
+                                        </select>
+
+                                        <button id="btnAddPermission" class="btn btn-success">
+
+                                            加入
+
+                                        </button>
+
+                                    </div>
+
+                                    <!-- 已選權限 -->
+                                    <!-- 角色範本 -->
+                                    <div class="mb-2">
+                                        <div class="small fw-bold mb-1">⚡ 角色範本（點選直接套用，可再增減）</div>
+                                        <div id="presetButtons" class="d-flex flex-wrap gap-1"></div>
+                                        <div id="presetHint" class="small text-muted mt-1"></div>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center small">
+                                        <span class="fw-bold">已選權限</span>
+                                        <button type="button" id="btnClearPermission" class="btn btn-sm btn-link p-0">清空</button>
+                                    </div>
+                                    <div id="permissionList" class="border rounded p-2 bg-light mb-3">
+
+                                    </div>
+
+                                    <button id="btnSubmitPermission" class="btn btn-warning">
+
+                                        確認修改權限
+
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                            <!-- 角色修改 -->
+                            <div class="list-group-item">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+
+                                        <div class="fw-bold">
+                                            崗位角色修改
+                                        </div>
+
+                                        <small class="text-muted">
+                                            單一設定員工崗位角色權限
+                                        </small>
+
+                                    </div>
+
+                                    <span id="btnToggleRole" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <div id="roleArea" class="d-none mt-4">
+
+                                    <!-- 成員 -->
+                                    <label class="form-label fw-bold">
+                                        手動輸入或選擇成員
+                                    </label>
+
+                                    <div class="d-flex gap-2 mb-2">
+
+                                        <input id="roleMemberInput" class="form-control" placeholder="輸入帳號ID">
+
+                                        <select id="roleMemberSelect" class="form-select">
+
+                                            <option value="">
+                                                請選擇成員
+                                            </option>
+
+                                        </select>
+
+                                        <button id="btnAddRoleMember" class="btn btn-primary">
+
+                                            加入
+
+                                        </button>
+
+                                    </div>
+
+                                    <!-- 已選成員 -->
+                                    <div id="roleMemberList" class="border rounded p-2 mb-4 bg-light">
+
+                                    </div>
+
+                                    <!-- 角色修改 -->
+                                    <label class="form-label fw-bold">
+                                        角色修改
+                                    </label>
+
+                                    <div class="d-flex gap-2 mb-2">
+
+                                        <select id="roleSelect" class="form-select">
+
+                                            <option value="">
+                                                請選擇角色
+                                            </option>
+
+                                        </select>
+
+                                        <button id="btnAddRole" class="btn btn-success">
+
+                                            加入
+
+                                        </button>
+
+                                    </div>
+
+                                    <!-- 已選角色 -->
+                                    <div id="rolePreviewList" class="border rounded p-2 bg-light mb-3">
+
+                                    </div>
+
+                                    <button id="btnSubmitRole" class="btn btn-warning">
+
+                                        確認修改權限
+
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                            <!-- 連線設定（管理員） -->
+                            <div class="list-group-item" id="connectionItem">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+
+                                        <div class="fw-bold">
+                                            🔌 資料庫連線設定
+                                        </div>
+
+                                        <small class="text-muted">
+                                            Google 試算表（Apps Script）連線網址，僅管理員可見
+                                        </small>
+
+                                    </div>
+
+                                    <span id="btnToggleConnection" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <div id="connectionArea" class="d-none mt-3">
+
+                                    <div class="small mb-2">
+                                        目前連線：<code id="connCurrent" class="text-break"></code>
+                                        <span id="connSource" class="badge ms-1"></span>
+                                    </div>
+
+                                    <div class="small text-muted mb-3">
+                                        預設網址寫在 <code>js/settings.js</code>，所有使用者都會套用。
+                                        下方設定只會影響<b>這台電腦的這個瀏覽器</b>，適合測試新版部署。
+                                    </div>
+
+                                    <input id="connUrl" class="form-control mb-2"
+                                        placeholder="https://script.google.com/macros/s/.../exec">
+
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button id="btnConnTest" class="btn btn-outline-primary btn-sm">測試連線</button>
+                                        <button id="btnConnSave" class="btn btn-primary btn-sm">測試並套用到此瀏覽器</button>
+                                        <button id="btnConnReset" class="btn btn-outline-secondary btn-sm">改回預設網址</button>
+                                    </div>
+
+                                    <div id="connResult" class="small mt-2"></div>
+
+                                </div>
+
+                            </div>
+
+
+                        </div>
+
+
+                    </div>
+                </div>
+
+
+            </div>
+
+        </div>
+
+    </div>
+    <!-- 頁尾 -->
+    <div id="footerArea"></div>
+
+    <!-- docx -->
+    <script src="https://cdn.jsdelivr.net/npm/docx@7.7.0/build/index.js"></script>
+
+    <!-- 共用 layout -->
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+
+    <script src="../js/pages/permission.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Permission");
+        });
+    </script>
+
+</body>
+
+</html>

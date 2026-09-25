@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜行事曆</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 共用樣式 -->
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        .calendar-table {
+
+            table-layout: fixed;
+
+            width: 100%;
+        }
+
+        .calendar-table td {
+
+            height: 30px;
+
+            padding: 2px;
+
+            vertical-align: top;
+
+            position: relative;
+
+            overflow: hidden;
+        }
+
+        /* 每個日期格 */
+        .calendar-day {
+
+            position: relative;
+
+            padding-top: 18px;
+            /* 留一點空間給日期 */
+        }
+
+
+        /* 日期改左上角 */
+        .day-number {
+
+            position: absolute;
+
+            top: 2px;
+
+            left: 5px;
+            /* 改左邊 */
+
+            font-size: 12px;
+            /* 原本24 */
+
+            font-weight: 600;
+
+            color: #666;
+
+            z-index: 2;
+
+            line-height: 1;
+        }
+
+
+        /* 活動列 */
+        .event-item {
+
+            color: white;
+
+            border-radius: 4px;
+
+            padding: 1px 5px;
+            /* 原本2px 6px */
+
+            margin-bottom: 1px;
+            /* 原本3 */
+
+            font-size: 10px;
+            /* 原本11 */
+
+            line-height: 1.5;
+
+            min-height: 16px;
+
+            cursor: pointer;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+
+            white-space: nowrap;
+
+            transition: .2s;
+        }
+
+        /* Bootstrap .table 的儲存格內距權重較高，需指定才不會蓋住日期 */
+        .calendar-table td.calendar-day {
+            padding: 20px 4px 4px;
+            vertical-align: top;
+        }
+
+        .event-time {
+
+            opacity: .85;
+
+            font-size: 10px;
+
+            margin-right: 2px;
+        }
+
+        .daily-table input {
+
+            min-width: 90px;
+        }
+
+        .event-item:hover {
+
+            opacity: .9;
+        }
+
+
+        /* +5活動 */
+        .more-events {
+
+            font-size: 10px;
+
+            line-height: 1;
+
+            margin-top: 1px;
+
+            color: #0d6efd;
+
+            cursor: pointer;
+        }
+
+        .more-events:hover {
+
+            text-decoration: underline;
+        }
+
+        .event-container {
+
+            margin-top: 1px;
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 1px;
+            /* 活動間距 */
+        }
+
+        /* 星期標題縮小 */
+        .calendar-table th {
+
+            padding: 4px;
+
+            font-size: 13px;
+
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 頁首 -->
+    <div id="headerArea"></div>
+
+    <!-- 主架構 -->
+    <div id="erp-layout">
+
+        <!-- 導覽列 -->
+        <div id="sidebarArea"></div>
+
+        <!-- 主內容 -->
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">行事曆</h2>
+                        <p class="text-muted mb-0">
+                            修改、查詢、建立行程
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 內容在這 -->
+                <!-- 功能區 -->
+                <div class="card border-0 shadow-sm mb-3">
+
+                    <div class="card-body">
+
+                        <div class="d-flex justify-content-between mb-3">
+
+                            <h5 class="mb-0">
+                                行事曆管理
+                            </h5>
+
+                            <button id="btnCreate" class="btn btn-success">
+
+                                新增活動
+
+                            </button>
+
+                        </div>
+                        <div class="card mb-3">
+
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between align-items-center">
+
+                                    <button id="btnPrevMonth" class="btn btn-outline-primary">
+
+                                        ◀
+
+                                    </button>
+
+                                    <h3 id="calendarTitle" class="mb-0">
+                                    </h3>
+
+                                    <button id="btnNextMonth" class="btn btn-outline-primary">
+
+                                        ▶
+
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+                        <div class="row mb-3">
+
+                            <div class="col-md-3">
+
+                                <input type="month" id="monthPicker" class="form-control">
+
+                            </div>
+
+                            <div class="col-md-2">
+
+                                <button id="btnSearchMonth" class="btn btn-primary w-100">
+
+                                    月份查詢
+
+                                </button>
+
+                            </div>
+
+                            <div class="col-md-2">
+
+                                <button id="btnPrivateCalendar" class="btn btn-warning w-100">
+
+                                    指定查詢
+
+                                </button>
+
+                            </div>
+
+                            <div class="col-md-3">
+
+                                <select id="calendarFilter" class="form-select">
+
+                                    <option value="all">
+
+                                        全部顯示
+
+                                    </option>
+
+                                    <option value="public">
+
+                                        公開行程
+
+                                    </option>
+
+                                    <option value="private">
+
+                                        指定行程
+
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+                        </div>
+                        <div id="calendarResult" class="border rounded p-3 bg-light" style="
+                white-space:pre-wrap;
+                font-family:Consolas;
+            ">
+
+                            載入中...
+
+                        </div>
+
+                    </div>
+
+                </div>
+                <div class="card mt-3">
+
+                    <div class="card-header">
+
+                        活動總覽
+
+                    </div>
+
+                    <div class="card-body">
+
+                        <div class="row mb-3">
+
+                            <div class="col-md-3">
+
+                                <input type="date" id="overviewStart" class="form-control">
+
+                            </div>
+
+                            <div class="col-md-3">
+
+                                <input type="date" id="overviewEnd" class="form-control">
+
+                            </div>
+
+                            <div class="col-md-2">
+
+                                <button id="btnOverview" class="btn btn-success">
+
+                                    區間查詢
+
+                                </button>
+
+                            </div>
+                            <div class="col-md-2">
+
+                                <button id="btnShowRaw" class="btn btn-secondary w-100">
+
+                                    複製內容
+
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                        <div id="overviewResult">
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="modal fade" id="calendarModal">
+
+                    <div class="modal-dialog modal-lg">
+
+                        <div class="modal-content">
+
+                            <div class="modal-header">
+
+                                <h5 id="modalTitle" class="modal-title">
+
+                                    新增活動
+
+                                </h5>
+
+                                <button class="btn-close" data-bs-dismiss="modal">
+                                </button>
+
+                            </div>
+
+                            <div class="modal-body">
+
+                                <input type="hidden" id="editTargetName">
+
+                                <div class="mb-3">
+
+                                    <label>
+                                        活動名稱
+                                    </label>
+
+                                    <input id="activityName" class="form-control">
+
+                                </div>
+
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label>
+                                            開始日期
+                                        </label>
+                                        <input type="date" id="startDate" class="form-control">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>
+                                            結束日期
+                                        </label>
+                                        <input type="date" id="endDate" class="form-control">
+                                    </div>
+                                </div>
+
+                                <!-- 每日時段 -->
+                                <div class="mt-3 p-3 border rounded bg-light">
+                                    <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+                                        <div class="fw-bold me-auto">🕒 每日營業時段</div>
+                                        <div>
+                                            <small class="text-muted d-block">預設開始</small>
+                                            <input type="time" id="defaultOpen" class="form-control form-control-sm" value="11:00">
+                                        </div>
+                                        <div>
+                                            <small class="text-muted d-block">預設結束</small>
+                                            <input type="time" id="defaultClose" class="form-control form-control-sm" value="20:00">
+                                        </div>
+                                        <button type="button" id="btnApplyTime" class="btn btn-sm btn-outline-primary">
+                                            套用到每一天
+                                        </button>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0 daily-table">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width:28%">日期</th>
+                                                    <th style="width:18%">開始</th>
+                                                    <th style="width:18%">結束</th>
+                                                    <th>當日備註</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="dailyList">
+                                                <tr><td colspan="4" class="text-muted">請先選擇開始與結束日期</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+
+                                    <label>
+                                        活動地址
+                                    </label>
+
+                                    <input id="address" class="form-control">
+
+                                </div>
+
+                                <div class="mt-3">
+
+                                    <label>
+                                        活動類型
+                                    </label>
+
+                                    <select id="type" class="form-select">
+
+                                        <option value="1">
+                                            公開活動
+                                        </option>
+
+                                        <option value="2">
+                                            會議
+                                        </option>
+
+                                        <option value="3">
+                                            私人行程
+                                        </option>
+
+                                        <option value="4">
+                                            其他
+                                        </option>
+
+                                    </select>
+
+                                </div>
+
+                                <div class="mt-3">
+
+                                    <label>
+                                        是否取消
+                                    </label>
+
+                                    <select id="cancel" class="form-select">
+
+                                        <option value="否">
+                                            否
+                                        </option>
+
+                                        <option value="是">
+                                            是
+                                        </option>
+
+                                    </select>
+
+                                </div>
+
+                                <div class="mt-3">
+
+                                    <label>
+                                        活動代號(選填)
+                                    </label>
+
+                                    <input id="userId" class="form-control">
+
+                                </div>
+
+                                <div class="mt-3">
+
+                                    <label>
+                                        活動備註(選填)
+                                    </label>
+
+                                    <textarea id="remark" rows="3" class="form-control"></textarea>
+
+                                </div>
+
+                            </div>
+
+                            <div class="modal-footer">
+
+                                <button class="btn btn-secondary" data-bs-dismiss="modal">
+
+                                    取消
+
+                                </button>
+
+                                <button id="btnSave" class="btn btn-primary">
+
+                                    儲存
+
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+                <div class="modal fade" id="eventListModal">
+
+                    <div class="modal-dialog">
+
+                        <div class="modal-content">
+
+                            <div class="modal-header">
+
+                                <h5 class="modal-title">
+
+                                    當日活動
+
+                                </h5>
+
+                                <button class="btn-close" data-bs-dismiss="modal">
+                                </button>
+
+                            </div>
+
+                            <div id="eventListContent" class="modal-body">
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="modal fade" id="overviewRawModal">
+
+                    <div class="modal-dialog modal-lg modal-dialog-centered">
+
+                        <div class="modal-content">
+
+                            <div class="modal-header">
+
+                                <h5 class="modal-title">
+
+                                    活動內容
+
+                                </h5>
+
+                                <button class="btn-close" data-bs-dismiss="modal"></button>
+
+                            </div>
+
+                            <div class="modal-body">
+
+                                <textarea id="overviewRawText" class="form-control" rows="18" readonly style="
+                        font-family:Consolas;
+                        white-space:pre-wrap;
+                    "></textarea>
+
+                            </div>
+
+                            <div class="modal-footer">
+
+                                <button id="btnCopyRaw" class="btn btn-primary">
+
+                                    複製內容
+
+                                </button>
+
+                                <button class="btn btn-secondary" data-bs-dismiss="modal">
+
+                                    關閉
+
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+    <!-- 頁尾 -->
+    <div id="footerArea"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 共用 layout -->
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+
+    <script src="../js/pages/calendar.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Calendar");
+        });
+    </script>
+
+</body>
+
+</html>

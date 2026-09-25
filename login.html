@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>瘋菓冰品股份有限公司｜登入</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+
+            margin: 0;
+            height: 100vh;
+
+            background:
+                linear-gradient(135deg,
+                    #4d341c);
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            font-family:
+                "Microsoft JhengHei",
+                sans-serif;
+        }
+
+        .login-card {
+
+            width: 420px;
+
+            background: rgba(255, 255, 255, .95);
+
+            border-radius: 18px;
+
+            padding: 40px;
+
+            box-shadow:
+                0 10px 35px rgba(0, 0, 0, .3);
+        }
+
+        .title {
+
+            text-align: center;
+
+            font-size: 28px;
+            font-weight: bold;
+
+            margin-bottom: 8px;
+
+            color: #2a1d0f;
+        }
+
+        .sub-title {
+
+            text-align: center;
+
+            color: #8b8164;
+
+            margin-bottom: 30px;
+        }
+
+        .form-control {
+
+            height: 48px;
+            border-radius: 10px;
+        }
+
+        .btn-login {
+
+            height: 48px;
+
+            border-radius: 10px;
+
+            background: #2a190f;
+            border: none;
+
+            font-weight: bold;
+        }
+
+        .btn-login:hover {
+
+            background: #3b2d1e;
+        }
+
+        #msg {
+
+            height: 24px;
+
+            margin-top: 15px;
+
+            text-align: center;
+
+            color: red;
+        }
+
+        .form-label {
+            margin-bottom: 6px;
+            color: #334155;
+        }
+
+        .logo img {
+            width: 280px;
+            height: auto;
+            display: block;
+            text-align: center;
+            margin: 0 auto 0px auto;
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div class="login-card">
+
+        <div class="logo">
+            <img src="img/logo.png" alt="Logo">
+        </div>
+
+        <div class="title">
+            系統登入
+        </div>
+
+
+        <!-- LOGIN -->
+        <div id="loginPanel">
+
+            <input id="loginPhone" class="form-control mb-3" placeholder="請輸入帳號(電話號碼)">
+
+            <input id="loginPassword" type="password" class="form-control mb-3" placeholder="請輸入密碼">
+
+            <button class="btn btn-dark w-100 btn-login" onclick="login()">
+
+                登入系統
+
+            </button>
+
+            <div class="text-center mt-3">
+
+                <a href="#" onclick="showPanel('register')">
+
+                    建立帳號
+
+                </a>
+
+                |
+
+                <a href="#" onclick="showPanel('forget')">
+
+                    忘記密碼
+
+                </a>
+
+            </div>
+
+        </div>
+
+        <!-- REGISTER -->
+        <div id="registerPanel" style="display:none;">
+
+            <div class="text-danger small mb-3">
+                * 為必填欄位
+            </div>
+
+            <div class="row">
+
+                <!-- 姓名 -->
+                <div class="col-md-6 mb-3">
+
+                    <label class="form-label fw-bold">
+                        姓名
+                        <span class="text-danger">*</span>
+                    </label>
+
+                    <input class="form-control" id="rName" placeholder="請輸入真實姓名" required>
+
+                </div>
+
+
+                <!-- 密碼 -->
+                <div class="col-md-6 mb-3">
+
+                    <label class="form-label fw-bold">
+                        登入系統密碼
+                        <span class="text-danger">*</span>
+                    </label>
+
+                    <input type="password" class="form-control" id="rPassword" placeholder="請輸入密碼" required>
+
+                </div>
+
+
+                <!-- Email -->
+                <div class="mb-3">
+
+                    <label class="form-label fw-bold">
+                        電子郵件
+                        <span class="text-danger">*</span>
+                    </label>
+
+                    <input type="email" class="form-control" id="rEmail" placeholder="請輸入 Email" required>
+
+                </div>
+
+            </div>
+
+            <div class="row">
+
+                <!-- 身分證 -->
+                <div class="col-md-6 mb-3">
+
+                    <label class="form-label fw-bold">
+                        身分證字號
+                    </label>
+
+                    <input type="password" class="form-control" id="rIdCard" placeholder="請完整輸入">
+
+                </div>
+
+                <!-- 電話 -->
+                <div class="col-md-6 mb-3">
+
+                    <label class="form-label fw-bold">
+                        電話(帳號使用)
+                        <span class="text-danger">*</span>
+                    </label>
+
+                    <input class="form-control" id="rPhone" placeholder="請輸入電話(09**)" required>
+
+                </div>
+
+            </div>
+
+            <!-- 生日 -->
+            <div class="mb-3">
+
+                <label class="form-label fw-bold">
+                    生日
+                </label>
+
+                <div class="row">
+
+                    <div class="col">
+                        <input class="form-control" id="rYear" placeholder="西元年">
+                    </div>
+
+                    <div class="col">
+                        <input class="form-control" id="rMonth" placeholder="月">
+                    </div>
+
+                    <div class="col">
+                        <input class="form-control" id="rDay" placeholder="日">
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- 推播 -->
+            <div class="col-md-6 mb-3 d-flex align-items-end">
+
+                <div class="form-check">
+
+                    <input class="form-check-input" type="checkbox" id="rPush" checked>
+
+                    <label class="form-check-label">
+                        接受推播通知
+                    </label>
+
+                </div>
+
+            </div>
+
+            <!-- 建立帳號 -->
+            <button class="btn btn-success w-100" onclick="register()">
+
+                建立帳號
+
+            </button>
+
+            <!-- 回登入 -->
+            <div class="text-center mt-3">
+
+                <a href="#" onclick="showPanel('login')">
+
+                    回登入
+
+                </a>
+
+            </div>
+
+        </div>
+        <!-- FORGET -->
+        <!-- FORGET -->
+        <div id="forgetPanel" style="display:none;">
+
+            <div class="text-danger small mb-3">
+                請選擇驗證方式
+            </div>
+
+            <!-- 驗證方式 -->
+            <div class="mb-3">
+
+                <label class="form-label fw-bold">
+                    驗證方式
+                </label>
+
+                <select class="form-select" id="fType" onchange="changeForgetType()">
+
+                    <option value="phone_mail">
+                        電話 + Email
+                    </option>
+
+                    <option value="phone_idcard">
+                        電話 + 身分證
+                    </option>
+
+                    <option value="idcard_mail">
+                        身分證 + Email
+                    </option>
+
+                </select>
+
+            </div>
+
+            <!-- 欄位1 -->
+            <div class="mb-3">
+
+                <label class="form-label fw-bold" id="fLabel1">
+
+                    電話
+
+                </label>
+
+                <input class="form-control" id="fValue1" placeholder="請輸入電話">
+
+            </div>
+
+            <!-- 欄位2 -->
+            <div class="mb-3">
+
+                <label class="form-label fw-bold" id="fLabel2">
+
+                    Email
+
+                </label>
+
+                <input class="form-control" id="fValue2" placeholder="請輸入 Email">
+
+            </div>
+
+            <!-- Button -->
+            <button class="btn btn-warning w-100" onclick="resetPassword()">
+
+                重設密碼
+
+            </button>
+
+            <div class="text-center mt-3">
+
+                <a href="#" onclick="showPanel('login')">
+
+                    回登入
+
+                </a>
+
+            </div>
+
+        </div>
+
+        <div id="msg"></div>
+
+    </div>
+    <script src="js/settings.js"></script>
+    <script src="js/auth.js"></script>
+
+    <script>
+
+        function setMsg(msg) {
+
+            document.getElementById("msg")
+                .innerText = msg || "";
+        }
+
+        // =========================
+        // UI切換
+        // =========================
+        function showPanel(type) {
+
+            document.getElementById("loginPanel")
+                .style.display = "none";
+
+            document.getElementById("registerPanel")
+                .style.display = "none";
+
+            document.getElementById("forgetPanel")
+                .style.display = "none";
+
+
+            document.getElementById(type + "Panel")
+                .style.display = "block";
+
+            setMsg("");
+        }
+        // =========================
+        // 忘記密碼切換驗證方式
+        // =========================
+        function changeForgetType() {
+
+            const type =
+                document.getElementById("fType").value;
+
+            const label1 =
+                document.getElementById("fLabel1");
+
+            const label2 =
+                document.getElementById("fLabel2");
+
+            const input1 =
+                document.getElementById("fValue1");
+
+            const input2 =
+                document.getElementById("fValue2");
+
+            input1.value = "";
+            input2.value = "";
+
+            if (type === "phone_mail") {
+
+                label1.innerText = "電話";
+                label2.innerText = "Email";
+
+                input1.placeholder = "請輸入電話";
+                input2.placeholder = "請輸入 Email";
+            }
+
+            else if (type === "phone_idcard") {
+
+                label1.innerText = "電話";
+                label2.innerText = "身分證";
+
+                input1.placeholder = "請輸入電話";
+                input2.placeholder = "請輸入身分證";
+            }
+
+            else if (type === "idcard_mail") {
+
+                label1.innerText = "身分證";
+                label2.innerText = "Email";
+
+                input1.placeholder = "請輸入身分證";
+                input2.placeholder = "請輸入 Email";
+            }
+        }
+        // =========================
+        // 登入
+        // =========================
+        async function login() {
+
+            try {
+
+                setMsg("登入中...");
+
+                const data = await Auth.request("login", {
+                    phone: loginPhone.value.trim(),
+                    password: loginPassword.value
+                });
+
+                Auth.setSession(data);
+
+                location.href = Auth.root + "home.html";
+
+            } catch (ex) {
+
+                console.error(ex);
+
+                setMsg(ex.message || "系統錯誤!!!");
+            }
+        }
+
+        // =========================
+        // 建立帳號
+        // =========================
+        async function register() {
+            if (
+                !rName.value.trim() ||
+                !rEmail.value.trim() ||
+                !rPassword.value.trim() ||
+                !rPhone.value.trim()
+            ) {
+                alert("[姓名、電子郵件、電話、密碼]必須填寫，以便順利登入");
+                setMsg("請填寫所有必填欄位");
+                return;
+            }
+            try {
+
+                const message = await Auth.request("register", {
+                    data: {
+                        Name: rName.value.trim(),
+                        IdCardNumber: rIdCard.value.trim(),
+                        PhoneNumber: rPhone.value.trim(),
+                        Email: rEmail.value.trim(),
+                        PassWord: rPassword.value,
+                        Birthday: `${rYear.value}-${rMonth.value}-${rDay.value}`,
+                        IsPushMessage: rPush.checked
+                    }
+                });
+
+                alert(message || "註冊成功");
+
+                showPanel("login");
+
+            } catch (ex) {
+
+                console.error(ex);
+
+                alert(ex.message || "註冊失敗");
+
+                setMsg(ex.message || "系統錯誤");
+            }
+        }
+
+        // =========================
+        // 忘記密碼
+        // =========================
+        async function resetPassword() {
+
+            try {
+
+                const value1 = fValue1.value.trim();
+                const value2 = fValue2.value.trim();
+
+                if (!value1 || !value2) {
+
+                    alert("請完整填寫驗證資料");
+                    return;
+                }
+
+                const message = await Auth.request("forgetPassword", {
+                    type: fType.value,
+                    value1,
+                    value2
+                });
+
+                alert(message || "密碼已重設");
+
+                showPanel("login");
+
+            } catch (ex) {
+
+                console.error(ex);
+
+                alert(ex.message || "系統錯誤");
+            }
+        }
+
+        // 尚未設定連線：只提示，不提供設定入口
+        if (!window.APP_SETTINGS.GAS_URL) {
+            document.addEventListener("DOMContentLoaded", () =>
+                setMsg("系統尚未設定資料庫連線，請聯絡系統管理員"));
+        }
+
+        // =========================
+        // Enter登入
+        // =========================
+        document.addEventListener(
+            "keydown",
+            e => {
+
+                if (e.key === "Enter") {
+
+                    const loginVisible =
+                        document.getElementById("loginPanel")
+                            .style.display !== "none";
+
+                    if (loginVisible) {
+
+                        login();
+                    }
+                }
+            }
+        );
+
+    </script>
+</body>
+
+</html>

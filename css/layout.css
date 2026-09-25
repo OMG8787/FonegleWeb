@@ -1,0 +1,200 @@
+/* ================= BASE ================= */
+body {
+    margin: 0;
+    background: #f4f6f9;
+    font-family: "Microsoft JhengHei";
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /*overflow: auto;*/
+}
+
+/* ================= HEADER ================= */
+#erp-header {
+    height: 60px;
+    background: #1f2937;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 15px;
+    flex-shrink: 0;
+}
+
+/* ================= LAYOUT ================= */
+#erp-layout {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* ================= SIDEBAR ================= */
+#erp-sidebar {
+    width: 260px;
+    background: #111a2779;
+    color: #fff;
+    height: 100%;
+    overflow-y: auto;
+    transition: width .25s ease;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+}
+
+/* 收合 */
+#erp-sidebar.collapsed {
+    width: 70px;
+}
+
+
+/* ================= GROUP ================= */
+.menu-group {
+    margin-bottom: 6px;
+}
+
+/* 群組標題 */
+.menu-group-title {
+    padding: 12px 14px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1f2937;
+    color: white;
+    border-radius: 6px;
+    user-select: none;
+    font-size: 14px;
+}
+
+.menu-group-title:hover {
+    background: #374151;
+}
+
+/* 左側 icon + title */
+.menu-group-title>div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* arrow */
+.menu-group-title .arrow {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* ================= SUBMENU ================= */
+.submenu {
+    display: none;
+    padding-left: 8px;
+    margin-top: 4px;
+}
+
+/* 展開 */
+.submenu.open {
+    display: block;
+}
+
+/* submenu item */
+.submenu-item {
+    padding: 10px 12px;
+    margin: 4px 0;
+    cursor: pointer;
+    border-radius: 6px;
+    background: #f3f4f6;
+    color: #111;
+    font-size: 14px;
+    transition: .15s;
+}
+
+.submenu-item:hover {
+    background: #e5e7eb;
+}
+
+/* ================= MAIN ================= */
+#erp-main {
+    margin-left: 260px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* ================= FOOTER ================= */
+#erp-footer {
+    height: 60px;
+    flex-shrink: 0;
+    background: #1f2937;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #e4e6eb;
+}
+
+/* ================= COLLAPSED MODE ================= */
+
+/* 隱藏文字（只留 icon） */
+#erp-sidebar.collapsed .menu-group-title span:nth-child(2) {
+    display: none;
+}
+
+/* 收合時 submenu 全部隱藏 */
+#erp-sidebar.collapsed .submenu {
+    display: none !important;
+}
+
+/* 收合時置中 */
+#erp-sidebar.collapsed .menu-group-title {
+    justify-content: center;
+}
+
+/* arrow 收合時隱藏 */
+#erp-sidebar.collapsed .arrow {
+    display: none;
+}
+
+/* 遇到無權限時隱藏 */
+.menu-disabled {
+
+    opacity: 0.4;
+
+    pointer-events: none;
+
+    filter: grayscale(100%);
+
+    cursor: not-allowed;
+}
+
+.menu-disabled:hover::after {
+    content: "無權限使用此功能";
+    position: absolute;
+    background: black;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+
+/* =========================
+    手機版 → 整體縮放
+========================= */
+.scale-wrapper {
+    width: 100%;
+    overflow: auto;
+}
+
+
+
+@media (max-width: 768px) {
+
+    #erp-layout {
+        transform: scale(0.6);
+        /* 🔥 可調整 0.5 ~ 0.7 */
+        transform-origin: top left;
+        width: 1200px;
+        /* 🔥 固定桌機寬 */
+    }
+}
