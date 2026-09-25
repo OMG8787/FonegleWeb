@@ -1,7 +1,7 @@
 window.Pages = window.Pages || {};
 
 // =========================================================
-// AI 文案發想（Gemini，經由 Apps Script aiGenerate）
+// AI 文案發想（經由 Apps Script aiGenerate；使用者自己的 AI 設定或系統共用 Gemini）
 // 文案庫存於 AiDrafts 工作表（個人，可共享）
 // =========================================================
 Pages.AiWriter = (() => {

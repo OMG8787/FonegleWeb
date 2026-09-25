@@ -470,6 +470,9 @@ const PRIVATE_ACTIONS = {
     sendMail: sendMail_,
     aiChat: aiChat_,
     aiGenerate: aiGenerate_,
+    getAiConfig: getAiConfig_,
+    setAiConfig: setAiConfig_,
+    testAiConfig: testAiConfig_,
     loginSessions: loginSessions_,
     kickSession: kickSession_,
     loginLog: loginLog_,
@@ -480,7 +483,7 @@ const PRIVATE_ACTIONS = {
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
-const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList'];
+const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig'];
 
 function handle_(req) {
     const action = String(req.action || '');
@@ -1823,21 +1826,115 @@ function sendMail_(req, ctx) {
 }
 
 // ============================================================
-// AI 助理（Gemini）
-// 在「專案設定 → 指令碼屬性」新增 GEMINI_API_KEY（可選 GEMINI_MODEL）
+// AI 助理 / AI 文案
+// - 每個使用者可在「帳號設定 → AI 設定」輸入自己的服務、API Key、Model、Endpoint
+//   （存在指令碼屬性，不寫入試算表；API Key 不會回傳到前端）
+// - 沒有自己設定的人使用系統共用金鑰：指令碼屬性 GEMINI_API_KEY（可選 GEMINI_MODEL）
 // ============================================================
+const AI_PROVIDERS = {
+    gemini: { name: 'Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta', model: CONFIG.AI_MODEL_DEFAULT },
+    claude: { name: 'Claude', endpoint: 'https://api.anthropic.com/v1', model: 'claude-sonnet-5' },
+    openai: { name: 'OpenAI 相容', endpoint: 'https://api.openai.com/v1', model: '' }
+};
+
+function aiConfigKey_(userId) {
+    return 'AI_CFG:' + userId;
+}
+
+function readAiConfig_(userId) {
+    try {
+        return JSON.parse(PropertiesService.getScriptProperties().getProperty(aiConfigKey_(userId)) || 'null');
+    } catch (e) {
+        return null;
+    }
+}
+
+// 實際要使用的設定：自己的 → 系統共用 Gemini → 沒有
+function resolveAiConfig_(ctx) {
+    const own = readAiConfig_(ctx.userId);
+    if (own && own.apiKey) {
+        const def = AI_PROVIDERS[own.provider] || AI_PROVIDERS.gemini;
+        return {
+            source: 'user', provider: own.provider, apiKey: own.apiKey,
+            model: own.model || def.model, endpoint: own.endpoint || def.endpoint
+        };
+    }
+
+    const props = PropertiesService.getScriptProperties();
+    const key = props.getProperty('GEMINI_API_KEY');
+    if (key) {
+        return {
+            source: 'system', provider: 'gemini', apiKey: key,
+            model: props.getProperty('GEMINI_MODEL') || CONFIG.AI_MODEL_DEFAULT, endpoint: AI_PROVIDERS.gemini.endpoint
+        };
+    }
+
+    return null;
+}
+
+function publicAiConfig_(ctx) {
+    const own = readAiConfig_(ctx.userId) || {};
+    const use = resolveAiConfig_(ctx);
+    return {
+        provider: own.provider || 'gemini',
+        model: own.model || '',
+        endpoint: own.endpoint || '',
+        hasKey: !!own.apiKey,
+        keyHint: own.apiKey ? '••••' + String(own.apiKey).slice(-4) : '',
+        using: use ? { source: use.source, provider: use.provider, name: AI_PROVIDERS[use.provider].name, model: use.model } : null,
+        providers: AI_PROVIDERS
+    };
+}
+
+function getAiConfig_(req, ctx) {
+    return publicAiConfig_(ctx);
+}
+
+// data：{ provider, apiKey（留空 = 保留原本的）, model, endpoint } 或 { clear: true }
+function setAiConfig_(req, ctx) {
+    const props = PropertiesService.getScriptProperties();
+    const k = aiConfigKey_(ctx.userId);
+
+    if (req.clear) {
+        props.deleteProperty(k);
+        return publicAiConfig_(ctx);
+    }
+
+    const provider = String(req.provider || '');
+    if (!AI_PROVIDERS[provider]) fail_('不支援的 AI 服務：' + provider);
+
+    const old = readAiConfig_(ctx.userId) || {};
+    const apiKey = String(req.apiKey || '').trim() || (old.provider === provider ? old.apiKey : '');
+    const model = String(req.model || '').trim().slice(0, 100);
+    let endpoint = String(req.endpoint || '').trim().replace(/\/+$/, '').slice(0, 300);
+
+    if (!apiKey) fail_('請輸入 API Key');
+    if (apiKey.length > 300 || /\s/.test(apiKey)) fail_('API Key 格式不正確');
+    if (endpoint && !/^https:\/\/[^\s\/]+/.test(endpoint)) fail_('Endpoint 必須是 https:// 開頭的網址');
+    if (endpoint === AI_PROVIDERS[provider].endpoint) endpoint = '';
+    if (!model && !AI_PROVIDERS[provider].model) fail_('請輸入 Model 名稱');
+    if (model && !/^[\w.:\/@-]+$/.test(model)) fail_('Model 名稱格式不正確');
+
+    props.setProperty(k, JSON.stringify({ provider, apiKey, model, endpoint, updatedAt: now_() }));
+    return publicAiConfig_(ctx);
+}
+
+// 用目前設定送一句話，確認金鑰、模型、網址都正確
+function testAiConfig_(req, ctx) {
+    const cfg = resolveAiConfig_(ctx);
+    const reply = callAI_(ctx, '你是連線測試程式，只回覆「OK」。', [{ role: 'user', text: '連線測試，請回覆 OK' }]);
+    return { reply: String(reply).slice(0, 200), name: AI_PROVIDERS[cfg.provider].name, model: cfg.model, source: cfg.source };
+}
+
 function aiChat_(req, ctx) {
-    const contents = (req.messages || [])
+    const messages = (req.messages || [])
         .slice(-20)
-        .map(m => ({
-            role: m.role === 'user' ? 'user' : 'model',
-            parts: [{ text: String(m.text || '').slice(0, 5000) }]
-        }))
-        .filter(m => m.parts[0].text);
+        .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: String(m.text || '').slice(0, 5000) }))
+        .filter(m => m.text);
 
-    if (!contents.length) fail_('請輸入訊息');
+    if (!messages.length) fail_('請輸入訊息');
 
-    return callGemini_('你是「' + CONFIG.APP_NAME + '」的智能助理，使用繁體中文回答，回答要簡潔實用。', contents);
+    return callAI_(ctx, '你是「' + CONFIG.APP_NAME + '」的智能助理，使用繁體中文回答，回答要簡潔實用。', messages);
 }
 
 // AI 文案：前端組好需求，伺服器加上品牌設定後呼叫 Gemini
@@ -1854,38 +1951,81 @@ function aiGenerate_(req, ctx) {
         String(req.system || '').slice(0, 2000)
     ].join('\n');
 
-    return callGemini_(system, [{ role: 'user', parts: [{ text: prompt }] }]);
+    return callAI_(ctx, system, [{ role: 'user', text: prompt }]);
 }
 
-function callGemini_(system, contents) {
-    const props = PropertiesService.getScriptProperties();
-    const key = props.getProperty('GEMINI_API_KEY');
+// messages：[{ role: 'user' | 'assistant', text }]
+function callAI_(ctx, system, messages) {
+    const cfg = resolveAiConfig_(ctx);
 
-    if (!key) fail_('尚未設定 GEMINI_API_KEY（Apps Script 專案設定 → 指令碼屬性）');
+    if (!cfg) fail_('尚未設定 AI：請到「帳號設定 → AI 設定」輸入自己的 API Key');
 
-    const model = props.getProperty('GEMINI_MODEL') || CONFIG.AI_MODEL_DEFAULT;
+    // 對話要由使用者開頭、使用者與 AI 交替（Claude 規定）；相鄰同角色合併
+    const msgs = [];
+    messages.forEach(m => {
+        const last = msgs[msgs.length - 1];
+        if (!msgs.length && m.role !== 'user') return;
+        if (last && last.role === m.role) last.text += '\n\n' + m.text;
+        else msgs.push({ role: m.role, text: m.text });
+    });
+    if (!msgs.length) fail_('請輸入訊息');
 
-    const res = UrlFetchApp.fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',
-        {
+    const base = cfg.endpoint.replace(/\/+$/, '');
+    let url, headers, payload, pick;
+
+    if (cfg.provider === 'claude') {
+        url = base + '/messages';
+        headers = { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' };
+        payload = {
+            model: cfg.model,
+            max_tokens: 4096,
+            system,
+            messages: msgs.map(m => ({ role: m.role, content: m.text }))
+        };
+        pick = b => (b.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    } else if (cfg.provider === 'openai') {
+        url = base + '/chat/completions';
+        headers = { Authorization: 'Bearer ' + cfg.apiKey };
+        payload = {
+            model: cfg.model,
+            messages: [{ role: 'system', content: system }].concat(msgs.map(m => ({ role: m.role, content: m.text })))
+        };
+        pick = b => ((((b.choices || [])[0] || {}).message || {}).content) || '';
+    } else {
+        url = base + '/models/' + encodeURIComponent(cfg.model) + ':generateContent';
+        headers = { 'x-goog-api-key': cfg.apiKey };
+        payload = {
+            systemInstruction: { parts: [{ text: system }] },
+            contents: msgs.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }))
+        };
+        pick = b => ((((b.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
+    }
+
+    let res;
+    try {
+        res = UrlFetchApp.fetch(url, {
             method: 'post',
             contentType: 'application/json',
-            headers: { 'x-goog-api-key': key },
+            headers,
             muteHttpExceptions: true,
-            payload: JSON.stringify({
-                systemInstruction: { parts: [{ text: system }] },
-                contents
-            })
+            payload: JSON.stringify(payload)
         });
+    } catch (e) {
+        fail_('無法連線到 AI 服務，請確認 Endpoint 是否正確');
+    }
 
-    const body = JSON.parse(res.getContentText() || '{}');
+    let body = {};
+    try { body = JSON.parse(res.getContentText() || '{}'); } catch (e) { }
 
-    if (res.getResponseCode() !== 200)
-        fail_('AI 服務錯誤：' + ((body.error && body.error.message) || res.getResponseCode()));
+    const code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+        const err = body.error;
+        const msg = (err && (err.message || (typeof err === 'string' ? err : ''))) || ('HTTP ' + code);
+        const who = cfg.source === 'system' ? '系統共用' : '你的';
+        fail_('AI 服務錯誤（' + who + ' ' + AI_PROVIDERS[cfg.provider].name + '）：' + String(msg).split(cfg.apiKey).join('••••').slice(0, 300));
+    }
 
-    const parts = (((body.candidates || [])[0] || {}).content || {}).parts || [];
-
-    return parts.map(p => p.text || '').join('').trim() || '（AI 沒有回應內容）';
+    return String(pick(body) || '').trim() || '（AI 沒有回應內容）';
 }
 
 // ============================================================

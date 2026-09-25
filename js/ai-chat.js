@@ -1,8 +1,7 @@
-// AI視窗專用(ai-chat.js)：經由 Google Apps Script 呼叫 Gemini
+// AI視窗專用(ai-chat.js)：經由 Google Apps Script 呼叫 AI（使用者在帳號設定選的服務，或系統共用 Gemini）
 
 (function () {
     let typingDiv = null
-    let aiType = "gemini"
     // 對話紀錄存在 Google 試算表 AiChats（個人），手機電腦同步
     let history = []          // [{ id, role: "user" | "model", text }]
     let loaded = false
@@ -68,11 +67,9 @@ font-weight:600;
 </div>
 
 <div id="aiSetting" style="display:none;padding:10px;border-bottom:1px solid #ccc">
-    <select id="aiTypeSelect">
-        <option value="gemini">Gemini</option>
-    </select>
-    <div style="font-size:12px;color:#888;margin-top:6px">
-        需在 Apps Script 指令碼屬性設定 GEMINI_API_KEY
+    <div style="font-size:13px">
+        要改用自己的 API Key（Gemini / Claude / OpenAI 相容），請到
+        <a id="aiSettingLink" href="#">帳號設定 → AI 設定</a>
     </div>
 </div>
 
@@ -111,8 +108,7 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     /* ===== 載入歷史（第一次打開時才讀取） ===== */
     const body = document.getElementById("aiBody")
 
-    document.getElementById("aiTypeSelect").value = aiType
-    updateModeText()
+    document.getElementById("aiSettingLink").href = Auth.root + "page/account.html"
     /* ===== 事件 ===== */
     const input = document.getElementById("aiInput")
     input.dataset.placeholder = input.placeholder
@@ -126,10 +122,6 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     document.getElementById("aiSettingBtn").onclick = () => {
         const s = document.getElementById("aiSetting")
         s.style.display = s.style.display === "block" ? "none" : "block"
-    }
-    document.getElementById("aiTypeSelect").onchange = e => {
-        aiType = e.target.value
-        updateModeText()
     }
     document.getElementById("aiSend").onclick = send
     document.getElementById("aiInput").addEventListener("keydown", e => {
@@ -155,8 +147,10 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     function toggle() {
         chat.style.display === "flex" ? close() : open()
     }
+    let modeShown = false
     function open() {
         chat.style.display = "flex"
+        if (!modeShown) { modeShown = true; updateModeText() }
         loadHistory()
     }
 
@@ -247,9 +241,13 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     function updateModeText() {
         const el = document.getElementById("aiModeText")
 
-        const name = "Gemini"
+        el.textContent = ""
 
-        el.textContent = `(目前對話模式: ${name})`
+        // 顯示目前實際使用的 AI（自己的設定或系統共用）
+        API.call("getAiConfig", {}, { silent: true }).then(c => {
+            const u = c && c.using
+            el.textContent = u ? `(${u.source === "user" ? "" : "系統 "}${u.name}・${u.model})` : "(尚未設定 AI)"
+        }).catch(() => { })
     }
 
     async function send() {

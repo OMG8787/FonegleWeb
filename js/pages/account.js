@@ -74,6 +74,10 @@ Pages.Account = (() => {
 
         dom.pushNotify =
             document.getElementById("pushNotify");
+
+        // AI 設定
+        ["aiArea", "aiStatus", "aiProvider", "aiApiKey", "aiKeyHelp", "aiModel", "aiModelList", "aiEndpoint", "aiTestResult"]
+            .forEach(id => dom[id] = document.getElementById(id));
     }
 
     // ==================================================
@@ -96,6 +100,130 @@ Pages.Account = (() => {
 
         document.getElementById("btnSubmitProfile")
             ?.addEventListener("click", submitProfile);
+
+        // AI 設定
+        document.querySelector("#btnToggleAi")
+            ?.closest(".setting-header")
+            .addEventListener("click", toggleAiArea);
+
+        dom.aiProvider?.addEventListener("change", () => renderAiDefaults(true));
+        document.getElementById("btnShowAiKey")?.addEventListener("click", () => {
+            dom.aiApiKey.type = dom.aiApiKey.type === "password" ? "text" : "password";
+        });
+        document.getElementById("btnSaveAi")?.addEventListener("click", saveAi);
+        document.getElementById("btnTestAi")?.addEventListener("click", testAi);
+        document.getElementById("btnClearAi")?.addEventListener("click", clearAi);
+    }
+
+    // ==================================================
+    // AI 設定
+    // ==================================================
+    const AI_MODELS = {
+        gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite"],
+        claude: ["claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5-20251001"],
+        openai: []
+    };
+
+    let aiConfig = null;
+
+    async function toggleAiArea() {
+
+        toggleSection("btnToggleAi", dom.aiArea);
+
+        if (!aiConfig && !dom.aiArea.classList.contains("d-none")) {
+            try {
+                aiConfig = await API.call("getAiConfig", {}, { silent: true });
+                fillAi();
+            } catch (err) {
+                App.error(err, "讀取 AI 設定失敗");
+            }
+        }
+    }
+
+    function fillAi() {
+
+        const c = aiConfig;
+
+        dom.aiProvider.value = c.provider || "gemini";
+        dom.aiModel.value = c.model || "";
+        dom.aiEndpoint.value = c.endpoint || "";
+        dom.aiApiKey.value = "";
+
+        renderAiDefaults(false);
+
+        const u = c.using;
+        dom.aiStatus.innerHTML = !u
+            ? "⚠️ 目前<b>沒有可用的 AI</b>：請輸入自己的 API Key"
+            : u.source === "user"
+                ? `✅ 目前使用<b>你自己的</b> ${App.esc(u.name)}（${App.esc(u.model)}）`
+                : `ℹ️ 目前使用<b>系統共用</b>的 ${App.esc(u.name)}（${App.esc(u.model)}）；輸入自己的 API Key 後改用你的`;
+    }
+
+    // 依服務顯示預設 Model / Endpoint 提示
+    function renderAiDefaults(changed) {
+
+        const p = dom.aiProvider.value;
+        const def = aiConfig?.providers?.[p] || {};
+
+        dom.aiModelList.innerHTML = (AI_MODELS[p] || []).map(m => `<option value="${App.esc(m)}">`).join("");
+        dom.aiModel.placeholder = def.model ? `預設：${def.model}` : "必填，例如 gpt-4o-mini";
+        dom.aiEndpoint.placeholder = def.endpoint || "";
+
+        // 換服務時清掉不適用的 Model / Endpoint
+        if (changed) { dom.aiModel.value = ""; dom.aiEndpoint.value = ""; }
+
+        const same = aiConfig?.hasKey && aiConfig.provider === p;
+        dom.aiApiKey.placeholder = same ? `已儲存（${aiConfig.keyHint}），留空表示不變更` : "貼上你的 API Key";
+        dom.aiKeyHelp.textContent = p === "claude"
+            ? "到 console.anthropic.com 建立（需儲值，依用量計費）"
+            : p === "gemini"
+                ? "到 aistudio.google.com 用 Google 帳號免費建立"
+                : "OpenAI 或其他相容服務（例如自架、代理）的金鑰";
+    }
+
+    async function saveAi() {
+
+        try {
+            aiConfig = await API.call("setAiConfig", {
+                provider: dom.aiProvider.value,
+                apiKey: dom.aiApiKey.value.trim(),
+                model: dom.aiModel.value.trim(),
+                endpoint: dom.aiEndpoint.value.trim()
+            }, { loadingText: "儲存 AI 設定中…" });
+            fillAi();
+            dom.aiTestResult.textContent = "";
+            alert("✅ AI 設定已儲存");
+        } catch (err) {
+            App.error(err, "儲存失敗");
+        }
+    }
+
+    async function testAi() {
+
+        dom.aiTestResult.className = "small mt-2 text-muted";
+        dom.aiTestResult.textContent = "測試中…";
+
+        try {
+            const r = await API.call("testAiConfig", {}, { loadingText: "測試 AI 連線中…", noRetry: true });
+            dom.aiTestResult.className = "small mt-2 text-success";
+            dom.aiTestResult.textContent = `✅ 連線成功（${r.source === "user" ? "你的" : "系統共用"} ${r.name}・${r.model}）：${r.reply}`;
+        } catch (err) {
+            dom.aiTestResult.className = "small mt-2 text-danger";
+            dom.aiTestResult.textContent = "❌ " + (err?.message || "連線失敗");
+        }
+    }
+
+    async function clearAi() {
+
+        if (!confirm("確定清除你的 AI 設定？清除後會改用系統共用設定（如果有）。")) return;
+
+        try {
+            aiConfig = await API.call("setAiConfig", { clear: true }, { loadingText: "清除中…" });
+            fillAi();
+            dom.aiTestResult.textContent = "";
+        } catch (err) {
+            App.error(err, "清除失敗");
+        }
     }
 
     // ==================================================
@@ -140,6 +268,10 @@ Pages.Account = (() => {
             {
                 buttonId: "btnToggleProfile",
                 area: dom.profileArea
+            },
+            {
+                buttonId: "btnToggleAi",
+                area: dom.aiArea
             }
         ];
 
