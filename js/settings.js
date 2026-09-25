@@ -8,8 +8,8 @@ window.APP_SETTINGS = {
     // 對自己的瀏覽器暫時改用其他網址（例如測試新版部署）
     GAS_URL: "https://script.google.com/macros/s/AKfycbx2p0uqxtTvViYa7sSbdgc4Upo4RQvdxeSBa1orwd80FTlBjDoqUqa__Y2lV1d3l5ZHgg/exec",
 
-    // 自動登出時間（小時）
-    SESSION_HOURS: 10
+    // 自動登出時間（小時）：實際以 Apps Script Code.gs 的 CONFIG.SESSION_HOURS 為準，這裡只是備用值
+    SESSION_HOURS: 6
 };
 
 // 網站根目錄（自動由本檔位置推算，網站放在任何路徑下都能運作）

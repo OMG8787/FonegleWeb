@@ -77,28 +77,8 @@ const Layout = {
 
                 this.warningShown = true;
 
-                const keepLogin =
-                    confirm(
-                        "系統將於5分鐘內自動登出，是否繼續使用？"
-                    );
-
-                // 使用者要繼續
-                if (keepLogin) {
-
-                    Auth.refreshExpireTime();
-
-                    this.warningShown = false;
-
-                    return;
-                }
-
-                // 不繼續
-                else {
-
-                    Auth.logout();
-
-                    return;
-                }
+                // 登入時間固定，無法延長：提醒先存檔
+                alert("登入將於 5 分鐘內到期，請先儲存資料，到期後需重新登入");
             }
 
             // 超過5分鐘重置
@@ -225,6 +205,10 @@ const Layout = {
         <div id="erp-sidebar">
             ${html}
         </div>`;
+
+        let collapsed = false;
+        try { collapsed = localStorage.getItem("erp_sidebar_collapsed") === "1"; } catch { }
+        this.toggleSidebar(collapsed);
     },
 
     // toggleGroup(index) {
@@ -264,9 +248,19 @@ const Layout = {
             : Auth.root + page;
     },
 
-    toggleSidebar() {
-        document.getElementById("erp-sidebar")
-            .classList.toggle("collapsed");
+    // 收合 / 展開選單，主畫面同步放大縮小，並記住使用者的選擇
+    toggleSidebar(collapsed) {
+
+        const sidebar = document.getElementById("erp-sidebar");
+        if (!sidebar) return;
+
+        const on = sidebar.classList.toggle("collapsed", collapsed);
+
+        document.body.classList.toggle("sidebar-collapsed", on);
+
+        if (collapsed === undefined) {
+            try { localStorage.setItem("erp_sidebar_collapsed", on ? "1" : "0"); } catch { }
+        }
     },
 
     startClock() {

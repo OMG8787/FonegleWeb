@@ -117,8 +117,15 @@ body {
 #erp-main {
     margin-left: 260px;
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
     padding: 20px;
+    transition: margin-left .25s ease;
+}
+
+/* 選單收合時，主畫面跟著放大 */
+body.sidebar-collapsed #erp-main {
+    margin-left: 70px;
 }
 
 /* ================= FOOTER ================= */
