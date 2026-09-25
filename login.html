@@ -469,7 +469,8 @@
 
                 const data = await Auth.request("login", {
                     phone: loginPhone.value.trim(),
-                    password: loginPassword.value
+                    password: loginPassword.value,
+                    ...Auth.deviceInfo()
                 });
 
                 Auth.setSession(data);

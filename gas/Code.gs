@@ -18,7 +18,8 @@
 // 基本設定
 // ============================================================
 const CONFIG = {
-    SESSION_HOURS: 10,                 // 登入有效時間（有操作會自動延長）
+    SESSION_HOURS: 6,                  // 登入有效時間（自登入起算；期間內除非登出或從 Sessions 分頁刪除，否則不會被登出）
+    ACTIVE_UPDATE_MINUTES: 5,          // 最後活動時間的更新間隔（避免每次操作都寫入試算表）
     PASSWORD_SALT: 'ABC123',           // 與舊系統相同，舊資料的密碼雜湊可直接沿用
     RESET_PASSWORD: 'Fonegle',         // 忘記密碼時重設成的密碼
     ADMIN_PERMISSIONS: [3, 12, 13, 20, 21, 22, 23, 24, 25], // 第一位註冊者自動取得
@@ -46,7 +47,16 @@ const SCHEMA = {
             'IsMailActive:b IsPushMessage:b IsConverted:b OpenClaw OpenClawAgent ' +
             'CreatedAt UpdatedAt UpdateLineUserId'
     },
-    Sessions: { key: 'Token', internal: true, cols: 'Token LineUserId ExpireAt:n CreatedAt' },
+    // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
+    Sessions: {
+        key: 'Token', internal: true,
+        cols: 'Token LineUserId ExpireAt:n CreatedAt SessionId UserName Device LoginAt LastActiveAt ExpireAtText'
+    },
+    // 登入歷程：每次登入（含失敗）一列，登出 / 逾時 / 被移除時補上結束時間與使用分鐘數
+    LoginLog: {
+        key: 'SessionId', internal: true,
+        cols: 'SessionId LoginAt LineUserId UserName Account Result Device UserAgent LastActiveAt EndAt EndReason UsedMinutes:n'
+    },
     ID_UserRoles: { key: 'ID', cols: 'ID:n RoleName' },
     ID_Permission: { key: 'ID', cols: 'ID:n Permission' },
     Calendar: {
@@ -195,7 +205,8 @@ const TABLE_INFO = {
     ID_UserRoles: ['system', '角色代碼'],
     ID_Permission: ['system', '權限代碼'],
     Memos: ['system', '備忘錄（個人，可共享）'],
-    Sessions: ['system', '登入紀錄（系統自動維護，請勿修改）'],
+    Sessions: ['system', '目前登入中的裝置（刪除一列 = 強制該裝置登出，其他欄位請勿修改）'],
+    LoginLog: ['system', '登入歷程（帳號、裝置、登入 / 登出時間、使用分鐘數）'],
     MailLog: ['system', '寄信紀錄'],
     Calendar: ['calendar', '行事曆活動'],
     CalendarDays: ['calendar', '活動每一天的營業時段'],
@@ -234,6 +245,9 @@ const COLUMN_LABELS = {
     AccountManager: '負責專員', IsWeb: '可登入網站', IsMember: '會員', IsBlocked: '黑名單', IsMailActive: '可收發信',
     IsPushMessage: '接受推播', IsConverted: '曾交易', OpenClaw: 'OpenClaw 聊天室ID', OpenClawAgent: '代理人編號',
     RoleName: '角色名稱', Permission: '權限名稱', Token: '登入權杖', ExpireAt: '到期時間（毫秒）',
+    SessionId: '登入編號', UserName: '姓名', Device: '裝置', LoginAt: '登入時間', LastActiveAt: '最後活動時間',
+    ExpireAtText: '到期時間', Account: '登入帳號', Result: '結果', UserAgent: '瀏覽器資訊',
+    EndAt: '結束時間', EndReason: '結束原因', UsedMinutes: '使用分鐘數',
     Subject: '主旨', Recipients: '收件人', Attachments: '附件', SentBy: '寄件人',
     Title: '標題', Content: '內容', DueDate: '到期日', Priority: '優先順序', IsDone: '已完成',
     // 行事曆
@@ -408,7 +422,10 @@ const PRIVATE_ACTIONS = {
     setFavorite: setFavorite_,
     sendMail: sendMail_,
     aiChat: aiChat_,
-    aiGenerate: aiGenerate_
+    aiGenerate: aiGenerate_,
+    loginSessions: loginSessions_,
+    kickSession: kickSession_,
+    loginLog: loginLog_
 };
 
 function handle_(req) {
@@ -658,6 +675,8 @@ function arrangeSheets_() {
 function login_(req) {
     const phone = String(req.phone || '').trim();
     const password = String(req.password || '');
+    const device = clip_(req.device, 120);
+    const userAgent = clip_(req.userAgent, 300);
 
     if (!phone || !password)
         fail_('請輸入電話與密碼');
@@ -665,26 +684,49 @@ function login_(req) {
     return withLock_(() => {
         const users = tbl_('Users');
         const found = readRows_(users).find(x => String(x.obj.PhoneNumber).trim() === phone);
+        const u = found ? found.obj : {};
 
-        if (!found) fail_('帳號不存在');
+        // 失敗也記錄，方便發現有人亂試密碼
+        const reject = message => {
+            appendRow_(tbl_('LoginLog'), {
+                SessionId: newSessionId_(), LoginAt: now_(), LineUserId: u.LineUserId || '', UserName: u.Name || '',
+                Account: phone, Result: '失敗：' + message, Device: device, UserAgent: userAgent
+            });
+            fail_(message);
+        };
 
-        const u = found.obj;
-
-        if (!u.PassWord) fail_('帳號資料異常');
-        if (u.PassWord !== hash_(password)) fail_('密碼錯誤');
-        if (u.IsActive === false) fail_('帳號已停用');
+        if (!found) reject('帳號不存在');
+        if (!u.PassWord) reject('帳號資料異常');
+        if (u.PassWord !== hash_(password)) reject('密碼錯誤');
+        if (u.IsActive === false) reject('帳號已停用');
 
         purgeSessions_();
 
         const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
         const expireAt = Date.now() + CONFIG.SESSION_HOURS * 3600 * 1000;
+        const sessionId = newSessionId_();
+        const loginAt = now_();
 
         appendRow_(tbl_('Sessions'), {
             Token: token,
             LineUserId: u.LineUserId,
             ExpireAt: expireAt,
-            CreatedAt: now_()
+            CreatedAt: loginAt,
+            SessionId: sessionId,
+            UserName: u.Name,
+            Device: device,
+            LoginAt: loginAt,
+            LastActiveAt: loginAt,
+            ExpireAtText: fmtMs_(expireAt)
         });
+
+        appendRow_(tbl_('LoginLog'), {
+            SessionId: sessionId, LoginAt: loginAt, LineUserId: u.LineUserId, UserName: u.Name,
+            Account: phone, Result: '成功', Device: device, UserAgent: userAgent, LastActiveAt: loginAt
+        });
+
+        // Session 被從試算表刪除時，仍能找到對應的登入歷程
+        cachePut_('sid:' + token, sessionId, 21600);
 
         return {
             token,
@@ -785,34 +827,38 @@ function forgetPassword_(req) {
 function auth_(token) {
     if (!token) fail_('未登入', 'AUTH');
 
-    const sessionMs = CONFIG.SESSION_HOURS * 3600 * 1000;
-    let sess = cacheGet_('s:' + token);
+    // 每次都讀試算表（不快取），從 Sessions 分頁刪除後立即生效
+    const t = tbl_('Sessions');
+    const found = findRow_(t, token);
 
-    if (!sess) {
-        const found = findRow_(tbl_('Sessions'), token);
+    if (!found) {
+        const sid = cacheGet_('sid:' + token);
 
-        if (!found) fail_('登入已失效，請重新登入', 'AUTH');
+        if (sid) {
+            cacheRemove_(['sid:' + token]);
+            withLock_(() => endLoginLog_(sid, '管理員移除'));
+        }
 
-        sess = { userId: found.obj.LineUserId, exp: Number(found.obj.ExpireAt) || 0 };
+        fail_('登入已失效，請重新登入', 'AUTH');
     }
 
-    if (sess.exp < Date.now())
-        fail_('登入已逾時，請重新登入', 'AUTH');
+    const s = found.obj;
+    const exp = Number(s.ExpireAt) || 0;
 
-    // 滑動延長
-    if (sess.exp - Date.now() < sessionMs / 2) {
-        sess.exp = Date.now() + sessionMs;
-
+    if (exp < Date.now()) {
         withLock_(() => {
-            const t = tbl_('Sessions');
-            const found = findRow_(t, token);
-            if (found) writeRow_(t, found, { ExpireAt: sess.exp });
+            const again = findRow_(t, token);
+            if (again) {
+                endLoginLog_(again.obj.SessionId, '逾時');
+                t.sh.deleteRow(again.row);
+            }
         });
+        fail_('登入已超過 ' + CONFIG.SESSION_HOURS + ' 小時，請重新登入', 'AUTH');
     }
 
-    cachePut_('s:' + token, sess, 600);
+    touchSession_(t, token, s);
 
-    const user = getUser_(sess.userId);
+    const user = getUser_(s.LineUserId);
 
     if (!user) fail_('查無使用者，請重新登入', 'AUTH');
     if (user.IsActive === false) fail_('帳號已停用', 'AUTH');
@@ -821,8 +867,67 @@ function auth_(token) {
         token,
         userId: user.LineUserId,
         user,
-        perms: parsePerms_(user.RoleList)
+        perms: parsePerms_(user.RoleList),
+        expireAt: exp
     };
+}
+
+// 更新最後活動時間（每 ACTIVE_UPDATE_MINUTES 分鐘最多寫一次）
+function touchSession_(t, token, s) {
+    if (cacheGet_('act:' + token)) return;
+
+    cachePut_('act:' + token, 1, CONFIG.ACTIVE_UPDATE_MINUTES * 60);
+
+    try {
+        withLock_(() => {
+            const found = findRow_(t, token);
+            if (!found) return;
+
+            const now = now_();
+            const patch = { LastActiveAt: now };
+
+            // 舊版登入沒有登入編號，補上
+            if (!found.obj.SessionId) {
+                patch.SessionId = newSessionId_();
+                patch.LoginAt = found.obj.CreatedAt;
+                patch.ExpireAtText = fmtMs_(Number(found.obj.ExpireAt) || 0);
+                patch.UserName = (getUser_(found.obj.LineUserId) || {}).Name || '';
+            }
+
+            writeRow_(t, found, patch);
+
+            const sid = found.obj.SessionId;
+            const log = tbl_('LoginLog');
+            const row = findRow_(log, sid);
+
+            if (row && !row.obj.EndAt) writeRow_(log, row, { LastActiveAt: now });
+
+            cachePut_('sid:' + token, sid, 21600);
+        });
+    } catch (e) {
+        console.warn('更新最後活動時間失敗', e);
+    }
+}
+
+// 登入結束：寫入結束時間、原因與使用分鐘數（登出以登出時間計，其他以最後活動時間計）
+function endLoginLog_(sessionId, reason) {
+    if (!sessionId) return;
+
+    const log = tbl_('LoginLog');
+    const row = findRow_(log, sessionId);
+
+    if (!row || row.obj.EndAt) return;
+
+    const now = now_();
+    const last = reason === '登出' ? now : (row.obj.LastActiveAt || row.obj.LoginAt);
+    const minutes = Math.round((parseTime_(last) - parseTime_(row.obj.LoginAt)) / 60000);
+
+    writeRow_(log, row, {
+        EndAt: now,
+        EndReason: reason,
+        LastActiveAt: last,
+        UsedMinutes: isNaN(minutes) ? '' : Math.max(0, minutes)
+    });
 }
 
 function purgeSessions_() {
@@ -833,7 +938,69 @@ function purgeSessions_() {
         .filter(x => (Number(x.obj.ExpireAt) || 0) < now)
         .reverse()
         .slice(0, 100)
-        .forEach(x => t.sh.deleteRow(x.row));
+        .forEach(x => {
+            endLoginLog_(x.obj.SessionId, '逾時');
+            t.sh.deleteRow(x.row);
+        });
+}
+
+// ---------- 登入紀錄（系統管理權限） ----------
+function loginSessions_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const now = Date.now();
+
+    return readRows_(tbl_('Sessions'))
+        .filter(x => (Number(x.obj.ExpireAt) || 0) >= now)
+        .map(x => ({
+            SessionId: x.obj.SessionId,
+            LineUserId: x.obj.LineUserId,
+            UserName: x.obj.UserName || (getUser_(x.obj.LineUserId) || {}).Name || '',
+            Device: x.obj.Device,
+            LoginAt: x.obj.LoginAt || x.obj.CreatedAt,
+            LastActiveAt: x.obj.LastActiveAt,
+            ExpireAt: Number(x.obj.ExpireAt) || 0,
+            IsMe: x.obj.Token === ctx.token
+        }))
+        .sort((a, b) => String(b.LoginAt).localeCompare(String(a.LoginAt)));
+}
+
+function kickSession_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const sid = String(req.sessionId || '');
+    if (!sid) fail_('缺少登入編號');
+
+    return withLock_(() => {
+        const t = tbl_('Sessions');
+        const found = readRows_(t).find(x => String(x.obj.SessionId) === sid);
+
+        if (!found) fail_('此登入已經結束');
+        if (found.obj.Token === ctx.token) fail_('不能強制登出自己，請直接按登出');
+
+        endLoginLog_(sid, '強制登出（' + (ctx.user.Name || '') + '）');
+        t.sh.deleteRow(found.row);
+        cacheRemove_(['sid:' + found.obj.Token, 'act:' + found.obj.Token]);
+
+        return true;
+    });
+}
+
+function loginLog_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const from = String(req.from || '');
+    const to = req.to ? String(req.to) + ' 99' : '9999';
+
+    return readRows_(tbl_('LoginLog'))
+        .map(x => {
+            const o = x.obj;
+            delete o.UserAgent;
+            return o;
+        })
+        .filter(o => (!from || String(o.LoginAt) >= from) && String(o.LoginAt) <= to)
+        .sort((a, b) => String(b.LoginAt).localeCompare(String(a.LoginAt)))
+        .slice(0, 3000);
 }
 
 function getUser_(userId) {
@@ -856,19 +1023,20 @@ function uncacheUser_(userId) {
 }
 
 function me_(req, ctx) {
-    return { user: ctx.user, roleList: ctx.perms };
+    return { user: ctx.user, roleList: ctx.perms, expireAt: ctx.expireAt };
 }
 
 function logout_(req, ctx) {
     withLock_(() => {
         const t = tbl_('Sessions');
         const found = findRow_(t, ctx.token);
-        if (found) t.sh.deleteRow(found.row);
+        if (found) {
+            endLoginLog_(found.obj.SessionId, '登出');
+            t.sh.deleteRow(found.row);
+        }
     });
 
-    try {
-        CacheService.getScriptCache().remove('s:' + ctx.token);
-    } catch (e) { }
+    cacheRemove_(['sid:' + ctx.token, 'act:' + ctx.token]);
 
     return true;
 }
@@ -1611,6 +1779,32 @@ function hash_(text) {
     return bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
 }
 
+function newSessionId_() {
+    return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss') + '-' +
+        Utilities.getUuid().slice(0, 4).toUpperCase();
+}
+
+function fmtMs_(ms) {
+    return ms ? Utilities.formatDate(new Date(ms), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss') : '';
+}
+
+// 'yyyy-MM-dd HH:mm(:ss)' → 毫秒
+function parseTime_(text) {
+    const s = String(text || '').trim();
+    if (!s) return NaN;
+
+    try {
+        return Utilities.parseDate(s, Session.getScriptTimeZone(),
+            s.length > 16 ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd HH:mm').getTime();
+    } catch (e) {
+        return NaN;
+    }
+}
+
+function clip_(v, n) {
+    return String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+}
+
 function now_() {
     return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
 }
@@ -1655,6 +1849,12 @@ function cacheGet_(key) {
 function cachePut_(key, value, seconds) {
     try {
         CacheService.getScriptCache().put(key, JSON.stringify(value), seconds);
+    } catch (e) { }
+}
+
+function cacheRemove_(keys) {
+    try {
+        CacheService.getScriptCache().removeAll(keys);
     } catch (e) { }
 }
 

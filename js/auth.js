@@ -19,8 +19,46 @@ const Auth = {
         }
     },
 
+    // 伺服器沒回傳到期時間時的備用值（實際以 Apps Script 的 SESSION_HOURS 為準）
     get sessionMs() {
-        return (window.APP_SETTINGS?.SESSION_HOURS || 10) * 60 * 60 * 1000;
+        return (window.APP_SETTINGS?.SESSION_HOURS || 6) * 60 * 60 * 1000;
+    },
+
+    // =========================
+    // 裝置資訊（登入紀錄用），例如「手機 · iPhone · Safari」
+    // =========================
+    deviceInfo() {
+
+        const ua = navigator.userAgent || "";
+
+        const os =
+            /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iPad" :
+            /iPhone/.test(ua) ? "iPhone" :
+            /Android/.test(ua) ? "Android" :
+            /Windows/.test(ua) ? "Windows" :
+            /Mac OS X|Macintosh/.test(ua) ? "Mac" :
+            /CrOS/.test(ua) ? "ChromeOS" :
+            /Linux/.test(ua) ? "Linux" : "其他";
+
+        const browser =
+            /Line\//.test(ua) ? "LINE" :
+            /FBAN|FBAV/.test(ua) ? "Facebook" :
+            /Instagram/.test(ua) ? "Instagram" :
+            /Edg\//.test(ua) ? "Edge" :
+            /OPR\//.test(ua) ? "Opera" :
+            /SamsungBrowser/.test(ua) ? "Samsung" :
+            /Firefox|FxiOS/.test(ua) ? "Firefox" :
+            /Chrome|CriOS/.test(ua) ? "Chrome" :
+            /Safari/.test(ua) ? "Safari" : "其他";
+
+        const type =
+            os === "iPad" || (/Android/.test(ua) && !/Mobile/.test(ua)) ? "平板" :
+            /Mobi|iPhone|Android/.test(ua) ? "手機" : "電腦";
+
+        return {
+            device: `${type} · ${os} · ${browser} · ${screen.width}x${screen.height}`,
+            userAgent: ua
+        };
     },
 
     // =========================
@@ -82,12 +120,12 @@ const Auth = {
     // =========================
     // 寫入登入資訊
     // =========================
-    setSession({ userId, token, roleList }) {
+    setSession({ userId, token, roleList, expireAt }) {
 
+        this.setExpireTime(expireAt);
         this.setCookie(this.cookieName, userId);
         this.setCookie(this.tokenCookieName, token);
         this.setRoleList(roleList || []);
-        this.refreshExpireTime();
 
         sessionStorage.setItem(this.validatedKey, String(Date.now()));
     },
@@ -95,7 +133,6 @@ const Auth = {
     setUserId(userId) {
 
         this.setCookie(this.cookieName, userId);
-        this.refreshExpireTime();
     },
 
     setRoleList(roleList) {
@@ -106,10 +143,11 @@ const Auth = {
         );
     },
 
+    // cookie 與登入同時到期
     setCookie(name, value) {
 
         const expires =
-            new Date(Date.now() + this.sessionMs).toUTCString();
+            new Date(this.getExpireTime() || Date.now() + this.sessionMs).toUTCString();
 
         document.cookie =
             `${name}=${encodeURIComponent(value ?? "")}; expires=${expires}; path=${this.cookiePath}`;
@@ -128,11 +166,11 @@ const Auth = {
     },
 
     // =========================
-    // 更新操作時間
+    // 登入到期時間（自登入起算固定時數，不因操作延長）
     // =========================
-    refreshExpireTime() {
+    setExpireTime(expireAt) {
 
-        const expireTime = Date.now() + this.sessionMs;
+        const expireTime = Number(expireAt) || Date.now() + this.sessionMs;
 
         const expires = new Date(expireTime).toUTCString();
 
@@ -313,33 +351,6 @@ const Auth = {
         document.body.appendChild(mask);
     },
 
-    // =========================
-    // 監聽使用者操作（自動延長登入）
-    // =========================
-    startActivityListener() {
-
-        if (this._activityStarted) return;
-
-        this._activityStarted = true;
-
-        let lastRefresh = 0;
-
-        const refresh = () => {
-
-            const now = Date.now();
-
-            if (now - lastRefresh < 5 * 60 * 1000)
-                return;
-
-            lastRefresh = now;
-
-            this.refreshExpireTime();
-        };
-
-        ["mousemove", "click", "keydown", "scroll", "touchstart"]
-            .forEach(event => document.addEventListener(event, refresh));
-    },
-
     // 13 最高系統管理員擁有全部權限
     hasPermission(...ids) {
 
@@ -371,7 +382,6 @@ const Auth = {
         }
 
         const afterReady = () => {
-            this.startActivityListener();
             this.checkPagePermission();
         };
 
@@ -384,7 +394,8 @@ const Auth = {
 
                 const me = await this.request("me");
 
-                // 以伺服器上的權限為準
+                // 以伺服器上的權限與到期時間為準
+                if (me.expireAt) this.setExpireTime(me.expireAt);
                 this.setRoleList(me.roleList || []);
 
                 sessionStorage.setItem(this.validatedKey, String(Date.now()));
