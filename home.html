@@ -76,7 +76,16 @@
                             <h2 class="mb-1" id="greeting">歡迎回來</h2>
                             <p class="text-muted mb-0" id="todayText"></p>
                         </div>
-                        <a href="page/calendar.html" class="btn btn-outline-primary btn-sm">📅 開啟行事曆</a>
+                        <a href="page/calendar.html" id="btnOpenCalendar" class="btn btn-outline-primary btn-sm">📅 開啟行事曆</a>
+                    </div>
+                </div>
+
+                <!-- 系統通知：新帳號待審核（系統管理員） -->
+                <div id="approvalBanner" class="alert alert-warning d-none mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="fs-5">🔔</span>
+                        <span class="me-auto">有 <b id="approvalCount">0</b> 個新帳號等待審核：<span id="approvalNames"></span></span>
+                        <a href="page/access.html#pending" class="btn btn-sm btn-warning">前往審核</a>
                     </div>
                 </div>
 

@@ -105,6 +105,10 @@
         }
 
         .logo img {
+            cursor: default;
+            user-select: none;
+            -webkit-user-drag: none;
+            -webkit-tap-highlight-color: transparent;
             width: 280px;
             height: auto;
             display: block;
@@ -120,7 +124,7 @@
     <div class="login-card">
 
         <div class="logo">
-            <img src="img/logo.png" alt="Logo">
+            <img id="logoImg" src="img/logo.png" alt="Logo" draggable="false">
         </div>
 
         <div class="title">
@@ -142,14 +146,6 @@
             </button>
 
             <div class="text-center mt-3">
-
-                <a href="#" onclick="showPanel('register')">
-
-                    建立帳號
-
-                </a>
-
-                |
 
                 <a href="#" onclick="showPanel('forget')">
 
@@ -515,6 +511,8 @@
 
                 alert(message || "註冊成功");
 
+                ["rName", "rIdCard", "rPhone", "rEmail", "rPassword"].forEach(id => document.getElementById(id).value = "");
+
                 showPanel("login");
 
             } catch (ex) {
@@ -560,6 +558,22 @@
                 alert(ex.message || "系統錯誤");
             }
         }
+
+        // =========================
+        // 隱藏入口：3 秒內連續點 logo 5 次才顯示建立帳號
+        // =========================
+        (() => {
+            let clicks = [];
+            document.getElementById("logoImg").addEventListener("click", () => {
+                const now = Date.now();
+                clicks = clicks.filter(t => now - t < 3000).concat(now);
+                if (clicks.length >= 5) {
+                    clicks = [];
+                    showPanel("register");
+                    setMsg("建立帳號後需由系統管理員核准才能登入");
+                }
+            });
+        })();
 
         // 尚未設定連線：只提示，不提供設定入口
         if (!window.APP_SETTINGS.GAS_URL) {

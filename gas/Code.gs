@@ -45,7 +45,7 @@ const SCHEMA = {
         cols: 'ID:n LineUserId Name PhoneNumber Email IdCardNumber PassWord BirthdayYear:n BirthdayMonth:n BirthdayDay:n ' +
             'RoleId:n RoleList FavoriteFeaturesList AccountManager IsWeb:b IsMember:b IsBlocked:b IsActive:b ' +
             'IsMailActive:b IsPushMessage:b IsConverted:b OpenClaw OpenClawAgent ' +
-            'CreatedAt UpdatedAt UpdateLineUserId'
+            'CreatedAt UpdatedAt UpdateLineUserId ApprovalStatus ApprovedBy ApprovedAt'
     },
     // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
     Sessions: {
@@ -136,9 +136,10 @@ const SCHEMA = {
         money: 'Amount'
     },
     // 備忘錄（個人）
+    // Audience：系統通知的對象（例如 perm:3 = 有系統管理權限的人都看得到）；LinkType / LinkId：通知連到的資料
     Memos: {
         key: 'ID', seq: 'ID', owner: true,
-        cols: 'ID:n Title Content DueDate Priority IsDone:b IsShared:b CreatedBy CreatedAt UpdatedBy UpdatedAt'
+        cols: 'ID:n Title Content DueDate Priority IsDone:b IsShared:b CreatedBy CreatedAt UpdatedBy UpdatedAt Audience LinkType LinkId'
     },
     // AI 助理對話紀錄（個人）
     AiChats: {
@@ -224,7 +225,7 @@ const TABLE_INFO = {
     Users: ['system', '員工與會員帳號（密碼為雜湊，不可手動修改）'],
     ID_UserRoles: ['system', '角色代碼'],
     ID_Permission: ['system', '權限代碼'],
-    Memos: ['system', '備忘錄（個人，可共享）'],
+    Memos: ['system', '備忘錄（個人，可共享；系統通知例如新帳號申請也會出現在這裡）'],
     Sessions: ['system', '目前登入中的裝置（刪除一列 = 強制該裝置登出，其他欄位請勿修改）'],
     LoginLog: ['system', '登入歷程（帳號、裝置、登入 / 登出時間、使用分鐘數）'],
     MailLog: ['system', '寄信紀錄'],
@@ -273,6 +274,8 @@ const COLUMN_LABELS = {
     EndAt: '結束時間', EndReason: '結束原因', UsedMinutes: '使用分鐘數',
     Subject: '主旨', Recipients: '收件人', Attachments: '附件', SentBy: '寄件人',
     Title: '標題', Content: '內容', DueDate: '到期日', Priority: '優先順序', IsDone: '已完成',
+    Audience: '通知對象（perm:權限代碼）', LinkType: '通知類型', LinkId: '通知連結的資料',
+    ApprovalStatus: '審核狀態（待審核 / 已核准 / 已拒絕，空白 = 已核准）', ApprovedBy: '審核人', ApprovedAt: '審核時間',
     // 行事曆
     CalendarId: '行事曆活動編號', EventName: '活動名稱', StartEventDate: '開始時間', EndEventDate: '結束時間',
     EventAddress: '地址', CalendarType: '類型（1公開 2會議 3私人 4其他）', UserDB_ID: '私人活動代號', Line_ID: '建立人',
@@ -358,22 +361,22 @@ const PERMISSION_CODES = [
     { ID: 25, Permission: 'AI 行銷（文案發想）' }
 ];
 
-const CAL = [20, 10, 11], MARKET = [21, 10], PRODUCT = [22], SALES = [23], FINANCE = [24], AGENT = [6, 8, 9];
+const CAL = [20, 10, 11], MARKET = [21, 10], PRODUCT = [22], SALES = [23], FINANCE = [24], AI = [25], AGENT = [6, 8, 9];
 
 const TABLE_PERMS = {
-    Users: { read: [3, 23].concat(AGENT), write: [3] },
+    Users: { read: [3].concat(AGENT), write: [3] },
     ID_UserRoles: { read: 'all', write: [3] },
     ID_Permission: { read: 'all', write: [3] },
-    Calendar: { read: 'all', write: CAL },
-    CalendarDays: { read: 'all', write: CAL },
+    Calendar: { read: CAL.concat(MARKET, AI), write: CAL },
+    CalendarDays: { read: CAL.concat(MARKET, AI), write: CAL },
     Memos: { read: 'all', write: 'all' },
     AiDrafts: { read: [25], write: [25] },
     AiChats: { read: 'all', write: 'all' },
     StallRecords: { read: MARKET.concat(FINANCE), write: MARKET },
     MarketOrders: { read: MARKET.concat(FINANCE), write: MARKET },
-    CrawlerSources: { read: 'all', write: MARKET },
-    ID_Category: { read: 'all', write: PRODUCT },
-    Products: { read: 'all', write: PRODUCT },
+    CrawlerSources: { read: MARKET, write: MARKET },
+    ID_Category: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },
+    Products: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },
     Material: { read: PRODUCT, write: PRODUCT },
     Inventory: { read: PRODUCT, write: PRODUCT },
     ProductionLog: { read: PRODUCT, write: PRODUCT },
@@ -382,7 +385,7 @@ const TABLE_PERMS = {
     MaterialCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
     Formula: { read: PRODUCT, write: PRODUCT },
     FormulaDetail: { read: PRODUCT, write: PRODUCT },
-    Companies: { read: 'all', write: SALES.concat(FINANCE) },
+    Companies: { read: SALES.concat(FINANCE, PRODUCT), write: SALES.concat(FINANCE) },
     Orders: { read: SALES.concat(FINANCE), write: SALES },
     Shipment: { read: SALES, write: SALES },
     Receivable: { read: FINANCE, write: FINANCE },
@@ -456,7 +459,10 @@ const PRIVATE_ACTIONS = {
     aiGenerate: aiGenerate_,
     loginSessions: loginSessions_,
     kickSession: kickSession_,
-    loginLog: loginLog_
+    loginLog: loginLog_,
+    accessList: accessList_,
+    setUserAccess: setUserAccess_,
+    approveUser: approveUser_
 };
 
 function handle_(req) {
@@ -729,6 +735,8 @@ function login_(req) {
         if (!found) reject('帳號不存在');
         if (!u.PassWord) reject('帳號資料異常');
         if (u.PassWord !== hash_(password)) reject('密碼錯誤');
+        if (u.ApprovalStatus === '待審核') reject('帳號審核中，請等候系統管理員核准');
+        if (u.ApprovalStatus === '已拒絕') reject('帳號申請未通過，請聯絡系統管理員');
         if (u.IsActive === false) reject('帳號已停用');
 
         purgeSessions_();
@@ -806,7 +814,9 @@ function register_(req) {
             IsWeb: true,
             IsMember: true,
             IsBlocked: false,
-            IsActive: true,
+            // 第一位使用者直接成為管理員；其他人需要系統管理員核准
+            IsActive: isFirst,
+            ApprovalStatus: isFirst ? '已核准' : '待審核',
             IsMailActive: false,
             IsPushMessage: toBool_(d.IsPushMessage),
             IsConverted: false,
@@ -816,9 +826,26 @@ function register_(req) {
 
         appendRow_(users, obj);
 
-        return isFirst
-            ? '🎉 建立成功，歡迎加入！（第一位使用者已自動設為系統管理員）'
-            : '🎉 建立成功，歡迎加入！';
+        if (isFirst)
+            return '🎉 建立成功，歡迎加入！（第一位使用者已自動設為系統管理員）';
+
+        // 通知系統管理員（出現在首頁備忘錄）
+        const memos = tbl_('Memos');
+        appendRow_(memos, {
+            ID: nextSeq_(memos),
+            Title: '🆕 新帳號申請：' + name,
+            Content: '電話 ' + phone + '　Email ' + email + '，請到「帳號審核與權限」核准並設定權限',
+            Priority: '高',
+            IsDone: false,
+            IsShared: false,
+            Audience: 'perm:' + PERM.SYSTEM,
+            LinkType: 'approveUser',
+            LinkId: obj.LineUserId,
+            CreatedBy: 'SYSTEM',
+            CreatedAt: now_()
+        });
+
+        return '📨 申請已送出，系統管理員核准後即可登入';
     });
 }
 
@@ -1085,14 +1112,20 @@ function list_(req, ctx) {
         .filter(o => matchWhere_(o, where));
 }
 
-// 個人資料：本人、共享或最高管理員才看得到
+// 個人資料：本人、共享、通知對象或最高管理員才看得到
 function canSeeRow_(t, o, ctx) {
-    return !t.def.owner || isAdmin_(ctx) || o.CreatedBy === ctx.userId || o.IsShared === true;
+    return !t.def.owner || isAdmin_(ctx) || o.CreatedBy === ctx.userId || o.IsShared === true || isAudience_(o, ctx);
 }
 
 function assertOwner_(t, o, ctx) {
-    if (t.def.owner && !isAdmin_(ctx) && o.CreatedBy !== ctx.userId)
+    if (t.def.owner && !isAdmin_(ctx) && o.CreatedBy !== ctx.userId && !isAudience_(o, ctx))
         fail_('🔐 只能修改或刪除自己建立的資料');
+}
+
+// 系統通知：Audience = 'perm:3' → 有該權限的人
+function isAudience_(o, ctx) {
+    const m = String(o.Audience || '').match(/^perm:(\d+)$/);
+    return !!m && hasPerm_(ctx, [Number(m[1])]);
 }
 
 function getMany_(req, ctx) {
@@ -1285,6 +1318,11 @@ const HOOKS = {
 
             obj.PassWord = obj.PassWord ? hash_(String(obj.PassWord)) : '';
 
+            assertRoleChange_(ctx, '', obj.RoleList);
+
+            // 管理員新增的帳號直接核准
+            if (!obj.ApprovalStatus) obj.ApprovalStatus = '已核准';
+
             const defaults = {
                 RoleId: 1, RoleList: '', FavoriteFeaturesList: '', IsWeb: true, IsMember: true, IsBlocked: false,
                 IsActive: true, IsMailActive: false, IsPushMessage: false, IsConverted: false
@@ -1296,6 +1334,8 @@ const HOOKS = {
         },
 
         beforeUpdate(patch, old, ctx) {
+            if (patch.RoleList !== undefined) assertRoleChange_(ctx, old.RoleList, patch.RoleList, old.LineUserId);
+
             if (patch.PassWord)
                 patch.PassWord = hash_(String(patch.PassWord));
             else
@@ -1310,6 +1350,133 @@ const HOOKS = {
         }
     }
 };
+
+// 權限變更檢查：
+//   - 只有最高管理員（13）可以授予或移除「最高管理員」
+//   - 不能移除自己的系統管理 / 最高管理員權限（避免把自己鎖在外面）
+function assertRoleChange_(ctx, oldList, newList, targetUserId) {
+    const before = parsePerms_(oldList);
+    const after = parsePerms_(newList);
+    const changed13 = (before.indexOf(PERM.ADMIN) >= 0) !== (after.indexOf(PERM.ADMIN) >= 0);
+
+    if (changed13 && !isAdmin_(ctx))
+        fail_('🔐 只有最高系統管理員可以授予或移除「最高系統管理員」權限');
+
+    if (ctx && targetUserId === ctx.userId) {
+        const lost = [PERM.ADMIN, PERM.SYSTEM].filter(p => before.indexOf(p) >= 0 && after.indexOf(p) < 0);
+        if (lost.length) fail_('不能移除自己的管理權限，請由其他管理員操作');
+    }
+}
+
+// ============================================================
+// 帳號審核與權限（系統管理權限）
+// ============================================================
+function accessList_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    return readRows_(tbl_('Users')).map(x => {
+        const u = x.obj;
+        return {
+            LineUserId: u.LineUserId,
+            ID: u.ID,
+            Name: u.Name,
+            PhoneNumber: u.PhoneNumber,
+            Email: u.Email,
+            RoleList: parsePerms_(u.RoleList),
+            IsActive: u.IsActive !== false,
+            ApprovalStatus: u.ApprovalStatus || '已核准',
+            ApprovedBy: u.ApprovedBy,
+            ApprovedAt: u.ApprovedAt,
+            CreatedAt: u.CreatedAt,
+            IsMe: u.LineUserId === ctx.userId
+        };
+    });
+}
+
+// changes: [{ userId, roleList: [..], isActive }]
+function setUserAccess_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const changes = req.changes || [];
+    if (!changes.length) fail_('沒有要儲存的變更');
+
+    return withLock_(() => {
+        const t = tbl_('Users');
+        let count = 0;
+
+        changes.forEach(c => {
+            const found = findRow_(t, c.userId);
+            if (!found) fail_('找不到帳號：' + c.userId);
+
+            const patch = {};
+
+            if (Array.isArray(c.roleList)) {
+                const list = c.roleList.map(Number).filter(n => !isNaN(n) && n > 0);
+                const text = list.filter((n, i) => list.indexOf(n) === i).sort((a, b) => a - b).join('|');
+                assertRoleChange_(ctx, found.obj.RoleList, text, found.obj.LineUserId);
+                patch.RoleList = text;
+            }
+
+            if (typeof c.isActive === 'boolean') {
+                if (!c.isActive && found.obj.LineUserId === ctx.userId) fail_('不能停用自己的帳號');
+                patch.IsActive = c.isActive;
+            }
+
+            patch.UpdatedAt = now_();
+            patch.UpdateLineUserId = ctx.userId;
+
+            writeRow_(t, found, patch);
+            uncacheUser_(found.obj.LineUserId);
+            count++;
+        });
+
+        return count;
+    });
+}
+
+// 核准 / 拒絕新帳號：{ userId, approve: true/false, roleList: [...] }
+function approveUser_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    return withLock_(() => {
+        const t = tbl_('Users');
+        const found = findRow_(t, req.userId);
+
+        if (!found) fail_('找不到帳號');
+
+        const approve = req.approve !== false;
+        const patch = {
+            ApprovalStatus: approve ? '已核准' : '已拒絕',
+            IsActive: approve,
+            ApprovedBy: ctx.user.Name || ctx.userId,
+            ApprovedAt: now_(),
+            UpdatedAt: now_(),
+            UpdateLineUserId: ctx.userId
+        };
+
+        if (approve && Array.isArray(req.roleList)) {
+            const text = req.roleList.map(Number).filter(n => n > 0).join('|');
+            assertRoleChange_(ctx, found.obj.RoleList, text, found.obj.LineUserId);
+            patch.RoleList = text;
+        }
+
+        writeRow_(t, found, patch);
+        uncacheUser_(found.obj.LineUserId);
+
+        // 相關通知標記為已完成
+        const memos = tbl_('Memos');
+        readRows_(memos)
+            .filter(x => x.obj.LinkType === 'approveUser' && x.obj.LinkId === found.obj.LineUserId && x.obj.IsDone !== true)
+            .forEach(x => writeRow_(memos, x, {
+                IsDone: true,
+                Content: (x.obj.Content || '') + '\n→ ' + patch.ApprovalStatus + '（' + patch.ApprovedBy + '，' + patch.ApprovedAt + '）',
+                UpdatedAt: now_(),
+                UpdatedBy: ctx.userId
+            }));
+
+        return patch.ApprovalStatus;
+    });
+}
 
 function assertPhoneUnique_(phone, exceptUserId) {
     phone = String(phone || '').trim();

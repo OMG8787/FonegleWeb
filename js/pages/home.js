@@ -18,8 +18,10 @@ Pages.Home = (() => {
         [
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
             "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mIncome",
-            "mExpense", "mNet", "mDetail"
+            "mExpense", "mNet", "mDetail", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
+
+        if (!Auth.hasPermission(20, 10, 11)) dom.btnOpenCalendar.classList.add("d-none");
 
         const now = new Date();
         dom.todayText.textContent = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}（${WEEK[now.getDay()]}）`;
@@ -41,10 +43,14 @@ Pages.Home = (() => {
 
             if (me?.user?.Name) dom.greeting.textContent = `${me.user.Name}，歡迎回來 👋`;
 
-            renderReminders(data.Calendar || [], data.CalendarDays || []);
+            if (data.Calendar === null)
+                dom.reminderList.innerHTML = `<div class="text-muted small">🔒 沒有行事曆權限</div>`;
+            else
+                renderReminders(data.Calendar || [], data.CalendarDays || []);
 
             memos = data.Memos || [];
             renderMemos();
+            renderApprovalBanner();
 
             if (finance && data.Receivable) {
                 dom.financeRow.classList.remove("d-none");
@@ -145,7 +151,8 @@ Pages.Home = (() => {
         dom.memoList.innerHTML = list.map(m => {
 
             const due = App.toDateInput(m.DueDate);
-            const mine = m.CreatedBy === me;
+            const notice = !!m.Audience;   // 系統通知（例如新帳號申請）
+            const mine = m.CreatedBy === me || notice;
             let dueBadge = "";
 
             if (due && m.IsDone !== true) {
@@ -159,11 +166,23 @@ Pages.Home = (() => {
     <input class="form-check-input mt-1" type="checkbox" data-done="${m.ID}" ${m.IsDone === true ? "checked" : ""} ${mine ? "" : "disabled"}>
     <div>
         <div class="memo-title">${m.Priority === "高" ? "❗ " : ""}${esc(m.Title || "")}</div>
-        <div class="small">${dueBadge} ${m.IsShared ? `<span class="badge bg-info">${mine ? "已共享" : "同事共享"}</span>` : ""}</div>
+        ${notice && m.Content ? `<div class="small text-muted" style="white-space:pre-line">${esc(m.Content)}</div>` : ""}
+        <div class="small">${notice ? `<span class="badge bg-warning text-dark">系統通知</span>` : ""} ${dueBadge} ${m.IsShared ? `<span class="badge bg-info">${m.CreatedBy === me ? "已共享" : "同事共享"}</span>` : ""}
+        ${m.LinkType === "approveUser" && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往審核</a>` : ""}</div>
     </div>
     ${mine ? `<div class="memo-actions"><button class="btn btn-sm btn-link text-danger p-0" data-delete="${m.ID}">刪除</button></div>` : ""}
 </div>`;
         }).join("") || `<div class="text-muted small">沒有待辦事項</div>`;
+    }
+
+    // 新帳號待審核提醒（只有系統管理員會收到這類通知）
+    function renderApprovalBanner() {
+
+        const pending = memos.filter(m => m.LinkType === "approveUser" && m.IsDone !== true);
+
+        dom.approvalBanner.classList.toggle("d-none", !pending.length);
+        dom.approvalCount.textContent = pending.length;
+        dom.approvalNames.textContent = pending.map(m => String(m.Title || "").replace(/^.*新帳號申請：/, "")).join("、");
     }
 
     async function addMemo() {
@@ -212,6 +231,7 @@ Pages.Home = (() => {
                 await API.update("Memos", id, { IsDone: done.checked });
                 m.IsDone = done.checked;
                 renderMemos();
+                renderApprovalBanner();
             }
 
             if (del && e.type === "click") {
@@ -220,6 +240,7 @@ Pages.Home = (() => {
                 await API.remove("Memos", id);
                 memos = memos.filter(x => x.ID !== id);
                 renderMemos();
+                renderApprovalBanner();
             }
 
         } catch (err) {

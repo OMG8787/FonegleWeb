@@ -80,6 +80,7 @@ const Config = {
             icon: "🛠️",
             items: [
                 { id: 2, Permission: [], name: "⚙️ 帳號設定", page: "page/account.html" },
+                { id: 63, Permission: [3], name: "👥 帳號審核與權限", page: "page/access.html" },
                 { id: 20, Permission: [3], name: "👨‍👩‍👧‍👦 員工及會員", page: "page/member.html" },
                 { id: 60, Permission: [3], name: "🔐 權限管理", page: "page/permission.html" },
                 { id: 61, Permission: [3], name: "✉️ 郵件寄送", page: "page/mail.html" },
