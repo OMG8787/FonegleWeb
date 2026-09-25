@@ -794,7 +794,7 @@ ${detail}
 
         document.getElementById("btnRetryUpload").addEventListener("click", async () => {
             try {
-                const n = await MarketStore.syncPending();
+                const n = await MarketStore.syncPending({});
                 alert(`☁️ 已上傳 ${n} 筆`);
                 orders = (await MarketStore.load()).orders;
             } catch (err) {

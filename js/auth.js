@@ -1,3 +1,111 @@
+// =========================================================
+// 操作遮罩：送出請求時擋住畫面，避免重複點擊
+//   - 一送出就立即擋住點擊與 Enter（透明）
+//   - 超過 200ms 才顯示轉圈與文字，快速操作不會閃爍
+//   - 多個請求同時進行時，全部完成才關閉
+// =========================================================
+const Loading = {
+
+    count: 0,
+    showTimer: null,
+    hideTimer: null,
+
+    // 依操作類型顯示的文字
+    texts: {
+        login: "登入中…", register: "建立帳號中…", forgetPassword: "處理中…",
+        list: "載入中…", getMany: "載入中…", get: "載入中…", me: "載入中…",
+        loginSessions: "載入中…", loginLog: "載入中…",
+        insert: "儲存中…", update: "儲存中…", batch: "儲存中…",
+        updateProfile: "儲存中…", changePassword: "儲存中…", setFavorite: "儲存中…",
+        remove: "刪除中…", removeWhere: "刪除中…", kickSession: "處理中…",
+        sendMail: "寄送中…", aiChat: "AI 回覆中…", aiGenerate: "AI 產生中，約需 5～20 秒…"
+    },
+
+    el() {
+
+        let mask = document.getElementById("loadingMask");
+        if (mask) return mask;
+
+        const style = document.createElement("style");
+        style.textContent = `
+            #loadingMask{position:fixed;inset:0;z-index:2147483000;display:none;align-items:center;justify-content:center;
+                background:transparent;cursor:progress;transition:background .15s}
+            #loadingMask.active{display:flex}
+            #loadingMask.visible{background:rgba(17,24,39,.35);backdrop-filter:blur(1px)}
+            #loadingMask .loading-box{display:none;align-items:center;gap:12px;background:#fff;color:#1f2937;
+                padding:16px 24px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:16px;font-weight:600;max-width:80vw}
+            #loadingMask.visible .loading-box{display:flex}
+            #loadingMask .loading-spin{width:26px;height:26px;border:3px solid #e5e7eb;border-top-color:#d63384;border-radius:50%;
+                animation:loadingSpin .8s linear infinite;flex-shrink:0}
+            @keyframes loadingSpin{to{transform:rotate(360deg)}}`;
+        document.head.appendChild(style);
+
+        mask = document.createElement("div");
+        mask.id = "loadingMask";
+        mask.setAttribute("role", "status");
+        mask.setAttribute("aria-live", "polite");
+        mask.innerHTML = `<div class="loading-box"><div class="loading-spin"></div><div class="loading-text">處理中…</div></div>`;
+        document.body.appendChild(mask);
+
+        return mask;
+    },
+
+    show(text) {
+
+        if (!document.body) return;
+
+        this.count++;
+
+        clearTimeout(this.hideTimer);
+
+        const mask = this.el();
+        mask.querySelector(".loading-text").textContent = text || "處理中…";
+        mask.classList.add("active");
+
+        // 送出請求時移開焦點，避免 Enter 再次送出
+        if (document.activeElement && document.activeElement !== document.body)
+            document.activeElement.blur();
+
+        if (!mask.classList.contains("visible") && !this.showTimer) {
+            this.showTimer = setTimeout(() => {
+                this.showTimer = null;
+                if (this.count > 0) mask.classList.add("visible");
+            }, 200);
+        }
+    },
+
+    hide() {
+
+        if (this.count <= 0) return;
+
+        this.count--;
+
+        if (this.count > 0) return;
+
+        // 稍等一下再關，連續請求（儲存 → 重新載入）不會閃爍
+        clearTimeout(this.hideTimer);
+        this.hideTimer = setTimeout(() => {
+            if (this.count > 0) return;
+            clearTimeout(this.showTimer);
+            this.showTimer = null;
+            const mask = document.getElementById("loadingMask");
+            if (mask) mask.classList.remove("active", "visible");
+        }, 80);
+    },
+
+    get busy() {
+        return this.count > 0;
+    }
+};
+
+// 遮罩期間擋住鍵盤送出（Enter / 空白鍵）
+document.addEventListener("keydown", e => {
+    if (Loading.busy && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}, true);
+
 const Auth = {
 
     cookieName: "erp_user_id",
@@ -64,15 +172,35 @@ const Auth = {
     // =========================
     // Google Apps Script 傳輸層
     // =========================
-    async request(action, payload = {}) {
+    // opts.silent：背景動作（自動補傳、驗證登入等）不顯示遮罩
+    // opts.loadingText：自訂遮罩文字
+    async request(action, payload = {}, opts = {}) {
 
         const url = window.APP_SETTINGS?.GAS_URL;
 
         if (!url) {
-            throw new Error("尚未設定 Google 試算表連線，請到登入頁的「連線設定」貼上 Apps Script 網址");
+            throw new Error("尚未設定 Google 試算表連線，請聯絡系統管理員");
         }
 
+        const masked = !opts.silent;
+
+        if (masked) Loading.show(opts.loadingText || Loading.texts[action]);
+
+        try {
+            return await this.send(url, action, payload);
+        } finally {
+            if (masked) Loading.hide();
+        }
+    },
+
+    async send(url, action, payload) {
+
         let res;
+
+        // 避免網路卡住時遮罩永遠不消失（AI 需要較久）
+        const timeoutMs = /^ai/.test(action) || action === "sendMail" ? 120000 : 60000;
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
 
         try {
 
@@ -86,12 +214,19 @@ const Auth = {
                     ...payload,
                     action,
                     token: this.getToken()
-                })
+                }),
+                signal: ctrl?.signal
             });
 
         } catch (err) {
 
+            if (err?.name === "AbortError")
+                throw new Error("連線逾時，請稍後再試（資料可能已送出，請重新整理確認）");
+
             throw new Error("無法連線到 Google 試算表服務，請檢查網路");
+
+        } finally {
+            clearTimeout(timer);
         }
 
         if (!res.ok) {
@@ -392,7 +527,7 @@ const Auth = {
 
             try {
 
-                const me = await this.request("me");
+                const me = await this.request("me", {}, { silent: true });
 
                 // 以伺服器上的權限與到期時間為準
                 if (me.expireAt) this.setExpireTime(me.expireAt);
