@@ -309,11 +309,8 @@ ${detail}
 
         orders.push(order);
 
-        // 寫入 Google 試算表（斷線時先暫存本機）
-        MarketStore.add(order).then(ok => {
-            if (!ok)
-                alert("⚠️ 目前無法連線到 Google 試算表，這筆訂單暫存為「待上傳」，恢復網路後會自動上傳");
-        }).catch(err => App.error(err, "訂單上傳失敗"));
+        // 先存本機（立即完成），滿 5 筆在背景一次上傳 Google 試算表
+        MarketStore.add(order);
 
         // ⭐ 清空整單（但下一筆重新預設）
         currentItems = [];
@@ -762,8 +759,6 @@ ${detail}
 
             orders = result.orders;
 
-            if (result.uploaded)
-                alert(`☁️ 已補上傳 ${result.uploaded} 筆斷線時的訂單`);
 
         } catch (err) {
 
@@ -771,34 +766,40 @@ ${detail}
         }
     }
 
-    // 斷線待上傳提示（有待上傳訂單時才顯示）
+    // 本機暫存提示（有待上傳訂單時才顯示；上傳失敗時變成黃色警告）
     function setupPendingBanner() {
 
         const banner = document.createElement("div");
         banner.id = "pendingBanner";
-        banner.className = "alert alert-warning d-none d-flex justify-content-between align-items-center";
-        banner.innerHTML = `<span id="pendingText"></span>
-            <button class="btn btn-sm btn-warning" id="btnRetryUpload">立即上傳</button>`;
+        banner.className = "d-none";
+        banner.innerHTML = `<div class="alert py-2 small d-flex justify-content-between align-items-center gap-2 mb-2">
+            <span id="pendingText"></span>
+            <button class="btn btn-sm btn-outline-secondary text-nowrap" id="btnRetryUpload">立即上傳</button>
+        </div>`;
 
         const main = document.querySelector("#erp-main .container-fluid") || document.body;
         main.prepend(banner);
 
-        const update = n => {
+        const update = (n, st = {}) => {
             banner.classList.toggle("d-none", !n);
-            document.getElementById("pendingText").textContent =
-                `⚠️ 有 ${n} 筆訂單因斷線尚未上傳到 Google 試算表，恢復網路後會自動上傳`;
+            banner.firstElementChild.classList.toggle("alert-warning", !!st.failed);
+            banner.firstElementChild.classList.toggle("alert-light", !st.failed);
+            document.getElementById("pendingText").textContent = st.syncing
+                ? `☁️ 正在背景上傳 ${n} 筆訂單…（可繼續點餐）`
+                : st.failed
+                    ? `⚠️ ${n} 筆訂單暫存在本機，目前無法連線，恢復網路後會自動上傳（請勿清除瀏覽器資料）`
+                    : `📱 ${n} 筆訂單暫存在本機，滿 ${MarketStore.BATCH_SIZE} 筆或 3 分鐘後自動上傳`;
         };
 
         MarketStore.onPendingChange(update);
-        update(MarketStore.pendingCount());
+        update(MarketStore.pendingCount(), { failed: !!MarketStore.lastError });
 
         document.getElementById("btnRetryUpload").addEventListener("click", async () => {
             try {
                 const n = await MarketStore.syncPending({});
                 alert(`☁️ 已上傳 ${n} 筆`);
-                orders = (await MarketStore.load()).orders;
             } catch (err) {
-                App.error(err, "仍無法連線，請稍後再試");
+                App.error(err, "仍無法連線，訂單保留在本機，請稍後再試");
             }
         });
     }
