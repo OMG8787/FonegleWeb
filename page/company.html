@@ -136,12 +136,12 @@
                     <div class="card-body">
                         <h2 class="mb-1">客戶資料管理</h2>
                         <p class="text-muted mb-0">
-                            B2B客戶資料列表
+                            公司與個人客戶；訂單、帳務都會連到這裡的客戶資料
                         </p>
                         <br>
                         <div class="d-flex gap-2 mb-3">
                             <button id="btnCreateTop" class="btn btn-success">
-                                ➕ 新增公司
+                                ➕ 新增客戶
                             </button>
 
                             <span id="editHint" class="edit-mode-tag d-none">
@@ -160,18 +160,18 @@
                         <!-- 搜尋區 -->
                         <div class="card section-card shadow-sm mb-3">
                             <div class="section-header">
-                                🔍 搜尋公司
+                                🔍 搜尋客戶
                             </div>
 
                             <div class="section-body">
 
                                 <div class="search-area">
 
-                                    <input id="qCompanyName" class="form-control mb-2" placeholder="公司名稱">
+                                    <input id="qCompanyName" class="form-control mb-2" placeholder="名稱 / 聯絡人 / 電話">
 
                                     <input id="qCompanyID" class="form-control mb-2" placeholder="統編">
 
-                                    <input id="qCompanyAddress" class="form-control mb-2" placeholder="公司地址">
+                                    <input id="qCompanyAddress" class="form-control mb-2" placeholder="地址">
 
                                     <button id="btnSearch" class="btn btn-primary w-100">
                                         搜尋
@@ -251,16 +251,24 @@
 
 
                                     <!-- 公司資料 -->
-                                    <h6 class="mb-3">🏢 公司資料</h6>
+                                    <h6 class="mb-3">🏢 客戶資料</h6>
 
                                     <div class="row">
 
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">公司名稱</label>
-                                            <input id="CompanyNameEdit" class="form-control">
+                                        <div class="col-md-2 mb-3">
+                                            <label class="form-label">客戶類型</label>
+                                            <select id="CustomerType" class="form-select">
+                                                <option value="公司">🏢 公司</option>
+                                                <option value="個人">👤 個人</option>
+                                            </select>
                                         </div>
 
                                         <div class="col-md-6 mb-3">
+                                            <label class="form-label">客戶 / 公司名稱</label>
+                                            <input id="CompanyNameEdit" class="form-control">
+                                        </div>
+
+                                        <div class="col-md-4 mb-3">
                                             <label class="form-label">統編</label>
                                             <input id="CompanyIDEdit" class="form-control">
                                         </div>

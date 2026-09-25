@@ -7,6 +7,7 @@ Pages.Business = (() => {
     const dom = {};
 
     let listCache = [];
+    let orderStats = new Map();   // CompanyId → { count, total, last }
     let currentDetail = null;
     let mode = "view";
 
@@ -17,6 +18,9 @@ Pages.Business = (() => {
 
         hideForm();
         setModeUI("view");
+
+        // 進入頁面直接列出全部客戶
+        searchBusiness();
     }
 
     function cacheDom() {
@@ -51,6 +55,7 @@ Pages.Business = (() => {
         dom.TargetCompanyID = document.getElementById("TargetCompanyID");
 
         dom.CompanyNameEdit = document.getElementById("CompanyNameEdit");
+        dom.CustomerType = document.getElementById("CustomerType");
         dom.CompanyIDEdit = document.getElementById("CompanyIDEdit");
 
         dom.CompanyPhone = document.getElementById("CompanyPhone");
@@ -181,9 +186,14 @@ ${item.CompanyName}
                 address: dom.qCompanyAddress.value.trim()
             };
 
-            const list = (await API.list("Companies"))
+            // 訂單沒有讀取權限時（null）只顯示客戶
+            const data = await API.getMany(["Companies", "Orders"]);
+
+            buildOrderStats(data.Orders || []);
+
+            const list = (data.Companies || [])
                 .filter(c =>
-                    App.like(c.CompanyName, q.name) &&
+                    [c.CompanyName, c.ContactName, c.ContactPhone, c.CompanyPhone].some(v => App.like(v, q.name)) &&
                     App.like(c.CompanyID, q.id) &&
                     App.like(c.CompanyAddress, q.address))
                 .sort((a, b) => String(a.CompanyName).localeCompare(String(b.CompanyName), "zh-Hant"));
@@ -200,6 +210,33 @@ ${item.CompanyName}
 
             App.error(err, "查詢失敗");
         }
+    }
+
+    // 每個客戶的訂單數、金額、最近下單日（同一 OrderNo 算一張）
+    function buildOrderStats(orders) {
+
+        orderStats = new Map();
+
+        const seen = new Set();
+
+        orders.forEach(o => {
+
+            if (o.CompanyId === null || o.CompanyId === undefined || o.CompanyId === "") return;
+
+            const key = String(o.CompanyId);
+            const st = orderStats.get(key) || { count: 0, total: 0, last: "" };
+
+            if (!seen.has(o.OrderNo)) {
+                seen.add(o.OrderNo);
+                st.count++;
+                st.total += App.num(o.TotalAmount);
+            }
+
+            const d = App.toDateInput(o.OrderDate);
+            if (d > st.last) st.last = d;
+
+            orderStats.set(key, st);
+        });
     }
 
     function getPaymentText(score) {
@@ -260,15 +297,18 @@ ${item.CompanyName}
 
 
 
-            const companyIdText = x.CompanyID
+            const isPerson = x.CustomerType === "個人";
+            const companyIdText = isPerson ? "" : (x.CompanyID
                 ? `(統編：${x.CompanyID})`
-                : `(無統編)`;
+                : `(無統編)`);
+            const st = orderStats.get(String(x.ID));
+            const contact = [x.ContactName, x.ContactPhone || x.CompanyPhone].filter(Boolean).join(" · ");
 
             div.innerHTML = `
     <div class="d-flex justify-content-between align-items-center">
 
     <div class="member-name">
-        ${App.esc(x.CompanyName)} ${App.esc(companyIdText)}
+        ${isPerson ? "👤" : "🏢"} ${App.esc(x.CompanyName)} <span class="small text-muted">${App.esc(companyIdText)}</span>
     </div>
 
     <span class="badge bg-secondary">
@@ -277,8 +317,14 @@ ${item.CompanyName}
 
 </div>
 
+    ${contact ? `<div class="member-info">📞 ${App.esc(contact)}</div>` : ""}
+
     <div class="member-info">
         📍 ${App.esc(x.CompanyAddress || "無地址")}
+    </div>
+
+    <div class="member-info">
+        🧾 ${st ? `訂單 ${st.count} 張 · $${st.total.toLocaleString()} · 最近 ${App.esc(st.last || "-")}` : "尚無訂單"}
     </div>
 
     <div class="member-info">
@@ -371,6 +417,9 @@ ${item.CompanyName}
 
         dom.CompanyNameEdit.value =
             d.CompanyName || "";
+
+        dom.CustomerType.value =
+            d.CustomerType === "個人" ? "個人" : "公司";
 
         dom.CompanyIDEdit.value =
             d.CompanyID || "";
@@ -473,7 +522,7 @@ ${item.CompanyName}
         const data = buildPayload();
 
         if (!data.CompanyName) {
-            alert("請輸入公司名稱");
+            alert("請輸入客戶 / 公司名稱");
             return;
         }
 
@@ -486,19 +535,19 @@ ${item.CompanyName}
                     c.CompanyName === data.CompanyName);
 
                 if (exists) {
-                    alert("⚠️ 相同公司名稱或統編已經建立過");
+                    alert("⚠️ 相同名稱或統編已經建立過");
                     return;
                 }
 
                 await API.insert("Companies", data);
 
-                alert("🎉 公司資料建立成功");
+                alert("🎉 客戶資料建立成功");
 
             } else {
 
                 await API.update("Companies", currentDetail.ID, data);
 
-                alert("✅ 公司資料修改成功");
+                alert("✅ 客戶資料修改成功");
             }
 
             hideForm();
@@ -517,6 +566,7 @@ ${item.CompanyName}
 
         return {
             CompanyName: dom.CompanyNameEdit.value.trim(),
+            CustomerType: dom.CustomerType.value,
             CompanyID: dom.CompanyIDEdit.value.trim(),
 
             CompanyPhone: dom.CompanyPhone.value.trim(),

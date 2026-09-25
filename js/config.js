@@ -53,7 +53,7 @@ const Config = {
             items: [
                 { id: 12, Permission: [23], name: "🧾 訂單管理", page: "page/order.html" },
                 { id: 13, Permission: [23], name: "🚚 出貨管理", page: "page/shipment.html" },
-                { id: 21, Permission: [23, 24], name: "🏢 合作廠商 / 店家", page: "page/company.html" }
+                { id: 21, Permission: [23, 24], name: "🏢 客戶 / 合作廠商", page: "page/company.html" }
             ]
         },
         {

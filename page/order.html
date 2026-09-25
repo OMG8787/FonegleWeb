@@ -185,7 +185,7 @@
                             </div>
                             <div class="section-body">
                                 <div class="search-area">
-                                    選擇訂購人
+                                    🏢 客戶
                                     <!-- 訂購公司 -->
                                     <select id="qMemberID" class="form-select mb-2"></select>
                                     <!-- 預計出貨時間 -->
@@ -297,15 +297,35 @@
                                     <hr>
                                     <!-- 客戶資料 -->
                                     <h5 class="mb-3">
-                                        🏢 訂購人資料
+                                        🏢 客戶資料
                                     </h5>
-                                    <div class="row">
-                                        <div class="col-md-4 mb-3">
-                                            <label class="form-label">
-                                                MemberID
-                                            </label>
-                                            <select id="MemberID" class="form-select"></select>
+                                    <input type="hidden" id="CompanyId">
+                                    <input type="hidden" id="MemberID">
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">
+                                            選擇客戶（可搜尋名稱、聯絡人、電話；找不到直接輸入新名稱）
+                                        </label>
+                                        <select id="CustomerSelect" class="form-select"></select>
+                                    </div>
+                                    <!-- 新客戶：建立訂單時一併建立客戶資料 -->
+                                    <div id="newCustomerBox" class="alert alert-info py-2 small d-none">
+                                        <div class="d-flex flex-wrap align-items-center gap-3">
+                                            <span>🆕 新客戶，建立訂單時會自動存進「客戶 / 合作廠商」</span>
+                                            <span>
+                                                類型：
+                                                <label class="me-2"><input type="radio" name="newCustomerType" value="公司" checked> 公司</label>
+                                                <label><input type="radio" name="newCustomerType" value="個人"> 個人</label>
+                                            </span>
+                                            <label><input type="checkbox" id="saveNewCustomer" checked> 存為客戶資料</label>
                                         </div>
+                                    </div>
+                                    <!-- 既有客戶：聯絡資料有修改時可同步回客戶資料 -->
+                                    <div id="syncCustomerBox" class="small mb-2 d-none">
+                                        <label class="text-primary">
+                                            <input type="checkbox" id="syncCustomer"> 把這次修改的電話 / Email / 地址也更新到客戶資料
+                                        </label>
+                                    </div>
+                                    <div class="row">
                                         <div class="col-md-4 mb-3">
                                             <label class="form-label">
                                                 訂購人 / 公司名稱
@@ -317,6 +337,12 @@
                                                 聯絡電話
                                             </label>
                                             <input id="MemberPhone" class="form-control">
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">
+                                                聯絡人
+                                            </label>
+                                            <input id="ContactName" class="form-control" placeholder="公司客戶的聯絡窗口">
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">

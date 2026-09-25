@@ -86,7 +86,7 @@ const SCHEMA = {
     Companies: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n CompanyName CompanyID CompanyPhone CompanyURL CompanyAddress ContactName ContactPhone ContactEmail ' +
-            'PaymentStstus:n IsMember:b IsConverted:b AccountManager TotalVisit:n TotalMail:n Source Note OpenClaw CreateLineID CreatedAt UpdateAt'
+            'PaymentStstus:n IsMember:b IsConverted:b AccountManager TotalVisit:n TotalMail:n Source Note OpenClaw CreateLineID CreatedAt UpdateAt CustomerType'
     },
     CrawlerSources: {
         key: 'ID', seq: 'ID',
@@ -113,7 +113,7 @@ const SCHEMA = {
         key: 'OrderID', seq: 'OrderID',
         cols: 'OrderID:n OrderNo MemberID MemberName MemberPhone MemberEmail ShippingAddress ProductID ProductName Qty:n Unit UnitPrice:n ' +
             'DiscountAmount:n ShippingFee:n TotalAmount:n PaymentMethod PaymentStatus OrderStatus ShippingStatus SalesChannel Note ' +
-            'OrderDate CheckoutAt ExpectedShippingDate CreatedBy CreatedAt UpdatedBy UpdatedAt'
+            'OrderDate CheckoutAt ExpectedShippingDate CreatedBy CreatedAt UpdatedBy UpdatedAt CompanyId:n ContactName'
     },
     Shipment: {
         key: 'ShipmentID', seq: 'ShipmentID',
@@ -220,8 +220,8 @@ const TABLE_INFO = {
     FormulaDetail: ['product', '配方原料明細'],
     Inventory: ['product', '進貨 / 庫存紀錄'],
     ProductionLog: ['product', '生產履歷'],
-    Companies: ['sales', '合作廠商 / 店家'],
-    Orders: ['sales', '訂單（一列一個品項，同訂單共用 OrderNo）'],
+    Companies: ['sales', '客戶與合作廠商（公司 / 個人），訂單與帳務都以 ID 連到這裡'],
+    Orders: ['sales', '訂單（一列一個品項，同訂單共用 OrderNo；CompanyId 連到客戶）'],
     Shipment: ['sales', '出貨'],
     Receivable: ['finance', '帳務（應收帳款）'],
     Expenses: ['finance', '支出'],
@@ -276,10 +276,10 @@ const COLUMN_LABELS = {
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
     ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
     // 銷售
-    CompanyName: '公司 / 店家名稱', CompanyID: '統一編號', CompanyPhone: '公司電話', CompanyURL: '網站',
+    CompanyName: '客戶 / 公司名稱', CustomerType: '客戶類型（公司 / 個人，空白 = 公司）', CompanyID: '統一編號', CompanyPhone: '公司電話', CompanyURL: '網站',
     CompanyAddress: '地址', ContactName: '聯絡人', ContactPhone: '聯絡電話', ContactEmail: '聯絡 Email',
     PaymentStstus: '付款評分（0-5）', TotalVisit: '拜訪次數', TotalMail: '寄信次數', Source: '資料來源',
-    OrderID: '訂單編號', OrderNo: '訂單號碼', MemberID: '會員編號', MemberName: '會員姓名', MemberPhone: '會員電話',
+    OrderID: '訂單編號', OrderNo: '訂單號碼', MemberID: '會員編號（舊資料，Users 的 ID）', MemberName: '會員姓名', MemberPhone: '會員電話',
     MemberEmail: '會員 Email', ShippingAddress: '收件地址', Qty: '數量', UnitPrice: '單價', DiscountAmount: '折扣',
     ShippingFee: '運費', TotalAmount: '訂單總額', PaymentMethod: '付款方式', PaymentStatus: '付款狀態',
     OrderStatus: '訂單狀態', ShippingStatus: '出貨狀態', SalesChannel: '銷售通路', OrderDate: '下單時間',
@@ -287,7 +287,7 @@ const COLUMN_LABELS = {
     LogisticsCompany: '物流公司', TrackingNumber: '物流單號', ReceiverName: '收件人', ReceiverPhone: '收件電話',
     ReceiverAddress: '收件地址', ShippingQty: '出貨數量', ShippingDate: '出貨日期', ReceivedDate: '收貨日期',
     // 財務
-    ReceivableID: '編號', CompanyId: '店家（廠商編號）', PayerName: '付款對象', BillDate: '帳單日期', Item: '項目',
+    ReceivableID: '編號', CompanyId: '客戶編號（Companies 的 ID）', PayerName: '付款對象', BillDate: '帳單日期', Item: '項目',
     PaidAmount: '已收金額', TaxAmount: '稅額', RefundAmount: '退款', TransactionNo: '交易序號', InvoiceNo: '發票號碼',
     PaymentDate: '付款日期', RefundDate: '退款日期', ExpenseDate: '支出日期', ItemName: '項目名稱', Vendor: '廠商 / 對象',
     IsPaid: '已付款', RecordDate: '日期', Type: '類型（支出 / 回收）', AmortizeMonths: '攤提月數',
