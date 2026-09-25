@@ -26,7 +26,8 @@ Pages.Formula = (() => {
     let rows = [];          // 編輯中的原料 { MaterialID, MaterialName, Quantity, UnitCost, Remark }
     let current = null;
     let listCache = [];
-    let tryMult = null;     // 目前試算倍數（不一定等於預設倍數）
+    let tryMult = null;     // 目前試算倍數（份數，不一定等於預設倍數）
+    let tryPortion = null;  // 目前試算的每份重量 g（不一定等於配方的單位重量）
 
     // =========================
     // 初始化
@@ -65,7 +66,7 @@ Pages.Formula = (() => {
             "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive", "qWarn",
             "formulaList", "emptyHint", "listCount", "detailList", "materialNames", "btnAddMaterial", "btnNormalize",
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
-            "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryUnitLabel", "factorText", "btnSetDefault",
+            "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
             "sumBase", "sumPct", "sumScaled", "sumCost",
             "rUnitCost", "rUnitHint", "rMaterialCost", "rProfit", "rMargin", "rSuggest"
         ]).forEach(id => dom[id] = document.getElementById(id));
@@ -105,6 +106,7 @@ Pages.Formula = (() => {
             if (!e.target.classList.contains("calc")) return;
             // 改預設倍數時，試算倍數跟著走
             if (e.target === dom.YieldQty) tryMult = App.numOrNull(dom.YieldQty.value);
+            if (e.target === dom.UnitWeight) tryPortion = null;
             calculate();
         });
 
@@ -113,11 +115,19 @@ Pages.Formula = (() => {
             tryMult = App.numOrNull(dom.tryMult.value);
             calculate({ keep: "mult" });
         });
+        // 總重 → 反推份數
         dom.tryTotal.addEventListener("input", () => {
             const t = App.numOrNull(dom.tryTotal.value);
-            const s = spec();
-            if (t !== null && s.unitWeight > 0) tryMult = round(t * s.yieldRate / s.unitWeight, 4);
+            const p = portion();
+            if (t !== null && p > 0) tryMult = round(t / p, 4);
             calculate({ keep: "total" });
+        });
+        // 每份重量：份數不變，總重跟著變
+        dom.tryPortion.addEventListener("input", () => {
+            const v = App.numOrNull(dom.tryPortion.value);
+            tryMult = mult();
+            tryPortion = v !== null && v > 0 ? v : null;
+            calculate({ keep: "portion" });
         });
         document.querySelector(".scale-bar").addEventListener("click", e => {
             const b = e.target.closest("[data-mult],[data-step]");
@@ -128,6 +138,8 @@ Pages.Formula = (() => {
         });
         dom.btnSetDefault.addEventListener("click", () => {
             dom.YieldQty.value = mult();
+            if (tryPortion) dom.UnitWeight.value = tryPortion;
+            tryPortion = null;
             calculate();
         });
 
@@ -185,9 +197,15 @@ Pages.Formula = (() => {
         return tryMult ?? s.defMult ?? 1;
     }
 
+    // 每份重量（試算值優先）
+    function portion() {
+        return tryPortion ?? spec().unitWeight;
+    }
+
+    // 份數 × 每份重量 = 成品總重；再依成品率換算要備的原料總重，按百分比分配到每個原料
     function compute(m = mult()) {
 
-        const s = spec();
+        const s = { ...spec(), unitWeight: portion() };
         const target = s.unitWeight > 0 ? m * s.unitWeight / s.yieldRate : 0;
         const factor = s.base > 0 ? target / s.base : 0;
 
@@ -208,13 +226,20 @@ Pages.Formula = (() => {
         const c = compute();
         const unit = dom.YieldUnit.value.trim() || "單位";
 
+        const finished = c.mult * c.unitWeight;
         if (opt.keep !== "mult") dom.tryMult.value = c.mult ? round(c.mult, 4) : "";
-        if (opt.keep !== "total") dom.tryTotal.value = c.target ? round(c.target, 1) : "";
-        dom.tryUnitLabel.textContent = `× ${unit}${dom.UnitWeight.value ? `（${g(c.unitWeight)} g）` : ""}`;
+        if (opt.keep !== "total") dom.tryTotal.value = finished ? round(finished, 1) : "";
+        if (opt.keep !== "portion") dom.tryPortion.value = c.unitWeight ? round(c.unitWeight, 2) : "";
+        dom.tryUnitLabel.textContent = /^(單位|份)?$/.test(unit) ? "份" : `份（${unit}）`;
+
+        const s = spec();
+        const changed = [];
+        if (c.defMult && round(c.mult, 4) !== round(c.defMult, 4)) changed.push(`預設 ${c.defMult} 份`);
+        if (tryPortion && round(tryPortion, 2) !== round(s.unitWeight, 2)) changed.push(`預設每份 ${g(s.unitWeight)} g`);
         dom.factorText.textContent = c.base
-            ? `放大係數 ${round(c.factor, 4)}${c.defMult && round(c.mult, 4) !== round(c.defMult, 4) ? `｜預設 ${c.defMult}` : ""}${c.yieldRate !== 1 ? `｜含損耗 ${round(c.yieldRate * 100, 1)}%` : ""}`
+            ? `放大係數 ${round(c.factor, 4)}${c.yieldRate !== 1 ? `｜成品率 ${round(c.yieldRate * 100, 1)}%，需備料 ${g(c.target, 1)} g` : ""}${changed.length ? "｜" + changed.join("、") : ""}`
             : "";
-        dom.btnSetDefault.disabled = !c.mult || round(c.mult, 4) === round(c.defMult, 4);
+        dom.btnSetDefault.disabled = !c.mult || (!changed.length && round(c.mult, 4) === round(c.defMult, 4));
 
         // 明細
         c.lines.forEach((l, i) => {
@@ -442,6 +467,7 @@ Pages.Formula = (() => {
 
         current = null;
         tryMult = null;
+        tryPortion = null;
         dom.formulaForm.reset();
         dom.IsActive.checked = true;
         dom.YieldUnit.value = "1L";
@@ -461,6 +487,7 @@ Pages.Formula = (() => {
 
         current = f;
         tryMult = null;
+        tryPortion = null;
 
         FIELDS.forEach(k => dom[k].value = f[k] ?? "");
         dom.ProductID.value = f.ProductID ? String(f.ProductID) : "";
@@ -695,9 +722,9 @@ Pages.Formula = (() => {
 <h1>🧪 ${esc(s.name)}</h1>
 <div class="meta">
     ${s.code ? `<span>代碼 <b>${esc(s.code)}</b></span>` : ""}${s.version ? `<span>版本 <b>${esc(s.version)}</b></span>` : ""}
-    <span>製作 <b>${round(s.mult, 4)} × ${esc(s.unit)}</b>（每${esc(s.unit)} ${g(s.unitWeight)} g）</span>
-    <span>總重 <b>${g(s.c.target, 1)} g</b></span>
-    ${s.yieldRate !== 1 ? `<span>成品率 <b>${round(s.yieldRate * 100, 1)}%</b></span>` : ""}
+    <span>每份 <b>${g(s.unitWeight, 2)} g</b> × <b>${round(s.mult, 4)}</b> 份（${esc(s.unit)}）</span>
+    <span>總重 <b>${g(s.mult * s.unitWeight, 1)} g</b></span>
+    ${s.yieldRate !== 1 ? `<span>成品率 <b>${round(s.yieldRate * 100, 1)}%</b>，需備料 <b>${g(s.c.target, 1)} g</b></span>` : ""}
     <span>輸出日期 ${esc(today)}</span>
 </div>
 <table>
@@ -740,9 +767,10 @@ ${s.note ? `<div class="note"><b>備註：</b>${esc(s.note)}</div>` : ""}
         const aoa = [
             ["品名", s.name],
             ["代碼 / 版本", [s.code, s.version].filter(Boolean).join(" / ")],
-            ["單位", s.unit, "單位重量 (g)", round(s.unitWeight, 2)],
-            ["倍數", round(s.mult, 4), "總重 (g)", round(s.c.target, 1)],
-            ["成品率", round(s.yieldRate * 100, 2) + "%", "放大係數", round(s.c.factor, 4)],
+            ["單位", s.unit, "每份重量 (g)", round(s.unitWeight, 2)],
+            ["份數", round(s.mult, 4), "總重 (g)", round(s.mult * s.unitWeight, 1)],
+            ["成品率", round(s.yieldRate * 100, 2) + "%", "需備料 (g)", round(s.c.target, 1)],
+            ["放大係數", round(s.c.factor, 4)],
             [],
             ["#", "原料", "基準重量 (g)", "百分比", "製作重量 (g)"].concat(withCost ? ["單價 (每 g)", "成本"] : [])
         ];

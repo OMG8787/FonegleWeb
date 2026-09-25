@@ -226,20 +226,23 @@
                                     <!-- 試算 -->
                                     <div class="scale-bar mt-3">
                                         <div class="d-flex flex-wrap align-items-center gap-2">
-                                            <b>🔢 製作</b>
-                                            <input id="tryMult" type="number" min="0" step="any" class="form-control form-control-sm">
-                                            <span id="tryUnitLabel" class="small">單位</span>
+                                            <b>🔢 試算</b>
+                                            <span class="small">每份</span>
+                                            <input id="tryPortion" type="number" min="0" step="any" class="form-control form-control-sm" title="每一份的重量（g）">
+                                            <span class="small">g ×</span>
+                                            <input id="tryMult" type="number" min="0" step="any" class="form-control form-control-sm" title="要做幾份">
+                                            <span id="tryUnitLabel" class="small">份</span>
                                             <div class="btn-group btn-group-sm" role="group">
                                                 <button type="button" class="btn btn-outline-success" data-mult="0.5">×½</button>
                                                 <button type="button" class="btn btn-outline-success" data-mult="2">×2</button>
                                                 <button type="button" class="btn btn-outline-success" data-step="-1">−1</button>
                                                 <button type="button" class="btn btn-outline-success" data-step="1">＋1</button>
                                             </div>
-                                            <span class="small ms-2">＝ 目標總重</span>
+                                            <span class="small ms-2">＝ 總重</span>
                                             <input id="tryTotal" type="number" min="0" step="any" class="form-control form-control-sm">
                                             <span class="small">g</span>
                                             <span id="factorText" class="small text-muted ms-2"></span>
-                                            <button type="button" id="btnSetDefault" class="btn btn-sm btn-success ms-auto">設為預設倍數</button>
+                                            <button type="button" id="btnSetDefault" class="btn btn-sm btn-success ms-auto" title="把目前的每份重量與份數存成這個配方的預設值">設為預設</button>
                                         </div>
                                     </div>
 
