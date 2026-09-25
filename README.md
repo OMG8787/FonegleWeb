@@ -177,7 +177,7 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 
 ## 六、從舊 SQL Server 匯入資料
 
-專案外的 `試算表匯入` 資料夾有轉換工具，會唯讀讀取本機 SQL Server（FonegleData）。有兩種匯入方式，擇一即可：
+專案外的 `資料匯入工具` 資料夾有轉換工具，會唯讀讀取本機 SQL Server（FonegleData）。有兩種匯入方式，擇一即可：
 
 **方式 A：在 Apps Script 執行（不需部署）**
 1. 執行 `python build_xlsx.py` 產生 `ImportData.gs`。
