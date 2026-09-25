@@ -245,6 +245,7 @@ const Auth = {
 
     // opts.silent：完全不顯示（自動補傳、驗證登入等）
     // opts.mask：讀取時也要擋畫面（例如按下「查詢」後要等結果）
+    // opts.noRetry：失敗不自動重試（例如現場點餐：失敗就立刻改為暫存）
     // opts.loadingText：自訂遮罩文字
     async request(action, payload = {}, opts = {}) {
 
@@ -262,14 +263,36 @@ const Auth = {
         if (kind === "bg") Loading.bgStart();
 
         try {
-            return await this.send(url, action, payload);
+            return await this.send(url, action, payload, opts);
         } finally {
             if (kind === "mask") Loading.hide();
             if (kind === "bg") Loading.bgEnd();
         }
     },
 
-    async send(url, action, payload) {
+    // Google Apps Script 偶爾在「回傳結果」這一步失敗（404 / 5xx / 連線中斷），
+    // 自動重試：讀取直接重試；寫入帶同一個 reqId，伺服器處理過就回傳上次結果，不會重複寫入
+    async send(url, action, payload, opts = {}) {
+
+        const reqId = (crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(16).slice(2)).replace(/-/g, "");
+        const waits = [1500, 3000, 6000];
+        let lastErr;
+
+        for (let attempt = 0; attempt <= waits.length; attempt++) {
+            try {
+                return await this.sendOnce(url, action, payload, reqId);
+            } catch (err) {
+                lastErr = err;
+                // 裝置沒有網路時不重試（例如市集現場斷線，要馬上改為暫存）
+                if (!err.retryable || opts.noRetry || attempt === waits.length || navigator.onLine === false) break;
+                await new Promise(r => setTimeout(r, waits[attempt]));
+            }
+        }
+
+        throw lastErr;
+    },
+
+    async sendOnce(url, action, payload, reqId) {
 
         let res;
 
@@ -277,6 +300,8 @@ const Auth = {
         const timeoutMs = /^ai/.test(action) || action === "sendMail" ? 120000 : 60000;
         const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
         const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+
+        const retryable = message => Object.assign(new Error(message), { retryable: true });
 
         try {
 
@@ -289,6 +314,7 @@ const Auth = {
                 body: JSON.stringify({
                     ...payload,
                     action,
+                    reqId,
                     token: this.getToken()
                 }),
                 signal: ctrl?.signal
@@ -299,17 +325,24 @@ const Auth = {
             if (err?.name === "AbortError")
                 throw new Error("連線逾時，請稍後再試（資料可能已送出，請重新整理確認）");
 
-            throw new Error("無法連線到 Google 試算表服務，請檢查網路");
+            throw retryable("無法連線到 Google 試算表服務，請檢查網路後再試一次");
 
         } finally {
             clearTimeout(timer);
         }
 
         if (!res.ok) {
+            if (res.status === 404 || res.status === 429 || res.status >= 500)
+                throw retryable(`Google 伺服器暫時忙碌（${res.status}），請稍後再試一次`);
             throw new Error(`Google 試算表服務錯誤（HTTP ${res.status}）`);
         }
 
-        const data = await res.json();
+        let data;
+        try {
+            data = await res.json();
+        } catch {
+            throw retryable("Google 伺服器回應異常，請稍後再試一次");
+        }
 
         if (!data.success) {
 

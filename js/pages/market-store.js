@@ -142,7 +142,7 @@ window.MarketStore = (() => {
         try {
 
             // 點餐畫面已先清空，背景上傳不擋畫面，收銀可以直接接下一筆
-            await API.insert(TABLE, toRow(order), { silent: true });
+            await API.insert(TABLE, toRow(order), { silent: true, noRetry: true });
 
             // 順便補傳之前斷線的訂單
             if (pendingCount()) syncPending().catch(() => { });

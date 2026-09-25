@@ -468,18 +468,31 @@ const PRIVATE_ACTIONS = {
     resetUserPassword: resetUserPassword_
 };
 
+// 會修改資料的操作：前端重試時用 reqId 避免重複執行
+const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList'];
+
 function handle_(req) {
     const action = String(req.action || '');
 
-    if (PUBLIC_ACTIONS[action])
-        return PUBLIC_ACTIONS[action](req);
-
-    if (!PRIVATE_ACTIONS[action])
+    if (!PUBLIC_ACTIONS[action] && !PRIVATE_ACTIONS[action])
         fail_('未知的操作：' + action);
 
-    const ctx = auth_(req.token);
+    // Google 偶爾在回傳結果時失敗（前端看到 404），前端會用同一個 reqId 重試：
+    // 已經處理過的寫入直接回傳上次結果，不會重複新增 / 扣款
+    const reqId = READ_ACTIONS.indexOf(action) < 0 && /^[\w-]{8,64}$/.test(String(req.reqId || '')) ? 'req:' + req.reqId : '';
 
-    return PRIVATE_ACTIONS[action](req, ctx);
+    if (reqId) {
+        const done = cacheGet_(reqId);
+        if (done) return done.result;
+    }
+
+    const result = PUBLIC_ACTIONS[action]
+        ? PUBLIC_ACTIONS[action](req)
+        : PRIVATE_ACTIONS[action](req, auth_(req.token));
+
+    if (reqId) cachePut_(reqId, { result }, 600);
+
+    return result;
 }
 
 // ============================================================
