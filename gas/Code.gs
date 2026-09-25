@@ -38,6 +38,7 @@ const CONFIG = {
 //   cols   : 欄位清單，「名稱:型別」，型別 n=數字 b=布林 省略=文字
 //   money  : setup 時設為千分位金額格式的欄位
 //   owner  : 個人資料（只看得到自己建立的，或 IsShared = TRUE 的）
+//   freeDelete: 刪除不需要「刪除資料」權限（清單型設定，例如追蹤清單）
 // ============================================================
 const SCHEMA = {
     Users: {
@@ -171,6 +172,11 @@ const SCHEMA = {
         cols: 'ID:n CountMonth ProductID:n ProductName Unit OpeningQty:n ProducedQty:n ShippedQty:n OtherOutQty:n WasteQty:n ' +
             'ExpectedQty:n CountedQty:n DiffQty:n UsedQty:n LatestMfgDate NearestExpDate Note CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
+    // 產品追蹤清單：庫存 ≤ 提醒數量（預設 0 = 沒庫存）時在庫存盤點頁提醒；可自由加入 / 移除（不需刪除權限）
+    ProductWatch: {
+        key: 'ID', seq: 'ID', freeDelete: true,
+        cols: 'ID:n ProductID:n ProductName AlertQty:n Note CreatedBy CreatedAt UpdatedBy UpdatedAt'
+    },
     ProductionLog: {
         key: 'ProductionID', seq: 'ProductionID',
         cols: 'ProductionID:n ProductID FormulaID BatchNo ProductionNo Factory ProductionLine PlannedQty:n ProducedQty:n NGQty:n Unit ' +
@@ -244,6 +250,7 @@ const TABLE_INFO = {
     MaterialPurchases: ['product', '原物料進貨（數量、金額、單價、批號、製造 / 有效日期）'],
     MaterialCounts: ['product', '原物料月盤點（期初、進貨、實盤、用量、成本）'],
     ProductionLog: ['product', '生產履歷'],
+    ProductWatch: ['product', '產品追蹤清單（庫存低於提醒數量時提醒）'],
     Companies: ['sales', '客戶與合作廠商（公司 / 個人），訂單與帳務都以 ID 連到這裡'],
     Orders: ['sales', '訂單（一列一個品項，同訂單共用 OrderNo；CompanyId 連到客戶）'],
     Shipment: ['sales', '出貨'],
@@ -307,7 +314,7 @@ const COLUMN_LABELS = {
     OpeningQty: '期初數量', PurchasedQty: '本月進貨量', PurchasedAmount: '本月進貨金額', CountedQty: '實盤數量',
     UsedQty: '本月使用量', AvgUnitPrice: '平均單價', UsedCost: '使用成本', StockValue: '庫存價值',
     NearestExpDate: '最近到期日', LatestMfgDate: '最近製造日', ShippedQty: '本月出貨', OtherOutQty: '其他出庫（市集 / 試吃 / 贈送）',
-    WasteQty: '損耗', ExpectedQty: '應有庫存', DiffQty: '盤差（實盤 - 應有）', TotalPrice: '總價',
+    WasteQty: '損耗', AlertQty: '提醒數量（庫存 ≤ 此數量時提醒，預設 0）', ExpectedQty: '應有庫存', DiffQty: '盤差（實盤 - 應有）', TotalPrice: '總價',
     // 銷售
     CompanyName: '客戶 / 公司名稱', CustomerType: '客戶類型（公司 / 個人，空白 = 公司）', CompanyID: '統一編號', CompanyPhone: '公司電話', CompanyURL: '網站',
     CompanyAddress: '地址', ContactName: '聯絡人', ContactPhone: '聯絡電話', ContactEmail: '聯絡 Email',
@@ -382,6 +389,7 @@ const TABLE_PERMS = {
     Material: { read: PRODUCT, write: PRODUCT },
     Inventory: { read: PRODUCT, write: PRODUCT },
     ProductionLog: { read: PRODUCT, write: PRODUCT },
+    ProductWatch: { read: PRODUCT.concat(SALES), write: PRODUCT.concat(SALES) },
     ProductCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
     MaterialPurchases: { read: PRODUCT.concat(FINANCE), write: PRODUCT.concat(FINANCE) },
     MaterialCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
@@ -2084,8 +2092,8 @@ function access_(name, ctx, mode) {
     if (!allowed(rule.write))
         fail_('🔐 無權限修改：' + name);
 
-    // 刪除需要「刪除資料」權限（個人資料刪除自己的除外）
-    if (mode === 'delete' && !def.owner && ctx.perms.indexOf(PERM.DELETE) < 0)
+    // 刪除需要「刪除資料」權限（個人資料、追蹤清單這類設定除外）
+    if (mode === 'delete' && !def.owner && !def.freeDelete && ctx.perms.indexOf(PERM.DELETE) < 0)
         fail_('🔐 刪除資料需要「刪除資料」權限');
 
     return t;

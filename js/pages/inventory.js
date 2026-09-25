@@ -10,6 +10,8 @@ Pages.Inventory = (() => {
         cacheDom();
         bindEvents();
         clearForm();
+        // 最上方的庫存助手（快過期、追蹤清單缺貨）
+        if (typeof StockAlert !== "undefined") StockAlert.init();
         loadBasic();
     }
     function cacheDom() {
@@ -417,8 +419,9 @@ ${row.ProductName || row.MaterialName}
 ${row.ID}
 📦 盤點數量：
 ${qty}`);
-            // 重新取得列表
+            // 重新取得列表、重新檢查庫存助手
             await loadQuickInventoryList();
+            if (typeof StockAlert !== "undefined") StockAlert.reload();
         }
         catch (err) {
             App.error(err, "盤點失敗");
@@ -463,6 +466,7 @@ ${qty}`);
             }
             await loadReceiveList();
             clearForm();
+            if (typeof StockAlert !== "undefined") StockAlert.reload();
         }
         catch (err) {
             App.error(err, "儲存失敗");
