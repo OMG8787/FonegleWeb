@@ -2,7 +2,7 @@
  * ============================================================
  * 瘋菓內部管理系統 — Google 試算表資料庫（Google Apps Script）
  * ============================================================
- * 部署步驟請見 WEB_GS/README.md
+ * 部署步驟請見 瘋菓管理系統/README.md
  *
  * 前端以 POST（Content-Type: text/plain，內容為 JSON）呼叫：
  *   { "action": "list", "token": "...", "table": "Products" }

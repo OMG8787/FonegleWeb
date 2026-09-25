@@ -3,7 +3,7 @@
 純靜態網頁，可以直接放在 **GitHub Pages**。不需要自己架後端，資料全部存在一份 Google 試算表。
 
 ```
-瀏覽器（WEB_GS 靜態網頁）
+瀏覽器（瘋菓管理系統 靜態網頁）
    │  POST（text/plain JSON）
    ▼
 Google Apps Script（gas/Code.gs，綁在試算表上）
