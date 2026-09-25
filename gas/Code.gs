@@ -180,12 +180,12 @@ const SCHEMA = {
         key: 'FormulaID', seq: 'FormulaID',
         cols: 'FormulaID:n FormulaCode ProductID FormulaName VersionNo YieldQty:n YieldUnit IsActive:b Description Remark ' +
             'PackagingCost:n LaborCost:n OtherCost:n TargetPrice:n TargetCostRate:n MaterialCost:n TotalCost:n UnitCost:n ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt UnitWeight:n YieldRate:n BaseWeight:n',
         money: 'PackagingCost LaborCost OtherCost TargetPrice MaterialCost TotalCost UnitCost'
     },
     FormulaDetail: {
         key: 'FormulaDetailID', seq: 'FormulaDetailID',
-        cols: 'FormulaDetailID:n FormulaID:n MaterialID MaterialCode MaterialName Quantity:n Unit UnitCost:n LineCost:n Remark CreatedBy CreatedAt UpdatedBy UpdatedAt'
+        cols: 'FormulaDetailID:n FormulaID:n MaterialID MaterialCode MaterialName Quantity:n Unit UnitCost:n LineCost:n Remark CreatedBy CreatedAt UpdatedBy UpdatedAt SortOrder:n'
     },
     AgentConfig: {
         key: 'Id', seq: 'Id',
@@ -237,8 +237,8 @@ const TABLE_INFO = {
     Products: ['product', '產品'],
     ID_Category: ['product', '產品分類'],
     Material: ['product', '原料'],
-    Formula: ['product', '配方與成本'],
-    FormulaDetail: ['product', '配方原料明細'],
+    Formula: ['product', '配方與成本（YieldQty = 預設倍數、YieldUnit = 單位名稱、UnitWeight = 單位重量）'],
+    FormulaDetail: ['product', '配方原料明細（Quantity = 基準重量，製作重量 = 基準重量 × 倍數 × 單位重量 ÷ 基準總重）'],
     Inventory: ['product', '進貨 / 庫存紀錄'],
     ProductCounts: ['product', '產品月盤點（製作、出貨、剩餘、使用量、製造 / 到期日）'],
     MaterialPurchases: ['product', '原物料進貨（數量、金額、單價、批號、製造 / 有效日期）'],
@@ -297,9 +297,10 @@ const COLUMN_LABELS = {
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
     BatchNo: '批號', Warehouse: '倉庫', StockQty: '數量', ReservedQty: '保留量', AvailableQty: '可用量',
     MfgDate: '製造日期', ExpDate: '有效日期', LastInventoryDate: '最後盤點日', FormulaCode: '配方代碼',
-    FormulaName: '配方名稱', VersionNo: '版本', YieldQty: '產量', YieldUnit: '產量單位', PackagingCost: '包材成本',
+    FormulaName: '配方名稱', VersionNo: '版本', YieldQty: '預設倍數（製作幾個單位）', YieldUnit: '單位名稱（1L / 一份）', PackagingCost: '包材成本',
+    UnitWeight: '單位重量（g，例如 1L = 1000）', YieldRate: '成品率 %（扣除損耗，預設 100）', BaseWeight: '基準總重（g）', SortOrder: '排序',
     LaborCost: '人工成本', TargetPrice: '預計售價', TargetCostRate: '目標成本率 %', MaterialCost: '原料成本',
-    UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量', LineCost: '小計成本',
+    UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
     ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
     PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
@@ -610,7 +611,7 @@ function importData_(req) {
     const tables = req.tables || {};
     const names = Object.keys(tables);
 
-    if (!names.length) fail_('沒有資料');
+    if (!names.length && !req.recipes) fail_('沒有資料');
 
     names.forEach(n => {
         if (IMPORT_TABLES.indexOf(n) < 0) fail_('不允許匯入的資料表：' + n);
@@ -631,8 +632,88 @@ function importData_(req) {
             report[n] = tables[n].length;
         });
 
+        if (req.recipes) Object.assign(report, importRecipes_(req.recipes));
+
         return report;
     });
+}
+
+// 合併匯入原料與配方（不覆蓋既有資料）
+//   materials：依 MaterialName 比對，沒有才新增；已存在但沒有成本價時補上
+//   formulas ：依 FormulaName 比對，已存在就略過；details 以 LinkMaterial（原料名稱）連到原料
+function importRecipes_(data) {
+    const mt = tbl_('Material');
+    const ft = tbl_('Formula');
+    const dt = tbl_('FormulaDetail');
+    const ts = now_();
+    const out = { 新增原料: 0, 補上成本價: 0, 新增配方: 0, 略過已存在配方: 0, 配方明細: 0 };
+
+    const byName = {};
+    readRows_(mt).forEach(x => byName[String(x.obj.MaterialName).trim()] = x);
+
+    (data.materials || []).forEach(m => {
+        const name = String(m.MaterialName || '').trim();
+        if (!name) return;
+
+        const found = byName[name];
+        if (found) {
+            if ((found.obj.CostPrice === null || found.obj.CostPrice === '') && m.CostPrice !== null && m.CostPrice !== undefined) {
+                writeRow_(mt, found, { CostPrice: m.CostPrice, UpdatedAt: ts });
+                out.補上成本價++;
+            }
+            return;
+        }
+
+        const obj = Object.assign({}, pickKnown_(mt, m), { ID: nextSeq_(mt), MaterialName: name, IsActive: true, CreatedAt: ts, UpdatedAt: ts });
+        const row = appendRow_(mt, obj);
+        byName[name] = { row, raw: null, obj };
+        out.新增原料++;
+    });
+
+    const existing = {};
+    readRows_(ft).forEach(x => existing[String(x.obj.FormulaName).trim()] = true);
+
+    let nextDetail = nextSeq_(dt);
+    const detailRows = [];
+
+    (data.formulas || []).forEach(f => {
+        const name = String(f.FormulaName || '').trim();
+        if (!name) return;
+        if (existing[name]) { out.略過已存在配方++; return; }
+
+        const obj = Object.assign({}, pickKnown_(ft, f), { FormulaID: nextSeq_(ft), FormulaName: name, IsActive: true, CreatedAt: ts, UpdatedAt: ts });
+        appendRow_(ft, obj);
+        existing[name] = true;
+        out.新增配方++;
+
+        (f.details || []).forEach((d, i) => {
+            const link = d.LinkMaterial ? byName[String(d.LinkMaterial).trim()] : null;
+            detailRows.push(Object.assign({}, pickKnown_(dt, d), {
+                FormulaDetailID: nextDetail++,
+                FormulaID: obj.FormulaID,
+                MaterialID: link ? link.obj.ID : '',
+                SortOrder: i + 1,
+                CreatedAt: ts,
+                UpdatedAt: ts
+            }));
+        });
+    });
+
+    // 明細一次寫入（數量多，逐列寫入太慢）
+    if (detailRows.length) {
+        const sh = dt.sh;
+        const start = sh.getLastRow() + 1;
+        const need = start + detailRows.length - 1;
+        if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+        dt.headers.forEach((h, i) => {
+            if ((dt.types[h] || 's') === 's') sh.getRange(start, i + 1, detailRows.length, 1).setNumberFormat('@');
+        });
+        sh.getRange(start, 1, detailRows.length, dt.headers.length)
+            .setValues(detailRows.map(r => dt.headers.map(h => (h in r ? toCell_(r[h], dt.types[h] || 's') : ''))));
+        out.配方明細 = detailRows.length;
+    }
+
+    return out;
 }
 
 // 清空資料（保留表頭）後整批寫入
