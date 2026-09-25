@@ -95,6 +95,73 @@ const Loading = {
 
     get busy() {
         return this.count > 0;
+    },
+
+    // =========================
+    // 背景同步：讀取資料時只在頂端顯示細進度條，不擋畫面
+    // =========================
+    bgCount: 0,
+    bgTimer: null,
+
+    bgEl() {
+
+        let bar = document.getElementById("syncBar");
+        if (bar) return bar;
+
+        const style = document.createElement("style");
+        style.textContent = `
+            #syncBar{position:fixed;left:0;top:0;height:3px;width:100%;z-index:2147482000;pointer-events:none;
+                opacity:0;transition:opacity .2s;overflow:hidden}
+            #syncBar.on{opacity:1}
+            #syncBar::before{content:"";position:absolute;left:-40%;top:0;height:100%;width:40%;
+                background:linear-gradient(90deg,transparent,#d63384,#fd7e14,transparent);animation:syncMove 1.1s ease-in-out infinite}
+            @keyframes syncMove{to{left:100%}}
+            #syncChip{position:fixed;right:14px;bottom:14px;z-index:2147482000;pointer-events:none;background:rgba(31,41,55,.85);
+                color:#fff;font-size:12px;padding:4px 10px;border-radius:999px;opacity:0;transition:opacity .2s}
+            #syncChip.on{opacity:1}`;
+        document.head.appendChild(style);
+
+        bar = document.createElement("div");
+        bar.id = "syncBar";
+        document.body.appendChild(bar);
+
+        const chip = document.createElement("div");
+        chip.id = "syncChip";
+        chip.textContent = "☁️ 同步資料中…";
+        document.body.appendChild(chip);
+
+        return bar;
+    },
+
+    bgStart() {
+
+        if (!document.body) return;
+
+        this.bgCount++;
+        clearTimeout(this.bgTimer);
+
+        // 很快完成的讀取不顯示
+        if (this.bgCount === 1) {
+            this.bgTimer = setTimeout(() => {
+                if (this.bgCount > 0) {
+                    this.bgEl().classList.add("on");
+                    document.getElementById("syncChip").classList.add("on");
+                }
+            }, 250);
+        }
+    },
+
+    bgEnd() {
+
+        if (this.bgCount <= 0) return;
+
+        this.bgCount--;
+
+        if (this.bgCount > 0) return;
+
+        clearTimeout(this.bgTimer);
+        document.getElementById("syncBar")?.classList.remove("on");
+        document.getElementById("syncChip")?.classList.remove("on");
     }
 };
 
@@ -172,7 +239,11 @@ const Auth = {
     // =========================
     // Google Apps Script 傳輸層
     // =========================
-    // opts.silent：背景動作（自動補傳、驗證登入等）不顯示遮罩
+    // 讀取類操作：在背景執行（頂端細進度條），不擋畫面
+    readActions: new Set(["list", "getMany", "get", "me", "loginSessions", "loginLog", "ping"]),
+
+    // opts.silent：完全不顯示（自動補傳、驗證登入等）
+    // opts.mask：讀取時也要擋畫面（例如按下「查詢」後要等結果）
     // opts.loadingText：自訂遮罩文字
     async request(action, payload = {}, opts = {}) {
 
@@ -182,14 +253,18 @@ const Auth = {
             throw new Error("尚未設定 Google 試算表連線，請聯絡系統管理員");
         }
 
-        const masked = !opts.silent;
+        // 新增 / 修改 / 刪除 / 登入 / AI → 遮罩（避免重複送出）；讀取 → 背景
+        const kind = opts.silent ? "none"
+            : (this.readActions.has(action) && !opts.mask ? "bg" : "mask");
 
-        if (masked) Loading.show(opts.loadingText || Loading.texts[action]);
+        if (kind === "mask") Loading.show(opts.loadingText || Loading.texts[action]);
+        if (kind === "bg") Loading.bgStart();
 
         try {
             return await this.send(url, action, payload);
         } finally {
-            if (masked) Loading.hide();
+            if (kind === "mask") Loading.hide();
+            if (kind === "bg") Loading.bgEnd();
         }
     },
 

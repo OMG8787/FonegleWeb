@@ -98,8 +98,8 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 | 🏠 首頁 | 首頁 | 今天起 14 天的**行事曆提醒**（含每日時段）、**備忘錄**（到期提醒、可共享）、待收款提醒、本月收支、我的最愛 |
 | 📅 行事曆 | 行事曆 | 多日活動，每天各自設定開始／結束時間與當日備註；公開／私人活動；活動總覽可複製成文字 |
 | 🎪 市集營運 | 現場點餐、市集報表、出攤紀錄、報名連結、品牌資訊 | 點餐**直接寫入雲端**，手機電腦同步；出攤紀錄自動算營業額、手續費、食材成本、盈虧與目標達成率 |
-| 📦 商品與生產 | 產品、**配方與成本試算**、原料、庫存、生產履歷 | 配方從原料帶入成本，算出單位成本、毛利率、建議售價，並可依預計產量算原料需求 |
-| 🛒 銷售與客戶 | 訂單、出貨、合作廠商／店家 | 訂單可多品項 |
+| 📦 商品與生產 | 產品、**配方與成本試算**、原料、庫存、生產履歷、**產品月盤點**、**原物料進貨／盤點**、**原物料漲幅表** | 配方從原料帶入成本；月盤點自動帶入製作、出貨，輸入實盤算出每月使用量；進貨記錄數量、金額、批號、製造／有效日期，可同時記入支出表並更新原料成本；漲幅表依每次進貨單價算出比上次、3 個月、1 年的漲跌 |
+| 🛒 銷售與客戶 | 訂單、出貨、客戶／合作廠商 | 訂單可多品項；選客戶自動帶入聯絡資料，輸入新名稱會在建立訂單時自動建立客戶 |
 | 💰 財務 | **帳務管理（應收）**、**支出表**、品牌攤提表 | 各店家應收／已收／未收／逾期一目了然；支出依分類統計；投資攤提與回本進度 |
 | ✨ AI 行銷 | **AI 文案發想** | 自行輸入大綱或選行事曆活動，產生預告、當日、感謝、新品貼文，或出攤日誌、行前須知；可存文案庫 |
 | 🛠️ 系統 | 帳號、員工及會員、權限管理、郵件寄送 | 角色範本一鍵套用權限 |
@@ -120,7 +120,7 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 | 20 | 行事曆 | 行事曆（查看、新增、修改） |
 | 21 | 市集營運 | 現場點餐、市集報表、出攤紀錄、報名連結 |
 | 22 | 商品與生產 | 產品、配方與成本、原料、庫存、生產履歷 |
-| 23 | 銷售與客戶 | 訂單、出貨、合作廠商 |
+| 23 | 銷售與客戶 | 訂單、出貨、客戶／合作廠商 |
 | 24 | 財務 | 帳務、支出、品牌攤提、首頁收支；可查看出攤與訂單 |
 | 25 | AI 行銷 | AI 文案發想 |
 | 12 | 刪除資料 | 刪除任何資料都需要這個權限（個人的備忘錄、AI 文案除外） |
@@ -153,7 +153,8 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 | Users | 員工與會員帳號（密碼為雜湊，不會回傳給網頁） | LineUserId |
 | ID_UserRoles / ID_Permission | 角色、權限代碼 | ID |
 | Memos | 備忘錄（個人） | ID |
-| Sessions / MailLog | 登入紀錄、寄信紀錄（系統自動維護） | Token / ID |
+| Sessions | 目前登入中的裝置（刪除一列 = 讓該裝置立即登出） | Token |
+| LoginLog / MailLog | 登入歷程（帳號、裝置、使用時間）、寄信紀錄 | SessionId / ID |
 | Calendar / CalendarDays | 行事曆活動、每日時段 | CalendarId / DayId |
 | MarketOrders | 現場點餐 | OrderKey |
 | StallRecords | 出攤紀錄 | ID |
@@ -162,7 +163,9 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 | Material | 原料（成本價供配方試算使用） | ID |
 | Formula / FormulaDetail | 配方與成本、配方原料明細 | FormulaID / FormulaDetailID |
 | Inventory / ProductionLog | 進貨庫存、生產履歷 | InventoryID / ProductionID |
-| Companies | 合作廠商／店家 | ID |
+| ProductCounts | 產品月盤點（期初、製作、出貨、損耗、實盤、使用量） | ID |
+| MaterialPurchases / MaterialCounts | 原物料進貨（漲幅表的資料來源）、原物料月盤點 | ID |
+| Companies | 客戶與合作廠商（CustomerType：公司／個人），訂單、帳務、進貨都以 ID 連到這裡 | ID |
 | Orders / Shipment | 訂單（一列一品項）、出貨 | OrderID / ShipmentID |
 | Receivable | 帳務（應收帳款） | ReceivableID |
 | Expenses | 支出 | ID |
@@ -219,7 +222,9 @@ page/                     功能頁面（程式在 js/pages/ 同名 .js）
   material.html           原料              inventory.html      庫存盤點
   production.html         生產履歷
   order.html              訂單              shipment.html       出貨
-  company.html            合作廠商／店家
+  company.html            客戶／合作廠商
+  product-count.html      產品月盤點          material-stock.html 原物料進貨／盤點
+  material-price.html     原物料漲幅表        login-log.html      登入紀錄
   receivable.html         帳務管理（應收）  expense.html        支出表
   amortization.html       品牌攤提表
   ai-writer.html          AI 文案發想

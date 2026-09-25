@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜產品月盤點</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        .stat-card .value {
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .count-table td,
+        .count-table th {
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .count-table input {
+            width: 80px;
+            text-align: right;
+        }
+
+        .count-table .calc {
+            background: #f8fafc;
+            font-weight: 600;
+        }
+
+        .count-table .used {
+            background: #fff4e5;
+            font-weight: 700;
+        }
+
+        .count-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f1f5f9;
+        }
+
+        .table-wrap {
+            max-height: 65vh;
+            overflow: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="headerArea"></div>
+
+    <div id="erp-layout">
+
+        <div id="sidebarArea"></div>
+
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="mb-1">📅 產品月盤點</h2>
+                            <p class="text-muted mb-0">
+                                每月每個產品：期初 + 製作 − 出貨 − 其他出庫 − 損耗 = 應有庫存；輸入實盤數量後自動算出本月使用量。
+                                製作量取自「生產履歷」，出貨量取自「出貨管理」。
+                            </p>
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input id="qMonth" type="month" class="form-control">
+                            <button id="btnCsv" class="btn btn-outline-secondary text-nowrap">⬇ CSV</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 統計 -->
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-lg"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">本月製作</div><div id="sumProduced" class="value">0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">本月出貨</div><div id="sumShipped" class="value">0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">本月使用量</div><div id="sumUsed" class="value text-warning">0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">即期 / 過期產品</div><div id="sumExpiring" class="value text-danger">0</div>
+                    </div></div></div>
+                    <div class="col-12 col-lg"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">已盤點</div><div id="sumCounted" class="value">0 / 0</div>
+                    </div></div></div>
+                </div>
+
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                            <input id="qKeyword" class="form-control form-control-sm" style="max-width:220px" placeholder="搜尋產品">
+                            <div class="form-check form-switch mb-0">
+                                <input id="qActiveOnly" class="form-check-input" type="checkbox" checked>
+                                <label class="form-check-label small" for="qActiveOnly">只顯示有庫存或本月有異動</label>
+                            </div>
+                            <span id="savedHint" class="badge bg-success d-none">本月已儲存</span>
+                            <div class="ms-auto d-flex gap-2 align-items-center">
+                                <div class="form-check mb-0">
+                                    <input id="syncStock" class="form-check-input" type="checkbox" checked>
+                                    <label class="form-check-label small" for="syncStock">實盤數量寫回產品「目前庫存」</label>
+                                </div>
+                                <button id="btnSave" class="btn btn-primary">💾 儲存本月盤點</button>
+                            </div>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="table table-sm table-bordered count-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>產品</th>
+                                        <th>單位</th>
+                                        <th class="text-end">期初</th>
+                                        <th class="text-end">本月製作</th>
+                                        <th class="text-end">本月出貨</th>
+                                        <th class="text-end">其他出庫</th>
+                                        <th class="text-end">損耗</th>
+                                        <th class="text-end">應有庫存</th>
+                                        <th class="text-end">實盤</th>
+                                        <th class="text-end">盤差</th>
+                                        <th class="text-end">本月使用量</th>
+                                        <th>最近製造日</th>
+                                        <th>最近到期日</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="countBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="small text-muted mt-2">
+                            期初預設為上個月的實盤數量；損耗預設帶入生產履歷的不良數量。其他出庫可填市集販售、試吃、贈送等。
+                            本月使用量 = 期初 + 製作 − 實盤（尚未盤點時 = 出貨 + 其他出庫 + 損耗）。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 趨勢 -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                            <h5 class="mb-0 me-auto">📈 近 12 個月趨勢（已儲存的盤點）</h5>
+                            <select id="trendMetric" class="form-select form-select-sm" style="max-width:160px">
+                                <option value="UsedQty">使用量</option>
+                                <option value="ProducedQty">製作量</option>
+                                <option value="ShippedQty">出貨量</option>
+                                <option value="CountedQty">月底庫存</option>
+                                <option value="WasteQty">損耗</option>
+                            </select>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0 count-table">
+                                <thead id="trendHead"></thead>
+                                <tbody id="trendBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="footerArea"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/pages/stock-util.js"></script>
+    <script src="../js/pages/product-count.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("ProductCount");
+        });
+    </script>
+
+</body>
+
+</html>
