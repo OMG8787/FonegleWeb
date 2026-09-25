@@ -4,22 +4,57 @@
 // =========================================================
 const API = {
 
+    // 60 秒內讀過（或剛寫入更新過）的資料表直接使用暫存，不再向伺服器要
+    //   按重新整理（F5 / 下拉更新）時一律向伺服器讀取最新資料
+    FRESH_MS: 60 * 1000,
+
+    get isReload() {
+        if (this._isReload === undefined) {
+            try { this._isReload = performance.getEntriesByType("navigation")[0]?.type === "reload"; } catch { this._isReload = false; }
+        }
+        return this._isReload;
+    },
+
     // opts：{ silent: true } 背景動作不顯示遮罩；{ loadingText } 自訂遮罩文字
-    call(action, payload = {}, opts = {}) {
+    async call(action, payload = {}, opts = {}) {
 
-        // 寫入後清掉相關資料表的快取
-        if (/^(insert|update|remove|removeWhere)$/.test(action)) this.cacheDrop(payload.table);
-        if (action === "batch") this.cacheDrop(...new Set((payload.ops || []).map(o => o.table)));
+        const result = await Auth.request(action, payload, opts);
 
-        return Auth.request(action, payload, opts);
+        // 帳號相關資料有變動：清掉登入者暫存
+        if (/^(setFavorite|updateProfile|changePassword)$/.test(action)) {
+            try { sessionStorage.removeItem("erp_me"); } catch { }
+        }
+
+        // 伺服器端會連帶修改其他資料表的動作：清掉那些表的暫存
+        if (this.SIDE_EFFECTS[action]) this.cacheDrop(...this.SIDE_EFFECTS[action]);
+
+        // 寫入成功：用伺服器回傳的結果直接更新暫存（不用整張表重讀）
+        try {
+            if (/^(insert|update|remove|removeWhere)$/.test(action)) this.applyWrite(action, payload, result);
+            if (action === "batch") (payload.ops || []).forEach((op, i) => this.applyWrite(op.action, op, result[i]));
+        } catch (e) {
+            console.warn("更新暫存失敗", e);
+        }
+
+        return result;
     },
 
     // 取得整張表（可帶 where 做完全比對，例如 { FormulaID: 3 }）
-    list(table, where = null, opts = {}) {
-        return this.call("list", { table, where }, opts).then(rows => {
-            if (!where) this.cachePut(table, rows);
-            return rows;
-        });
+    //   opts.fresh：強制向伺服器讀取
+    async list(table, where = null, opts = {}) {
+
+        if (!opts.fresh) {
+            const hit = this.cacheGet(table, true);
+            if (hit) return where ? hit.filter(r => this.matchWhere(r, where)) : hit;
+        }
+
+        const rows = await this.call("list", { table, where }, opts);
+        if (!where) this.cachePut(table, rows);
+        return rows;
+    },
+
+    matchWhere(row, where) {
+        return Object.keys(where).every(k => String(row[k]) === String(where[k]));
     },
 
     // 一次取得多張表 → { Products: [...], ID_Category: [...] }
@@ -36,17 +71,22 @@ const API = {
         };
 
         // 1. 先用這個分頁暫存的資料立即顯示
-        if (useCache && opts.onTable) {
+        const fresh = {};
+
+        if (useCache) {
             tables.forEach(name => {
                 const rows = this.cacheGet(name);
-                if (rows) emit(name, rows, { cached: true });
+                if (!rows) return;
+                // 60 秒內的暫存直接當作最新資料，不再向伺服器讀取
+                if (this.cacheGet(name, true)) { fresh[name] = true; out[name] = rows; }
+                emit(name, rows, { cached: !fresh[name] });
             });
         }
 
-        // 2. 每張表同時向伺服器讀取
+        // 2. 其他表同時向伺服器讀取
         let denied = 0, failed = null;
 
-        await Promise.all(tables.map(async name => {
+        await Promise.all(tables.filter(n => !fresh[n]).map(async name => {
             try {
                 const rows = await this.call("list", { table: name }, opts);
                 out[name] = rows;
@@ -79,22 +119,80 @@ const API = {
         return `erp_cache:${Auth.getUserId() || ""}:${table}`;
     },
 
-    cacheGet(table) {
+    // freshOnly：只回傳 60 秒內的暫存
+    cacheGet(table, freshOnly = false) {
         try {
             const v = sessionStorage.getItem(this.cacheKey(table));
-            return v ? JSON.parse(v) : null;
+            if (!v) return null;
+            const c = JSON.parse(v);
+            if (!c || !Array.isArray(c.rows)) return null;
+            // 重新整理頁面時，頁面載入後 5 秒內的讀取都視為需要最新資料
+            if (freshOnly && (Date.now() - c.t > this.FRESH_MS || (this.isReload && performance.now() < 5000 && c.t < this.loadedAt))) return null;
+            return c.rows;
         } catch {
             return null;
         }
     },
 
     cachePut(table, rows) {
+        if (!Array.isArray(rows)) return;
         try {
-            sessionStorage.setItem(this.cacheKey(table), JSON.stringify(rows));
+            sessionStorage.setItem(this.cacheKey(table), JSON.stringify({ t: Date.now(), rows }));
         } catch {
             // 超過容量就不快取
             this.cacheDrop(table);
         }
+    },
+
+    loadedAt: Date.now(),
+
+    SIDE_EFFECTS: {
+        approveUser: ["Users", "Memos"],
+        resetUserPassword: ["Users", "Memos"],
+        setUserAccess: ["Users"],
+        updateProfile: ["Users"],
+        setFavorite: ["Users"],
+        register: ["Users", "Memos"],
+        forgetPassword: ["Memos"]
+    },
+
+    // 資料表主鍵（與 gas/Code.gs 的 SCHEMA 相同）
+    KEYS: {
+        Users: "LineUserId", Calendar: "CalendarId", CalendarDays: "DayId", Inventory: "InventoryID", Orders: "OrderID",
+        Shipment: "ShipmentID", Receivable: "ReceivableID", ProductionLog: "ProductionID", Formula: "FormulaID",
+        FormulaDetail: "FormulaDetailID", AgentConfig: "Id", ID_AgentTool: "Id", AgentToolPermissions: "Id", MarketOrders: "OrderKey"
+    },
+
+    keyOf(table) {
+        return this.KEYS[table] || "ID";
+    },
+
+    // 寫入成功後更新暫存（只更新已有暫存的表；無法判斷時直接清掉）
+    applyWrite(action, op, result) {
+
+        const table = op.table;
+        const rows = this.cacheGet(table);
+        if (!rows) return;
+
+        const key = this.keyOf(table);
+        const same = (r, id) => String(r[key]) === String(id);
+
+        if (action === "insert" && result && typeof result === "object") {
+            rows.push(result);
+        } else if (action === "update" && result && typeof result === "object") {
+            const id = result[key] ?? op.id;
+            const i = rows.findIndex(r => same(r, id));
+            if (i >= 0) rows[i] = { ...rows[i], ...result }; else rows.push(result);
+        } else if (action === "remove" && !/^\$\d+\./.test(String(op.id))) {
+            const i = rows.findIndex(r => same(r, op.id));
+            if (i >= 0) rows.splice(i, 1);
+        } else if (action === "removeWhere" && op.where) {
+            for (let i = rows.length - 1; i >= 0; i--) if (this.matchWhere(rows[i], op.where)) rows.splice(i, 1);
+        } else {
+            return this.cacheDrop(table);
+        }
+
+        this.cachePut(table, rows);
     },
 
     cacheDrop(...tables) {
@@ -136,8 +234,16 @@ const API = {
     // =========================
     // 個人帳號
     // =========================
-    me(opts = {}) {
-        return this.call("me", {}, opts);
+    // 目前登入者（60 秒內用暫存，不重複向伺服器要）
+    async me(opts = {}) {
+        try {
+            const c = JSON.parse(sessionStorage.getItem("erp_me") || "null");
+            if (!opts.fresh && c && c.uid === Auth.getUserId() && Date.now() - c.t < this.FRESH_MS) return c.me;
+        } catch { }
+
+        const me = await this.call("me", {}, opts);
+        try { sessionStorage.setItem("erp_me", JSON.stringify({ t: Date.now(), uid: Auth.getUserId(), me })); } catch { }
+        return me;
     },
 
     // =========================

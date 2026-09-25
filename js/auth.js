@@ -472,7 +472,7 @@ const Auth = {
 
         // 資料快取（api.js）
         try {
-            Object.keys(sessionStorage).filter(k => k.startsWith("erp_cache:")).forEach(k => sessionStorage.removeItem(k));
+            Object.keys(sessionStorage).filter(k => k.startsWith("erp_cache:") || k === "erp_me").forEach(k => sessionStorage.removeItem(k));
         } catch { }
     },
 
@@ -661,6 +661,7 @@ const Auth = {
             try {
 
                 const me = await this.request("me", {}, { silent: true });
+                try { sessionStorage.setItem("erp_me", JSON.stringify({ t: Date.now(), uid: this.getUserId(), me })); } catch { }
 
                 // 以伺服器上的權限與到期時間為準
                 if (me.expireAt) this.setExpireTime(me.expireAt);

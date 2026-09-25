@@ -171,7 +171,7 @@ Pages.Access = (() => {
         if (reject && !confirm(`確定拒絕「${u.Name}」的帳號申請？`)) return;
 
         try {
-            await Auth.request("approveUser", {
+            await API.call("approveUser", {
                 userId: u.LineUserId,
                 approve,
                 roleList: approve ? preset.codes : undefined
@@ -198,7 +198,7 @@ Pages.Access = (() => {
         if (!confirm(`確定要重設「${u.Name}」的密碼？\n\n・會產生一組臨時密碼（只顯示這一次）\n・對方所有裝置會立即登出\n・對方用臨時密碼登入後必須設定新密碼\n\n請先確認是本人提出的申請。`)) return;
 
         try {
-            const r = await Auth.request("resetUserPassword", { userId: u.LineUserId });
+            const r = await API.call("resetUserPassword", { userId: u.LineUserId });
 
             try { await navigator.clipboard.writeText(r.tempPassword); } catch { }
 
@@ -338,7 +338,7 @@ Pages.Access = (() => {
         if (!confirm(`儲存以下 ${changes.length} 個帳號的權限？\n\n${lines.join("\n")}`)) return;
 
         try {
-            await Auth.request("setUserAccess", { changes });
+            await API.call("setUserAccess", { changes });
             edits.clear();
             alert("✅ 權限已更新（對方下次操作時立即生效）");
             await load();

@@ -20,6 +20,9 @@
 const CONFIG = {
     SESSION_HOURS: 6,                  // 登入有效時間（自登入起算；期間內除非登出或從 Sessions 分頁刪除，否則不會被登出）
     ACTIVE_UPDATE_MINUTES: 5,          // 最後活動時間的更新間隔（避免每次操作都寫入試算表）
+    SESSION_CACHE_SECONDS: 60,         // 登入驗證快取（登出 / 強制登出會立即清除；手動刪除 Sessions 列最多 60 秒後生效）
+    TABLE_CACHE_SECONDS: 300,          // 資料表讀取快取（透過系統寫入、在試算表手動編輯儲存格時會立即清除）
+    WARM_TABLES: ['Products', 'Calendar', 'CalendarDays', 'Companies', 'Material', 'Formula', 'FormulaDetail', 'Orders'],
     PASSWORD_SALT: 'ABC123',           // 與舊系統相同，舊資料的密碼雜湊可直接沿用
     TEMP_PASSWORD_LENGTH: 8,           // 管理員重設密碼時產生的臨時密碼長度（登入後必須改密碼）
     ADMIN_PERMISSIONS: [3, 12, 13, 20, 21, 22, 23, 24, 25], // 第一位註冊者自動取得
@@ -557,6 +560,10 @@ function setup() {
     buildDictionary_();
     arrangeSheets_();
 
+    // 清除所有資料表快取、建立保持熱機觸發器
+    Object.keys(SCHEMA).forEach(name => touchTable_(name));
+    try { Logger.log(installWarmTrigger()); } catch (e) { Logger.log('建立觸發器失敗：' + e); }
+
     // 移除預設的空白工作表
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     ss.getSheets().forEach(sh => {
@@ -731,6 +738,7 @@ function importRecipes_(data) {
         });
         sh.getRange(start, 1, detailRows.length, dt.headers.length)
             .setValues(detailRows.map(r => dt.headers.map(h => (h in r ? toCell_(r[h], dt.types[h] || 's') : ''))));
+        touchTable_(dt);
         out.配方明細 = detailRows.length;
     }
 
@@ -743,6 +751,7 @@ function replaceTableRows_(t, rows) {
     const last = sh.getLastRow();
 
     if (last > 1) sh.getRange(2, 1, last - 1, sh.getMaxColumns()).clearContent();
+    touchTable_(t);
     if (!rows.length) return;
 
     if (sh.getMaxRows() < rows.length + 1)
@@ -755,6 +764,7 @@ function replaceTableRows_(t, rows) {
 
     const values = rows.map(r => t.headers.map(h => (h in r ? toCell_(r[h], t.types[h] || 's') : '')));
     sh.getRange(2, 1, rows.length, t.headers.length).setValues(values);
+    touchTable_(t);
 }
 
 // 「📖 資料字典」：每張表、每個欄位的中文說明
@@ -1012,7 +1022,17 @@ function forgetPassword_(req) {
 function auth_(token) {
     if (!token) fail_('未登入', 'AUTH');
 
-    // 每次都讀試算表（不快取），從 Sessions 分頁刪除後立即生效
+    // 驗證結果快取 60 秒（登出 / 強制登出 / 重設密碼會立即清除）
+    const cached = cacheGet_('s:' + token);
+
+    if (cached && cached.exp > Date.now()) {
+        const u = getUser_(cached.userId);
+        if (u && u.IsActive !== false) {
+            if (!cacheGet_('act:' + token)) touchSession_(tbl_('Sessions'), token, {});
+            return { token, userId: u.LineUserId, user: u, perms: parsePerms_(u.RoleList), expireAt: cached.exp };
+        }
+    }
+
     const t = tbl_('Sessions');
     const found = findRow_(t, token);
 
@@ -1035,13 +1055,14 @@ function auth_(token) {
             const again = findRow_(t, token);
             if (again) {
                 endLoginLog_(again.obj.SessionId, '逾時');
-                t.sh.deleteRow(again.row);
+                deleteRow_(t, again.row);
             }
         });
         fail_('登入已超過 ' + CONFIG.SESSION_HOURS + ' 小時，請重新登入', 'AUTH');
     }
 
     touchSession_(t, token, s);
+    cachePut_('s:' + token, { userId: s.LineUserId, exp }, CONFIG.SESSION_CACHE_SECONDS);
 
     const user = getUser_(s.LineUserId);
 
@@ -1125,7 +1146,7 @@ function purgeSessions_() {
         .slice(0, 100)
         .forEach(x => {
             endLoginLog_(x.obj.SessionId, '逾時');
-            t.sh.deleteRow(x.row);
+            deleteRow_(t, x.row);
         });
 }
 
@@ -1164,8 +1185,8 @@ function kickSession_(req, ctx) {
         if (found.obj.Token === ctx.token) fail_('不能強制登出自己，請直接按登出');
 
         endLoginLog_(sid, '強制登出（' + (ctx.user.Name || '') + '）');
-        t.sh.deleteRow(found.row);
-        cacheRemove_(['sid:' + found.obj.Token, 'act:' + found.obj.Token]);
+        deleteRow_(t, found.row);
+        cacheRemove_(['sid:' + found.obj.Token, 'act:' + found.obj.Token, 's:' + found.obj.Token]);
 
         return true;
     });
@@ -1217,11 +1238,11 @@ function logout_(req, ctx) {
         const found = findRow_(t, ctx.token);
         if (found) {
             endLoginLog_(found.obj.SessionId, '登出');
-            t.sh.deleteRow(found.row);
+            deleteRow_(t, found.row);
         }
     });
 
-    cacheRemove_(['sid:' + ctx.token, 'act:' + ctx.token]);
+    cacheRemove_(['sid:' + ctx.token, 'act:' + ctx.token, 's:' + ctx.token]);
 
     return true;
 }
@@ -1233,8 +1254,8 @@ function list_(req, ctx) {
     const t = access_(req.table, ctx, 'read');
     const where = req.where || null;
 
-    return readRows_(t)
-        .map(x => publicObj_(t, x.obj))
+    return cachedObjs_(t)
+        .map(o => publicObj_(t, o))
         .filter(o => canSeeRow_(t, o, ctx))
         .filter(o => matchWhere_(o, where));
 }
@@ -1409,7 +1430,7 @@ function doRemove_(name, id, ctx) {
     if (HOOKS[name] && HOOKS[name].beforeRemove)
         HOOKS[name].beforeRemove(found.obj, ctx);
 
-    t.sh.deleteRow(found.row);
+    deleteRow_(t, found.row);
 
     if (HOOKS[name] && HOOKS[name].afterWrite)
         HOOKS[name].afterWrite(found.obj, ctx);
@@ -1427,7 +1448,7 @@ function doRemoveWhere_(name, where, ctx, isReplace) {
 
     rows.forEach(x => assertOwner_(t, x.obj, ctx));
 
-    rows.reverse().forEach(x => t.sh.deleteRow(x.row));
+    rows.reverse().forEach(x => deleteRow_(t, x.row));
 
     return rows.length;
 }
@@ -1646,8 +1667,8 @@ function resetUserPassword_(req, ctx) {
             .reverse()
             .forEach(x => {
                 endLoginLog_(x.obj.SessionId, '管理員重設密碼');
-                sessions.sh.deleteRow(x.row);
-                cacheRemove_(['sid:' + x.obj.Token, 'act:' + x.obj.Token]);
+                deleteRow_(sessions, x.row);
+                cacheRemove_(['sid:' + x.obj.Token, 'act:' + x.obj.Token, 's:' + x.obj.Token]);
             });
 
         // 相關申請標記為已處理
@@ -1982,6 +2003,7 @@ function appendRow_(t, obj) {
 
     formatTextCells_(t, row);
     sh.getRange(row, 1, 1, cells.length).setValues([cells]);
+    touchTable_(t);
 
     return row;
 }
@@ -1996,9 +2018,89 @@ function writeRow_(t, found, patch) {
 
     formatTextCells_(t, found.row);
     t.sh.getRange(found.row, 1, 1, raw.length).setValues([raw]);
+    touchTable_(t);
 
     found.raw = raw;
     found.obj = rowToObj_(t, raw);
+}
+
+function deleteRow_(t, row) {
+    t.sh.deleteRow(row);
+    touchTable_(t);
+}
+
+// ============================================================
+// 資料表讀取快取（CacheService，單一值上限 100KB，分段儲存）
+// ============================================================
+const TABLE_CACHE_CHUNK = 25000;     // 字元數（中文 UTF-8 約 3 bytes）
+
+function tableCacheKey_(name) {
+    return 'td:' + name;
+}
+
+// 讀取整張表的資料列（obj），優先使用快取
+function cachedObjs_(t) {
+    if (t.def.internal) return readRows_(t).map(x => x.obj);
+
+    const cache = CacheService.getScriptCache();
+    const key = tableCacheKey_(t.name);
+
+    try {
+        const meta = cache.get(key);
+        if (meta) {
+            const n = Number(meta);
+            const keys = Array.from({ length: n }, (_, i) => key + ':' + i);
+            const parts = cache.getAll(keys);
+            if (keys.every(k => parts[k] !== undefined && parts[k] !== null))
+                return JSON.parse(keys.map(k => parts[k]).join(''));
+        }
+    } catch (e) {
+        console.warn('讀取快取失敗', t.name, e);
+    }
+
+    const objs = readRows_(t).map(x => x.obj);
+
+    try {
+        const text = JSON.stringify(objs);
+        const chunks = {};
+        let n = 0;
+        for (let i = 0; i < text.length; i += TABLE_CACHE_CHUNK) chunks[key + ':' + (n++)] = text.slice(i, i + TABLE_CACHE_CHUNK);
+        if (n <= 40) {                      // 太大的表就不快取
+            cache.putAll(chunks, CONFIG.TABLE_CACHE_SECONDS);
+            cache.put(key, String(n), CONFIG.TABLE_CACHE_SECONDS);
+        }
+    } catch (e) {
+        console.warn('寫入快取失敗', t.name, e);
+    }
+
+    return objs;
+}
+
+// 資料有變動 → 清除該表快取
+function touchTable_(t) {
+    try { CacheService.getScriptCache().remove(tableCacheKey_(t.name || t)); } catch (e) { }
+}
+
+// 在試算表手動編輯儲存格時清除快取（簡易觸發器，不需要另外設定）
+function onEdit(e) {
+    try {
+        const name = e && e.range && e.range.getSheet().getName();
+        if (name && SCHEMA[name]) touchTable_(name);
+    } catch (err) { }
+}
+
+// 保持熱機：每 5 分鐘執行，減少冷啟動，並預先載入常用資料表快取
+//   setup 會自動建立觸發器（也可手動執行 installWarmTrigger）
+function keepWarm() {
+    CONFIG.WARM_TABLES.forEach(name => {
+        try { cachedObjs_(tbl_(name)); } catch (e) { }
+    });
+}
+
+function installWarmTrigger() {
+    const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'keepWarm');
+    if (!exists) ScriptApp.newTrigger('keepWarm').timeBased().everyMinutes(5).create();
+    return exists ? '保持熱機觸發器已存在' : '已建立保持熱機觸發器（每 5 分鐘）';
 }
 
 function formatTextCells_(t, row) {
