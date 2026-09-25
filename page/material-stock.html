@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜原物料進貨 / 盤點</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        .stat-card .value {
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .data-table td,
+        .data-table th {
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .data-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f1f5f9;
+        }
+
+        .data-table input {
+            width: 90px;
+            text-align: right;
+        }
+
+        .data-table .calc {
+            background: #f8fafc;
+            font-weight: 600;
+        }
+
+        .data-table .used {
+            background: #fff4e5;
+            font-weight: 700;
+        }
+
+        .table-wrap {
+            max-height: 60vh;
+            overflow: auto;
+        }
+
+        tr.clickable {
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="headerArea"></div>
+
+    <div id="erp-layout">
+
+        <div id="sidebarArea"></div>
+
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="mb-1">🛒 原物料進貨 / 盤點</h2>
+                            <p class="text-muted mb-0">每次購買記錄數量、金額、批號、製造與有效日期；每月盤點算出用量與成本。進貨單價會自動成為原料最新成本，配方成本試算同步更新。</p>
+                        </div>
+                        <input id="qMonth" type="month" class="form-control" style="max-width:180px" title="月份">
+                    </div>
+                </div>
+
+                <!-- 統計 -->
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">本月進貨金額</div><div id="sumAmount" class="value">$0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">本月進貨筆數</div><div id="sumCount" class="value">0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">本月用量成本（已盤點）</div><div id="sumUsedCost" class="value text-warning">$0</div>
+                    </div></div></div>
+                    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm stat-card"><div class="card-body">
+                        <div class="text-muted small">即期 / 過期批次</div><div id="sumExpiring" class="value text-danger">0</div>
+                    </div></div></div>
+                </div>
+
+                <ul class="nav nav-tabs mb-0" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPurchase" type="button" id="tabPurchaseBtn">🧾 進貨紀錄</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCount" type="button" id="tabCountBtn">📋 月盤點</button></li>
+                </ul>
+
+                <div class="tab-content">
+
+                    <!-- ============ 進貨紀錄 ============ -->
+                    <div class="tab-pane fade show active" id="tabPurchase">
+                        <div class="row g-3 pt-3">
+
+                            <div class="col-lg-8">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-6 col-md-4">
+                                                <select id="qMaterial" class="form-select form-select-sm"></select>
+                                            </div>
+                                            <div class="col-6 col-md-4">
+                                                <input id="qKeyword" class="form-control form-control-sm" placeholder="供應商 / 批號 / 備註">
+                                            </div>
+                                            <div class="col-12 col-md-4 d-flex align-items-center">
+                                                <div class="form-check form-switch mb-0">
+                                                    <input id="qAllMonths" class="form-check-input" type="checkbox">
+                                                    <label class="form-check-label small" for="qAllMonths">顯示全部月份</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-between small text-muted mb-1">
+                                            <span>明細（點選可修改）</span><span id="listSummary"></span>
+                                        </div>
+                                        <div class="table-wrap">
+                                            <table class="table table-sm table-hover data-table mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>日期</th>
+                                                        <th>原料</th>
+                                                        <th>供應商</th>
+                                                        <th class="text-end">數量</th>
+                                                        <th class="text-end">單價</th>
+                                                        <th class="text-end">總價</th>
+                                                        <th>批號</th>
+                                                        <th>製造日</th>
+                                                        <th>有效期限</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="listBody"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-lg-4">
+                                <div id="formCard" class="card border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h5 id="formTitle" class="mb-0">➕ 新增進貨</h5>
+                                            <span id="editHint" class="badge bg-warning text-dark d-none">編輯中</span>
+                                        </div>
+                                        <form id="purchaseForm" onsubmit="return false">
+                                            <div class="row g-2">
+                                                <div class="col-6">
+                                                    <label class="form-label small">進貨日期 *</label>
+                                                    <input id="PurchaseDate" type="date" class="form-control">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small">原料 *</label>
+                                                    <select id="MaterialID" class="form-select"></select>
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label small">供應商</label>
+                                                    <input id="Supplier" class="form-control" list="supplierList" placeholder="可輸入或從客戶 / 合作廠商選">
+                                                    <datalist id="supplierList"></datalist>
+                                                </div>
+                                                <div class="col-4">
+                                                    <label class="form-label small">數量 *</label>
+                                                    <input id="Quantity" type="number" step="any" min="0" class="form-control">
+                                                </div>
+                                                <div class="col-3">
+                                                    <label class="form-label small">單位</label>
+                                                    <input id="Unit" class="form-control">
+                                                </div>
+                                                <div class="col-5">
+                                                    <label class="form-label small">總價 *</label>
+                                                    <input id="TotalPrice" type="number" step="any" min="0" class="form-control">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small">單價（自動）</label>
+                                                    <input id="UnitPrice" type="number" step="any" min="0" class="form-control">
+                                                </div>
+                                                <div class="col-6 d-flex align-items-end">
+                                                    <div id="priceChange" class="small pb-2"></div>
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label small">批號</label>
+                                                    <input id="BatchNo" class="form-control">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small">製造日期</label>
+                                                    <input id="MfgDate" type="date" class="form-control">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small">有效期限</label>
+                                                    <input id="ExpDate" type="date" class="form-control">
+                                                    <div id="expHint" class="small text-muted"></div>
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label small">發票 / 收據號碼</label>
+                                                    <input id="InvoiceNo" class="form-control">
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label small">備註</label>
+                                                    <textarea id="Note" rows="2" class="form-control"></textarea>
+                                                </div>
+                                                <div class="col-12 small" id="createOptions">
+                                                    <div class="form-check">
+                                                        <input id="optUpdateMaterial" class="form-check-input" type="checkbox" checked>
+                                                        <label class="form-check-label" for="optUpdateMaterial">更新原料成本價，並把數量加到目前庫存</label>
+                                                    </div>
+                                                    <div class="form-check" id="optExpenseWrap">
+                                                        <input id="optExpense" class="form-check-input" type="checkbox" checked>
+                                                        <label class="form-check-label" for="optExpense">同時記入支出表（分類：食材）</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex flex-wrap gap-2 mt-3">
+                                                <button id="btnCreate" class="btn btn-success">新增</button>
+                                                <button id="btnUpdate" class="btn btn-primary">儲存修改</button>
+                                                <button id="btnDelete" class="btn btn-outline-danger">刪除</button>
+                                                <button id="btnClear" class="btn btn-outline-secondary ms-auto">清除</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ============ 月盤點 ============ -->
+                    <div class="tab-pane fade" id="tabCount">
+                        <div class="card border-0 shadow-sm mt-3">
+                            <div class="card-body">
+                                <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                                    <input id="cKeyword" class="form-control form-control-sm" style="max-width:220px" placeholder="搜尋原料">
+                                    <div class="form-check form-switch mb-0">
+                                        <input id="cActiveOnly" class="form-check-input" type="checkbox" checked>
+                                        <label class="form-check-label small" for="cActiveOnly">只顯示有庫存或本月有進貨</label>
+                                    </div>
+                                    <span id="countSavedHint" class="badge bg-success d-none">本月已儲存</span>
+                                    <div class="ms-auto d-flex gap-2 align-items-center">
+                                        <div class="form-check mb-0">
+                                            <input id="cSyncStock" class="form-check-input" type="checkbox" checked>
+                                            <label class="form-check-label small" for="cSyncStock">實盤數量寫回原料「目前庫存」</label>
+                                        </div>
+                                        <button id="btnCountCsv" class="btn btn-outline-secondary btn-sm">⬇ CSV</button>
+                                        <button id="btnCountSave" class="btn btn-primary">💾 儲存本月盤點</button>
+                                    </div>
+                                </div>
+                                <div class="table-wrap">
+                                    <table class="table table-sm table-bordered data-table mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>原料</th>
+                                                <th>單位</th>
+                                                <th class="text-end">期初</th>
+                                                <th class="text-end">本月進貨</th>
+                                                <th class="text-end">進貨金額</th>
+                                                <th class="text-end">實盤</th>
+                                                <th class="text-end">本月用量</th>
+                                                <th class="text-end">平均單價</th>
+                                                <th class="text-end">用量成本</th>
+                                                <th class="text-end">庫存價值</th>
+                                                <th>最近到期日</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="countBody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="small text-muted mt-2">
+                                    期初預設為上個月的實盤數量（沒有盤點紀錄時帶入原料目前庫存）。本月用量 = 期初 + 本月進貨 − 實盤；
+                                    平均單價 = 本月進貨加權平均（本月沒進貨時用最近一次進貨單價）。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="footerArea"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/pages/stock-util.js"></script>
+    <script src="../js/pages/material-stock.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("MaterialStock");
+        });
+    </script>
+
+</body>
+
+</html>

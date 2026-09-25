@@ -25,7 +25,7 @@ window.Favorite = (() => {
 
         try {
 
-            const me = await API.me();
+            const me = await API.me({ silent: true });
 
             favoriteIds =
                 String(me?.user?.FavoriteFeaturesList || "")

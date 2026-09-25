@@ -96,7 +96,8 @@ window.MarketStore = (() => {
     }
 
     // 上傳待上傳訂單，回傳上傳筆數（失敗會拋出錯誤）
-    async function syncPending() {
+    // 預設在背景執行（不擋畫面）；使用者手動按「重新上傳」時傳 {} 顯示遮罩
+    async function syncPending(opts = { silent: true }) {
 
         migrateLegacy();
 
@@ -104,11 +105,11 @@ window.MarketStore = (() => {
 
         if (!pending.length) return 0;
 
-        const existing = new Set((await API.list(TABLE)).map(r => r.OrderKey));
+        const existing = new Set((await API.list(TABLE, null, opts)).map(r => r.OrderKey));
         const toUpload = pending.filter(o => !existing.has(o.id));
 
         if (toUpload.length) {
-            await API.batch(toUpload.map(o => ({ action: "insert", table: TABLE, data: toRow(o) })));
+            await API.batch(toUpload.map(o => ({ action: "insert", table: TABLE, data: toRow(o) })), opts);
         }
 
         writeLocal(PENDING_KEY, []);
@@ -123,7 +124,7 @@ window.MarketStore = (() => {
         let uploaded = 0;
 
         try {
-            uploaded = await syncPending();
+            uploaded = await syncPending({});
         } catch (err) {
             console.warn("補傳失敗", err);
         }
@@ -140,7 +141,8 @@ window.MarketStore = (() => {
 
         try {
 
-            await API.insert(TABLE, toRow(order));
+            // 點餐畫面已先清空，背景上傳不擋畫面，收銀可以直接接下一筆
+            await API.insert(TABLE, toRow(order), { silent: true });
 
             // 順便補傳之前斷線的訂單
             if (pendingCount()) syncPending().catch(() => { });

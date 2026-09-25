@@ -4,51 +4,52 @@
 // =========================================================
 const API = {
 
-    call(action, payload = {}) {
-        return Auth.request(action, payload);
+    // opts：{ silent: true } 背景動作不顯示遮罩；{ loadingText } 自訂遮罩文字
+    call(action, payload = {}, opts = {}) {
+        return Auth.request(action, payload, opts);
     },
 
     // 取得整張表（可帶 where 做完全比對，例如 { FormulaID: 3 }）
-    list(table, where = null) {
-        return this.call("list", { table, where });
+    list(table, where = null, opts = {}) {
+        return this.call("list", { table, where }, opts);
     },
 
     // 一次取得多張表 → { Products: [...], ID_Category: [...] }
-    getMany(tables) {
-        return this.call("getMany", { tables });
+    getMany(tables, opts = {}) {
+        return this.call("getMany", { tables }, opts);
     },
 
-    get(table, id) {
-        return this.call("get", { table, id });
+    get(table, id, opts = {}) {
+        return this.call("get", { table, id }, opts);
     },
 
-    insert(table, data) {
-        return this.call("insert", { table, data });
+    insert(table, data, opts = {}) {
+        return this.call("insert", { table, data }, opts);
     },
 
-    update(table, id, data) {
-        return this.call("update", { table, id, data });
+    update(table, id, data, opts = {}) {
+        return this.call("update", { table, id, data }, opts);
     },
 
-    remove(table, id) {
-        return this.call("remove", { table, id });
+    remove(table, id, opts = {}) {
+        return this.call("remove", { table, id }, opts);
     },
 
-    removeWhere(table, where) {
-        return this.call("removeWhere", { table, where });
+    removeWhere(table, where, opts = {}) {
+        return this.call("removeWhere", { table, where }, opts);
     },
 
     // 多個操作一次送出（同一把鎖）
     // data 內可用 "$0.FormulaID" 參照第 0 個操作的結果
-    batch(ops) {
-        return this.call("batch", { ops });
+    batch(ops, opts = {}) {
+        return this.call("batch", { ops }, opts);
     },
 
     // =========================
     // 個人帳號
     // =========================
-    me() {
-        return this.call("me");
+    me(opts = {}) {
+        return this.call("me", {}, opts);
     },
 
     // =========================

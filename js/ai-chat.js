@@ -115,6 +115,7 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     updateModeText()
     /* ===== 事件 ===== */
     const input = document.getElementById("aiInput")
+    input.dataset.placeholder = input.placeholder
 
     input.addEventListener("input", () => {
         input.style.height = "auto"
@@ -165,7 +166,7 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
         body.innerHTML = ""
         showTyping()
         try {
-            const rows = await API.list("AiChats")
+            const rows = await API.list("AiChats", null, { silent: true })
             history = rows
                 .sort((a, b) => a.ID - b.ID)
                 .slice(-40)
@@ -182,7 +183,7 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
     // 寫入一則對話到試算表（失敗不影響對話）
     async function saveMessage(entry) {
         try {
-            const row = await API.insert("AiChats", { Role: entry.role, Text: entry.text })
+            const row = await API.insert("AiChats", { Role: entry.role, Text: entry.text }, { silent: true })
             entry.id = row.ID
         } catch (err) {
             console.warn("對話紀錄儲存失敗", err)
@@ -253,6 +254,7 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
 
     async function send() {
 
+        if (busy) return
         let msg = input.value.trim()
         if (!msg) return
 
@@ -270,8 +272,10 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
         // 對話紀錄 → Gemini messages
         const messages = history.slice(-20).map(m => ({ role: m.role, text: m.text }))
 
+        // 對話視窗有「正在輸入…」提示，不擋整個畫面；等待回覆時停用輸入避免重複送出
+        setBusy(true)
         try {
-            const reply = await API.call("aiChat", { messages })
+            const reply = await API.call("aiChat", { messages }, { silent: true })
             hideTyping()
             addMessage(reply, "ai")
             const aiEntry = { role: "model", text: reply }
@@ -280,7 +284,20 @@ box-shadow:0 5px 12px rgba(0,0,0,0.15);
         } catch (err) {
             hideTyping()
             addMessage(err?.message || "系統錯誤", "ai")
+        } finally {
+            setBusy(false)
         }
+    }
+
+    let busy = false
+    function setBusy(on) {
+        busy = on
+        const btn = document.getElementById("aiSend")
+        btn.disabled = on
+        btn.style.opacity = on ? ".5" : ""
+        input.readOnly = on
+        input.placeholder = on ? "AI 回覆中…" : input.dataset.placeholder
+        if (!on) input.focus()
     }
 
     function addMessage(text, type) {

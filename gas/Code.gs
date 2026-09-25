@@ -86,7 +86,7 @@ const SCHEMA = {
     Companies: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n CompanyName CompanyID CompanyPhone CompanyURL CompanyAddress ContactName ContactPhone ContactEmail ' +
-            'PaymentStstus:n IsMember:b IsConverted:b AccountManager TotalVisit:n TotalMail:n Source Note OpenClaw CreateLineID CreatedAt UpdateAt'
+            'PaymentStstus:n IsMember:b IsConverted:b AccountManager TotalVisit:n TotalMail:n Source Note OpenClaw CreateLineID CreatedAt UpdateAt CustomerType'
     },
     CrawlerSources: {
         key: 'ID', seq: 'ID',
@@ -113,7 +113,7 @@ const SCHEMA = {
         key: 'OrderID', seq: 'OrderID',
         cols: 'OrderID:n OrderNo MemberID MemberName MemberPhone MemberEmail ShippingAddress ProductID ProductName Qty:n Unit UnitPrice:n ' +
             'DiscountAmount:n ShippingFee:n TotalAmount:n PaymentMethod PaymentStatus OrderStatus ShippingStatus SalesChannel Note ' +
-            'OrderDate CheckoutAt ExpectedShippingDate CreatedBy CreatedAt UpdatedBy UpdatedAt'
+            'OrderDate CheckoutAt ExpectedShippingDate CreatedBy CreatedAt UpdatedBy UpdatedAt CompanyId:n ContactName'
     },
     Shipment: {
         key: 'ShipmentID', seq: 'ShipmentID',
@@ -149,6 +149,26 @@ const SCHEMA = {
     AiDrafts: {
         key: 'ID', seq: 'ID', owner: true,
         cols: 'ID:n Title DraftType Platform Tone CalendarId:n Outline Content IsShared:b CreatedBy CreatedAt UpdatedBy UpdatedAt'
+    },
+    // 原物料進貨（每次購買一列；漲幅表依此計算）
+    MaterialPurchases: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n PurchaseDate MaterialID:n MaterialName Category Supplier CompanyId:n Quantity:n Unit UnitPrice:n TotalPrice:n ' +
+            'BatchNo MfgDate ExpDate InvoiceNo ExpenseId:n Note CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'UnitPrice TotalPrice'
+    },
+    // 原物料月盤點：期初 + 本月進貨 - 實盤 = 本月用量
+    MaterialCounts: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n CountMonth MaterialID:n MaterialName Unit OpeningQty:n PurchasedQty:n PurchasedAmount:n CountedQty:n UsedQty:n ' +
+            'AvgUnitPrice:n UsedCost:n StockValue:n NearestExpDate Note CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'PurchasedAmount AvgUnitPrice UsedCost StockValue'
+    },
+    // 產品月盤點：期初 + 製作 - 出貨 - 其他出庫 - 損耗 = 應有；實盤；本月使用量 = 期初 + 製作 - 實盤
+    ProductCounts: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n CountMonth ProductID:n ProductName Unit OpeningQty:n ProducedQty:n ShippedQty:n OtherOutQty:n WasteQty:n ' +
+            'ExpectedQty:n CountedQty:n DiffQty:n UsedQty:n LatestMfgDate NearestExpDate Note CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
     ProductionLog: {
         key: 'ProductionID', seq: 'ProductionID',
@@ -219,9 +239,12 @@ const TABLE_INFO = {
     Formula: ['product', '配方與成本'],
     FormulaDetail: ['product', '配方原料明細'],
     Inventory: ['product', '進貨 / 庫存紀錄'],
+    ProductCounts: ['product', '產品月盤點（製作、出貨、剩餘、使用量、製造 / 到期日）'],
+    MaterialPurchases: ['product', '原物料進貨（數量、金額、單價、批號、製造 / 有效日期）'],
+    MaterialCounts: ['product', '原物料月盤點（期初、進貨、實盤、用量、成本）'],
     ProductionLog: ['product', '生產履歷'],
-    Companies: ['sales', '合作廠商 / 店家'],
-    Orders: ['sales', '訂單（一列一個品項，同訂單共用 OrderNo）'],
+    Companies: ['sales', '客戶與合作廠商（公司 / 個人），訂單與帳務都以 ID 連到這裡'],
+    Orders: ['sales', '訂單（一列一個品項，同訂單共用 OrderNo；CompanyId 連到客戶）'],
     Shipment: ['sales', '出貨'],
     Receivable: ['finance', '帳務（應收帳款）'],
     Expenses: ['finance', '支出'],
@@ -275,11 +298,16 @@ const COLUMN_LABELS = {
     UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量', LineCost: '小計成本',
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
     ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
+    PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
+    OpeningQty: '期初數量', PurchasedQty: '本月進貨量', PurchasedAmount: '本月進貨金額', CountedQty: '實盤數量',
+    UsedQty: '本月使用量', AvgUnitPrice: '平均單價', UsedCost: '使用成本', StockValue: '庫存價值',
+    NearestExpDate: '最近到期日', LatestMfgDate: '最近製造日', ShippedQty: '本月出貨', OtherOutQty: '其他出庫（市集 / 試吃 / 贈送）',
+    WasteQty: '損耗', ExpectedQty: '應有庫存', DiffQty: '盤差（實盤 - 應有）', TotalPrice: '總價',
     // 銷售
-    CompanyName: '公司 / 店家名稱', CompanyID: '統一編號', CompanyPhone: '公司電話', CompanyURL: '網站',
+    CompanyName: '客戶 / 公司名稱', CustomerType: '客戶類型（公司 / 個人，空白 = 公司）', CompanyID: '統一編號', CompanyPhone: '公司電話', CompanyURL: '網站',
     CompanyAddress: '地址', ContactName: '聯絡人', ContactPhone: '聯絡電話', ContactEmail: '聯絡 Email',
     PaymentStstus: '付款評分（0-5）', TotalVisit: '拜訪次數', TotalMail: '寄信次數', Source: '資料來源',
-    OrderID: '訂單編號', OrderNo: '訂單號碼', MemberID: '會員編號', MemberName: '會員姓名', MemberPhone: '會員電話',
+    OrderID: '訂單編號', OrderNo: '訂單號碼', MemberID: '會員編號（舊資料，Users 的 ID）', MemberName: '會員姓名', MemberPhone: '會員電話',
     MemberEmail: '會員 Email', ShippingAddress: '收件地址', Qty: '數量', UnitPrice: '單價', DiscountAmount: '折扣',
     ShippingFee: '運費', TotalAmount: '訂單總額', PaymentMethod: '付款方式', PaymentStatus: '付款狀態',
     OrderStatus: '訂單狀態', ShippingStatus: '出貨狀態', SalesChannel: '銷售通路', OrderDate: '下單時間',
@@ -287,7 +315,7 @@ const COLUMN_LABELS = {
     LogisticsCompany: '物流公司', TrackingNumber: '物流單號', ReceiverName: '收件人', ReceiverPhone: '收件電話',
     ReceiverAddress: '收件地址', ShippingQty: '出貨數量', ShippingDate: '出貨日期', ReceivedDate: '收貨日期',
     // 財務
-    ReceivableID: '編號', CompanyId: '店家（廠商編號）', PayerName: '付款對象', BillDate: '帳單日期', Item: '項目',
+    ReceivableID: '編號', CompanyId: '客戶編號（Companies 的 ID）', PayerName: '付款對象', BillDate: '帳單日期', Item: '項目',
     PaidAmount: '已收金額', TaxAmount: '稅額', RefundAmount: '退款', TransactionNo: '交易序號', InvoiceNo: '發票號碼',
     PaymentDate: '付款日期', RefundDate: '退款日期', ExpenseDate: '支出日期', ItemName: '項目名稱', Vendor: '廠商 / 對象',
     IsPaid: '已付款', RecordDate: '日期', Type: '類型（支出 / 回收）', AmortizeMonths: '攤提月數',
@@ -349,6 +377,9 @@ const TABLE_PERMS = {
     Material: { read: PRODUCT, write: PRODUCT },
     Inventory: { read: PRODUCT, write: PRODUCT },
     ProductionLog: { read: PRODUCT, write: PRODUCT },
+    ProductCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
+    MaterialPurchases: { read: PRODUCT.concat(FINANCE), write: PRODUCT.concat(FINANCE) },
+    MaterialCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
     Formula: { read: PRODUCT, write: PRODUCT },
     FormulaDetail: { read: PRODUCT, write: PRODUCT },
     Companies: { read: 'all', write: SALES.concat(FINANCE) },

@@ -5,7 +5,8 @@ Pages.Order = (() => {
     const dom = {};
     let orderCache = [];
     let currentOrder = null;
-    let memberOptions = [];
+    let customers = [];     // Companies：客戶與合作廠商
+    let members = [];       // Users：舊訂單使用的會員
     let productOptions = [];
     let mode = "view";
 
@@ -14,14 +15,16 @@ Pages.Order = (() => {
         bindEvents();
         hideForm();
 
-        initMemberSelect();
+        initCustomerSelect();
 
         try {
 
-            // 會員、產品、訂單一次載入
-            const data = await API.getMany(["Users", "Products", "Orders"]);
+            // 客戶、會員、產品、訂單一次載入
+            const data = await API.getMany(["Companies", "Users", "Products", "Orders"]);
 
-            renderMemberOptions(data.Users);
+            customers = data.Companies || [];
+            members = data.Users || [];
+            renderCustomerOptions();
             renderProductOptions(data.Products);
             applySearch(data.Orders);
 
@@ -72,6 +75,20 @@ Pages.Order = (() => {
             document.getElementById("SalesChannel");
         dom.MemberID =
             document.getElementById("MemberID");
+        dom.CompanyId =
+            document.getElementById("CompanyId");
+        dom.CustomerSelect =
+            document.getElementById("CustomerSelect");
+        dom.ContactName =
+            document.getElementById("ContactName");
+        dom.newCustomerBox =
+            document.getElementById("newCustomerBox");
+        dom.saveNewCustomer =
+            document.getElementById("saveNewCustomer");
+        dom.syncCustomerBox =
+            document.getElementById("syncCustomerBox");
+        dom.syncCustomer =
+            document.getElementById("syncCustomer");
         dom.qMemberID =
             document.getElementById("qMemberID");
         dom.MemberName =
@@ -159,16 +176,14 @@ Pages.Order = (() => {
                 loadDetail(item);
             }
         );
-        dom.MemberID?.addEventListener("change", () => {
-            const value = dom.MemberID.value;
-            const member = memberOptions.find(x => x.id == value);
-            if (!member)
-                return;
-            dom.MemberName.value = member.name;
-            if (!dom.MemberPhone.value)
-                dom.MemberPhone.value = member.phone;
-            if (!dom.MemberEmail.value)
-                dom.MemberEmail.value = member.email;
+        dom.CustomerSelect?.addEventListener("change", () => applyCustomer(dom.CustomerSelect.value));
+
+        // 手動改了名稱 / 聯絡資料：新客戶提示、既有客戶可同步更新
+        ["MemberName", "MemberPhone", "MemberEmail", "ShippingAddress", "ContactName"].forEach(k =>
+            dom[k]?.addEventListener("input", refreshCustomerHint));
+
+        dom.SalesChannel?.addEventListener("change", () => {
+            if (dom.SalesChannel.value === "B2B") setNewCustomerType("公司");
         });
         dom.DiscountAmount?.addEventListener(
             "input",
@@ -204,7 +219,7 @@ Pages.Order = (() => {
         };
 
         const matched = rows.filter(r =>
-            (!q.member || String(r.MemberID) === q.member) &&
+            matchCustomerFilter(r, q.member) &&
             (!q.shipDate || App.toDateInput(r.ExpectedShippingDate) === q.shipDate) &&
             (!q.orderDate || App.toDateInput(r.OrderDate) === q.orderDate) &&
             App.like(r.OrderNo, q.orderNo) &&
@@ -220,6 +235,7 @@ Pages.Order = (() => {
                     OrderID: r.OrderID,
                     OrderNo: r.OrderNo,
                     MemberName: r.MemberName,
+                    CompanyId: r.CompanyId,
                     TotalAmount: r.TotalAmount,
                     OrderStatus: r.OrderStatus,
                     OrderDate: r.OrderDate,
@@ -250,54 +266,216 @@ Pages.Order = (() => {
         });
     }
 
-    function initMemberSelect() {
-        new TomSelect("#MemberID", {
-            create: false,
-            searchField: ["text"],
+    // =========================
+    // 客戶選擇
+    //   c:ID = 客戶（Companies）、u:ID = 會員（Users，舊訂單）、new:名稱 = 新客戶
+    // =========================
+    function initCustomerSelect() {
+
+        const render = {
+            option: (d, esc) => `<div>${esc(d.text)}${d.sub ? `<div class="small text-muted">${esc(d.sub)}</div>` : ""}</div>`,
+            item: (d, esc) => `<div>${esc(d.text)}</div>`,
+            option_create: (d, esc) => `<div class="create">🆕 新客戶：<strong>${esc(d.input)}</strong></div>`,
+            no_results: () => `<div class="no-results">找不到，直接輸入名稱可建立新客戶</div>`
+        };
+
+        new TomSelect("#CustomerSelect", {
             valueField: "value",
             labelField: "text",
-            sortField: "text"
+            searchField: ["text", "sub"],
+            sortField: [{ field: "$score" }, { field: "text" }],
+            create: input => ({ value: "new:" + input.trim(), text: input.trim() + "（新客戶）", sub: "" }),
+            createOnBlur: true,
+            maxOptions: 200,
+            placeholder: "搜尋或輸入客戶名稱",
+            render
         });
+
         new TomSelect("#qMemberID", {
-            create: false,
-            searchField: ["text"],
             valueField: "value",
             labelField: "text",
-            sortField: "text"
+            searchField: ["text", "sub"],
+            sortField: [{ field: "$score" }, { field: "text" }],
+            placeholder: "全部客戶",
+            render
         });
     }
 
-    function renderMemberOptions(users) {
-        memberOptions = [];
-        if (dom.MemberID.tomselect)
-            dom.MemberID.tomselect.clearOptions();
-        else
-            dom.MemberID.innerHTML = "";
-        if (dom.qMemberID.tomselect)
-            dom.qMemberID.tomselect.clearOptions();
-        else
-            dom.qMemberID.innerHTML = "";
-        dom.MemberID.add(new Option("請選擇會員", ""));
-        dom.qMemberID.add(new Option("全部會員", ""));
-        users.forEach(u => {
-            const id = String(u.ID ?? "");
-            if (!id)
-                return;
-            memberOptions.push({
-                id,
-                name: u.Name || "",
-                phone: u.PhoneNumber || "",
-                email: u.Email || ""
-            });
-            const option = new Option(u.Name || id, id);
-            dom.MemberID.add(option);
-            dom.qMemberID.add(option.cloneNode(true));
+    function customerOption(c) {
+        const type = c.CustomerType === "個人" ? "👤" : "🏢";
+        const phone = c.ContactPhone || c.CompanyPhone || "";
+        return {
+            value: "c:" + c.ID,
+            text: `${type} ${c.CompanyName || "（未命名）"}`,
+            sub: [c.ContactName, phone, c.CompanyID ? "統編 " + c.CompanyID : ""].filter(Boolean).join(" · ")
+        };
+    }
+
+    function renderCustomerOptions() {
+
+        const options = customers
+            .filter(c => c.CompanyName)
+            .map(customerOption)
+            .concat(members.map(u => ({
+                value: "u:" + u.ID,
+                text: `👥 ${u.Name || u.ID}（會員）`,
+                sub: [u.PhoneNumber, u.Email].filter(Boolean).join(" · ")
+            })));
+
+        [dom.CustomerSelect.tomselect, dom.qMemberID.tomselect].forEach(ts => {
+            const keep = ts.getValue();
+            ts.clearOptions();
+            ts.addOptions(options);
+            if (keep && ts.options[keep]) ts.setValue(keep, true);
         });
-        // 全部加入完成後再同步一次
-        if (dom.MemberID.tomselect)
-            dom.MemberID.tomselect.sync();
-        if (dom.qMemberID.tomselect)
-            dom.qMemberID.tomselect.sync();
+    }
+
+    function findCustomer(id) {
+        return id === "" || id === null || id === undefined
+            ? null
+            : customers.find(c => String(c.ID) === String(id));
+    }
+
+    // 選了客戶 → 自動帶入聯絡資料
+    function applyCustomer(value) {
+
+        dom.CompanyId.value = "";
+        dom.MemberID.value = "";
+
+        if (value.startsWith("c:")) {
+
+            const c = findCustomer(value.slice(2));
+
+            if (c) {
+                dom.CompanyId.value = c.ID;
+                dom.MemberName.value = c.CompanyName || "";
+                dom.ContactName.value = c.ContactName || "";
+                dom.MemberPhone.value = c.ContactPhone || c.CompanyPhone || "";
+                dom.MemberEmail.value = c.ContactEmail || "";
+                dom.ShippingAddress.value = c.CompanyAddress || "";
+                dom.syncCustomer.checked = false;
+            }
+
+        } else if (value.startsWith("u:")) {
+
+            const u = members.find(x => String(x.ID) === value.slice(2));
+
+            if (u) {
+                dom.MemberID.value = u.ID;
+                dom.MemberName.value = u.Name || "";
+                dom.MemberPhone.value = u.PhoneNumber || "";
+                dom.MemberEmail.value = u.Email || "";
+            }
+
+        } else if (value.startsWith("new:")) {
+
+            const name = value.slice(4);
+            const same = customers.find(c => c.CompanyName === name);
+
+            // 輸入的名稱剛好是既有客戶 → 直接選它
+            if (same) {
+                dom.CustomerSelect.tomselect.removeOption(value);
+                dom.CustomerSelect.tomselect.setValue("c:" + same.ID);
+                return;
+            }
+
+            dom.MemberName.value = name;
+            dom.saveNewCustomer.checked = true;
+            if (dom.SalesChannel.value === "B2B") setNewCustomerType("公司");
+        }
+
+        refreshCustomerHint();
+    }
+
+    function setNewCustomerType(type) {
+        const radio = document.querySelector(`input[name="newCustomerType"][value="${type}"]`);
+        if (radio) radio.checked = true;
+    }
+
+    // 既有客戶：這次輸入的聯絡資料與客戶檔不同的欄位
+    function customerChanges() {
+
+        const c = findCustomer(dom.CompanyId.value);
+        if (!c) return null;
+
+        const patch = {};
+        const cmp = (field, value) => {
+            if (value && value !== (c[field] || "")) patch[field] = value;
+        };
+
+        cmp("ContactName", dom.ContactName.value.trim());
+        // 客戶只有公司電話時，比對公司電話
+        cmp(!c.ContactPhone && c.CompanyPhone ? "CompanyPhone" : "ContactPhone", dom.MemberPhone.value.trim());
+        cmp("ContactEmail", dom.MemberEmail.value.trim());
+        cmp("CompanyAddress", dom.ShippingAddress.value.trim());
+
+        return Object.keys(patch).length ? { id: c.ID, patch } : null;
+    }
+
+    function isNewCustomer() {
+        return !dom.CompanyId.value && !dom.MemberID.value && !!dom.MemberName.value.trim();
+    }
+
+    function refreshCustomerHint() {
+        dom.newCustomerBox.classList.toggle("d-none", !isNewCustomer());
+        dom.syncCustomerBox.classList.toggle("d-none", !customerChanges());
+    }
+
+    // 建立 / 修改訂單時要一起執行的客戶操作（放在 batch 最前面）
+    // 回傳 { ops, ref }，ref 為訂單 CompanyId 的值（新客戶為 "$0.ID"）
+    function customerOps() {
+
+        if (isNewCustomer()) {
+
+            const name = dom.MemberName.value.trim();
+            const same = customers.find(c => c.CompanyName === name);
+
+            if (same) return { ops: [], ref: same.ID };
+            if (!dom.saveNewCustomer.checked) return { ops: [], ref: "" };
+
+            const type = document.querySelector('input[name="newCustomerType"]:checked')?.value || "公司";
+
+            return {
+                ops: [{
+                    action: "insert",
+                    table: "Companies",
+                    data: {
+                        CompanyName: name,
+                        CustomerType: type,
+                        ContactName: dom.ContactName.value.trim() || (type === "個人" ? name : ""),
+                        ContactPhone: dom.MemberPhone.value.trim(),
+                        ContactEmail: dom.MemberEmail.value.trim(),
+                        CompanyAddress: dom.ShippingAddress.value.trim(),
+                        IsConverted: true,
+                        Source: "訂單建立"
+                    }
+                }],
+                ref: "$0.ID"
+            };
+        }
+
+        const change = dom.syncCustomer.checked ? customerChanges() : null;
+
+        return {
+            ops: change ? [{ action: "update", table: "Companies", id: change.id, data: change.patch }] : [],
+            ref: dom.CompanyId.value
+        };
+    }
+
+    async function reloadCustomers() {
+        try {
+            customers = await API.list("Companies");
+            renderCustomerOptions();
+        } catch (err) {
+            console.warn("重新載入客戶失敗", err);
+        }
+    }
+
+    function matchCustomerFilter(r, value) {
+        if (!value) return true;
+        if (value.startsWith("c:")) return String(r.CompanyId ?? "") === value.slice(2);
+        if (value.startsWith("u:")) return String(r.MemberID ?? "") === value.slice(2);
+        return true;
     }
 
     function renderProductOptions(products) {
@@ -337,7 +515,7 @@ Pages.Order = (() => {
 </div>
 
 <div class="member-info">
-👤 ${App.esc(x.MemberName || "未知")}
+${x.CompanyId ? "🏢" : "👤"} ${App.esc(x.MemberName || "未知")}
 </div>
 
 <div class="member-info">
@@ -407,6 +585,20 @@ Pages.Order = (() => {
             else
                 el.value = d[k] ?? "";
         });
+
+        const ts = dom.CustomerSelect.tomselect;
+        const value = d.CompanyId ? "c:" + d.CompanyId : (d.MemberID ? "u:" + d.MemberID : "");
+
+        if (value && ts.options[value]) {
+            ts.setValue(value, true);
+        } else if (d.MemberName) {
+            // 找不到對應客戶（舊資料）：顯示名稱，可再選擇或存為新客戶
+            ts.addOption({ value: "new:" + d.MemberName, text: d.MemberName + "（未建檔）", sub: "" });
+            ts.setValue("new:" + d.MemberName, true);
+            if (d.MemberID) dom.MemberID.value = d.MemberID;
+        }
+
+        refreshCustomerHint();
 
         d.Products.forEach(p => {
             addDetailRow();
@@ -531,12 +723,17 @@ class="btn btn-danger btn-sm">
         if (!dom.OrderNo.value)
             dom.OrderNo.value = generateOrderNo();
         try {
-            await API.batch(rows.map(tr => ({
-                action: "insert",
-                table: "Orders",
-                data: buildPayload(tr)
-            })));
-            alert(`🎉 訂單建立成功\n🧾 ${dom.OrderNo.value}`);
+            const cust = customerOps();
+            await API.batch([
+                ...cust.ops,
+                ...rows.map(tr => ({
+                    action: "insert",
+                    table: "Orders",
+                    data: { ...buildPayload(tr), CompanyId: cust.ref }
+                }))
+            ]);
+            alert(`🎉 訂單建立成功\n🧾 ${dom.OrderNo.value}` + (cust.ref === "$0.ID" ? "\n🆕 已建立客戶資料" : ""));
+            if (cust.ops.length) await reloadCustomers();
             await searchOrder();
             createMode();
         }
@@ -565,7 +762,9 @@ class="btn btn-danger btn-sm">
                 CreatedAt: currentOrder.CreatedAt,
                 CreatedBy: currentOrder.CreatedBy
             };
+            const cust = customerOps();
             await API.batch([
+                ...cust.ops,
                 {
                     action: "removeWhere",
                     table: "Orders",
@@ -575,10 +774,11 @@ class="btn btn-danger btn-sm">
                 ...rows.map(tr => ({
                     action: "insert",
                     table: "Orders",
-                    data: { ...buildPayload(tr), ...keep }
+                    data: { ...buildPayload(tr), ...keep, CompanyId: cust.ref }
                 }))
             ]);
             alert("✅ 訂單修改成功");
+            if (cust.ops.length) await reloadCustomers();
             await searchOrder();
         }
         catch (error) {
@@ -653,6 +853,7 @@ class="btn btn-danger btn-sm">
             OrderNo: dom.OrderNo.value,
             MemberID: dom.MemberID.value,
             MemberName: dom.MemberName.value.trim(),
+            ContactName: dom.ContactName.value.trim(),
             MemberPhone: dom.MemberPhone.value.trim(),
             MemberEmail: dom.MemberEmail.value.trim(),
             ShippingAddress: dom.ShippingAddress.value.trim(),
@@ -695,9 +896,12 @@ class="btn btn-danger btn-sm">
     function clearForm() {
         dom.form.reset();
         dom.orderDetailList.innerHTML = "";
-        if (dom.MemberID.tomselect)
-            dom.MemberID.tomselect.clear();
-        dom.qMemberID.tomselect?.clear();
+        dom.CustomerSelect.tomselect?.clear(true);
+        dom.CompanyId.value = "";
+        dom.MemberID.value = "";
+        dom.syncCustomer.checked = false;
+        dom.saveNewCustomer.checked = true;
+        refreshCustomerHint();
         calculateTotal();
     }
 

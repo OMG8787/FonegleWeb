@@ -43,6 +43,9 @@ const Config = {
                 { id: 11, Permission: [22], name: "📦 產品管理", page: "page/product.html" },
                 { id: 17, Permission: [22], name: "🧪 配方與成本試算", page: "page/formula.html" },
                 { id: 16, Permission: [22], name: "🥛 原料管理", page: "page/material.html" },
+                { id: 18, Permission: [22, 24], name: "📅 產品月盤點", page: "page/product-count.html" },
+                { id: 19, Permission: [22, 24], name: "🛒 原物料進貨 / 盤點", page: "page/material-stock.html" },
+                { id: 38, Permission: [22, 24], name: "📈 原物料漲幅表", page: "page/material-price.html" },
                 { id: 10, Permission: [22], name: "📋 庫存盤點", page: "page/inventory.html" },
                 { id: 15, Permission: [22], name: "🏭 生產履歷", page: "page/production.html" }
             ]
@@ -53,7 +56,7 @@ const Config = {
             items: [
                 { id: 12, Permission: [23], name: "🧾 訂單管理", page: "page/order.html" },
                 { id: 13, Permission: [23], name: "🚚 出貨管理", page: "page/shipment.html" },
-                { id: 21, Permission: [23, 24], name: "🏢 合作廠商 / 店家", page: "page/company.html" }
+                { id: 21, Permission: [23, 24], name: "🏢 客戶 / 合作廠商", page: "page/company.html" }
             ]
         },
         {
