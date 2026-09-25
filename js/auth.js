@@ -138,11 +138,11 @@ const Loading = {
         if (!document.body) return;
 
         this.bgCount++;
-        clearTimeout(this.bgTimer);
 
-        // 很快完成的讀取不顯示
-        if (this.bgCount === 1) {
+        // 很快完成的讀取不顯示（同時多個請求時共用同一個計時器）
+        if (!this.bgTimer) {
             this.bgTimer = setTimeout(() => {
+                this.bgTimer = null;
                 if (this.bgCount > 0) {
                     this.bgEl().classList.add("on");
                     document.getElementById("syncChip").classList.add("on");
@@ -160,6 +160,7 @@ const Loading = {
         if (this.bgCount > 0) return;
 
         clearTimeout(this.bgTimer);
+        this.bgTimer = null;
         document.getElementById("syncBar")?.classList.remove("on");
         document.getElementById("syncChip")?.classList.remove("on");
     }
@@ -468,6 +469,11 @@ const Auth = {
 
         sessionStorage.removeItem(this.validatedKey);
         this.setMustChangePassword(false);
+
+        // 資料快取（api.js）
+        try {
+            Object.keys(sessionStorage).filter(k => k.startsWith("erp_cache:")).forEach(k => sessionStorage.removeItem(k));
+        } catch { }
     },
 
     // 使用臨時密碼登入 → 在改密碼前只能使用帳號設定頁

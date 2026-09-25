@@ -16,10 +16,8 @@ Pages.Business = (() => {
         cacheDom();
         bindEvents();
 
-        hideForm();
-        setModeUI("view");
-
-        // 進入頁面直接列出全部客戶
+        // 一進頁面就顯示新增表單，並列出全部客戶
+        openCreate(false);
         searchBusiness();
     }
 
@@ -164,8 +162,7 @@ ${item.CompanyName}
 
             alert("🗑️ 刪除成功");
 
-            hideForm();
-            setModeUI("view");
+            openCreate(false);
 
             await searchBusiness();
 
@@ -469,13 +466,13 @@ ${item.CompanyName}
         dom.TargetCompanyID.readOnly = true;
     }
 
-    function openCreate() {
+    function openCreate(scroll = true) {
         currentDetail = null;
         dom.form.reset();
         dom.targetCompanyArea.classList.add("d-none");
         showForm();
         setModeUI("create");
-        scrollToForm();
+        if (scroll) scrollToForm();
 
     }
 
@@ -550,9 +547,8 @@ ${item.CompanyName}
                 alert("✅ 客戶資料修改成功");
             }
 
-            hideForm();
-
-            setModeUI("view");
+            // 儲存後回到新增模式，方便連續建檔
+            openCreate(false);
 
             await searchBusiness();
 

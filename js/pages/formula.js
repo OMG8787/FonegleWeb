@@ -37,18 +37,24 @@ Pages.Formula = (() => {
         bindEvents();
         openCreate(false);
 
+        // 每張表各自讀取，先回來的先顯示（有快取時先顯示上次的資料）
+        dom.formulaList.innerHTML = `<div class="text-muted small">載入中…</div>`;
+
         try {
-            const data = await API.getMany(["Formula", "FormulaDetail", "Material", "Products"]);
-
-            formulas = data.Formula || [];
-            allDetails = data.FormulaDetail || [];
-            materials = (data.Material || []).filter(m => m.IsActive !== false);
-            products = data.Products || [];
-
-            renderProductOptions();
-            renderMaterialNames();
-            renderList();
-
+            await API.getMany(["Formula", "FormulaDetail", "Material", "Products"], {
+                onTable(name, rows) {
+                    if (name === "Formula") formulas = rows || [];
+                    if (name === "FormulaDetail") allDetails = rows || [];
+                    if (name === "Material") { materials = (rows || []).filter(m => m.IsActive !== false); renderMaterialNames(); }
+                    if (name === "Products") {
+                        const keep = dom.ProductID.value;
+                        products = rows || [];
+                        renderProductOptions();
+                        dom.ProductID.value = keep;
+                    }
+                    if (name === "Formula" || name === "FormulaDetail") renderList();
+                }
+            });
         } catch (err) {
             App.error(err, "載入資料失敗");
         }

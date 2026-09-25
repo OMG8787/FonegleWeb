@@ -34,28 +34,52 @@ Pages.Home = (() => {
 
         const finance = Auth.hasPermission(24);
 
-        try {
+        API.me({ silent: true })
+            .then(me => { if (me?.user?.Name) dom.greeting.textContent = `${me.user.Name}，歡迎回來 👋`; })
+            .catch(() => { });
 
-            const tables = ["Calendar", "CalendarDays", "Memos"];
-            if (finance) tables.push("Receivable", "Expenses", "StallRecords");
+        // 每張表各自讀取：哪一區的資料先回來就先顯示（有快取時先顯示上次的資料）
+        const tables = ["Memos", "Calendar", "CalendarDays"];
+        if (finance) tables.push("Receivable", "Expenses", "StallRecords");
 
-            const [data, me] = await Promise.all([API.getMany(tables), API.me().catch(() => null)]);
+        const data = {};
+        let frame = null;
 
-            if (me?.user?.Name) dom.greeting.textContent = `${me.user.Name}，歡迎回來 👋`;
+        const renderAll = () => {
+            frame = null;
+
+            if ("Memos" in data) {
+                memos = data.Memos || [];
+                renderMemos();
+                renderApprovalBanner();
+            }
 
             if (data.Calendar === null)
                 dom.reminderList.innerHTML = `<div class="text-muted small">🔒 沒有行事曆權限</div>`;
-            else
+            else if ("Calendar" in data && "CalendarDays" in data)
                 renderReminders(data.Calendar || [], data.CalendarDays || []);
 
-            memos = data.Memos || [];
-            renderMemos();
-            renderApprovalBanner();
-
-            if (finance && data.Receivable) {
+            if (finance && data.Receivable && "Expenses" in data && "StallRecords" in data) {
                 dom.financeRow.classList.remove("d-none");
                 renderFinance(data.Receivable, data.Expenses || [], data.StallRecords || []);
             }
+        };
+
+        try {
+
+            const result = await API.getMany(tables, {
+                onTable(name, rows) {
+                    data[name] = rows;
+                    if (!frame) frame = requestAnimationFrame(renderAll);
+                }
+            });
+
+            // 讀取失敗（不是沒權限、也沒有快取可顯示）的區塊顯示提示
+            const failed = t => result[t] === null && !(t in data);
+            if (failed("Memos"))
+                dom.memoList.innerHTML = `<div class="text-muted small">⚠️ 備忘錄讀取失敗，請重新整理再試一次</div>`;
+            if (data.Calendar !== null && (failed("Calendar") || failed("CalendarDays")))
+                dom.reminderList.innerHTML = `<div class="text-muted small">⚠️ 行事曆讀取失敗，請重新整理再試一次</div>`;
 
         } catch (err) {
 

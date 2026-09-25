@@ -17,23 +17,25 @@ Pages.Order = (() => {
 
         initCustomerSelect();
 
+        // 一進頁面就顯示新增表單（資料讀到後自動補上客戶、產品選單）
+        createMode();
+
         try {
 
-            // 客戶、會員、產品、訂單一次載入
-            const data = await API.getMany(["Companies", "Users", "Products", "Orders"]);
-
-            customers = data.Companies || [];
-            members = data.Users || [];
-            renderCustomerOptions();
-            renderProductOptions(data.Products);
-            applySearch(data.Orders);
+            // 客戶、會員、產品、訂單各自讀取，先回來的先顯示
+            await API.getMany(["Companies", "Users", "Products", "Orders"], {
+                onTable(name, rows) {
+                    if (name === "Companies") { customers = rows || []; renderCustomerOptions(); }
+                    if (name === "Users") { members = rows || []; renderCustomerOptions(); }
+                    if (name === "Products") renderProductOptions(rows || []);
+                    if (name === "Orders") applySearch(rows || []);
+                }
+            });
 
         } catch (err) {
 
             App.error(err, "載入資料失敗");
         }
-
-        createMode();
     }
 
     function cacheDom() {
@@ -487,6 +489,14 @@ Pages.Order = (() => {
                 unit: p.Unit || "",
                 price: p.SalePrice ?? ""
             }));
+
+        // 已經加入的商品列補上產品選項
+        document.querySelectorAll("#orderDetailList .productSelect").forEach(sel => {
+            const ts = sel.tomselect;
+            if (!ts) return;
+            productOptions.forEach(p => { if (!ts.options[p.id]) ts.addOption({ value: p.id, text: p.name }); });
+            ts.refreshOptions(false);
+        });
     }
 
     function renderList(result) {
