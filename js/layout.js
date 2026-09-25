@@ -121,28 +121,12 @@ const Layout = {
     renderHeader() {
         document.getElementById("headerArea").innerHTML = `
         <div id="erp-header">
-            <div>
-                <button onclick="Layout.toggleSidebar()">功能選單☰</button>
+            <button type="button" id="btnMenu" class="hdr-btn" onclick="Layout.toggleSidebar()" aria-label="功能選單" title="功能選單">☰</button>
+            <a class="hdr-title" href="${Auth.root}home.html">🍦 <span class="hdr-title-full">瘋菓內部管理系統</span><span class="hdr-title-short">瘋菓管理</span></a>
+            <div class="hdr-right">
+                <span class="hdr-timer" title="自動登出剩餘時間">⏱ <span id="logoutTimer">--:--:--</span></span>
+                <button type="button" class="hdr-btn hdr-logout" onclick="Auth.logout()">登出</button>
             </div>
-            <div>瘋菓內部管理系統</div>
-
-
-            <div class="d-flex align-items-center gap-2">
-            <span>
-    自動登出剩餘時間:
-    <span id="logoutTimer">
-        --:--:--
-    </span>
-</span>
-            <button
-                class="btn btn-sm btn-light"
-                onclick="Auth.logout()">
-
-                登出
-
-            </button>
-
-        </div>
         </div>`;
     },
     renderSidebar() {
@@ -204,11 +188,19 @@ const Layout = {
         document.getElementById("sidebarArea").innerHTML = `
         <div id="erp-sidebar">
             ${html}
-        </div>`;
+        </div>
+        <div id="sidebarBackdrop" onclick="Layout.closeSidebar()"></div>`;
 
+        // 桌機：記住收合狀態；手機：側欄預設關閉（抽屜）
         let collapsed = false;
         try { collapsed = localStorage.getItem("erp_sidebar_collapsed") === "1"; } catch { }
         this.toggleSidebar(collapsed);
+
+        // 手機：選了功能就關閉抽屜；桌機 / 手機切換時重設
+        document.getElementById("erp-sidebar").addEventListener("click", e => {
+            if (this.isMobile() && e.target.closest(".submenu-item [onclick]")) this.closeSidebar();
+        });
+        window.matchMedia("(max-width: 991.98px)").addEventListener?.("change", () => this.closeSidebar());
     },
 
     // toggleGroup(index) {
@@ -235,10 +227,8 @@ const Layout = {
     renderFooter() {
         document.getElementById("footerArea").innerHTML = `
         <div id="erp-footer">
-            © 2026 瘋菓貿易社(統編 : 60005166) V1.0.0
-            |
-            現在時間：
-            <span id="clock"></span>
+            <span>© 2026 瘋菓貿易社（統編 60005166）V1.0.0</span>
+            <span class="footer-clock">｜現在時間：<span id="clock"></span></span>
         </div>`;
     },
 
@@ -248,11 +238,21 @@ const Layout = {
             : Auth.root + page;
     },
 
-    // 收合 / 展開選單，主畫面同步放大縮小，並記住使用者的選擇
+    isMobile() {
+        return window.matchMedia("(max-width: 991.98px)").matches;
+    },
+
+    // 桌機：收合 / 展開選單，主畫面同步放大縮小，並記住選擇
+    // 手機：打開 / 關閉抽屜選單
     toggleSidebar(collapsed) {
 
         const sidebar = document.getElementById("erp-sidebar");
         if (!sidebar) return;
+
+        if (collapsed === undefined && this.isMobile()) {
+            document.body.classList.toggle("sidebar-open");
+            return;
+        }
 
         const on = sidebar.classList.toggle("collapsed", collapsed);
 
@@ -261,6 +261,10 @@ const Layout = {
         if (collapsed === undefined) {
             try { localStorage.setItem("erp_sidebar_collapsed", on ? "1" : "0"); } catch { }
         }
+    },
+
+    closeSidebar() {
+        document.body.classList.remove("sidebar-open");
     },
 
     startClock() {

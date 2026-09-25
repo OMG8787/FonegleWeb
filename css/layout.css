@@ -2,8 +2,9 @@
 body {
     margin: 0;
     background: #f4f6f9;
-    font-family: "Microsoft JhengHei";
+    font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -17,9 +18,66 @@ body {
     color: #fff;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 12px;
     padding: 0 15px;
     flex-shrink: 0;
+    position: relative;
+    z-index: 1050;
+}
+
+.hdr-btn {
+    background: rgba(255, 255, 255, .1);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 15px;
+    line-height: 1.2;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.hdr-btn:hover {
+    background: rgba(255, 255, 255, .2);
+}
+
+#btnMenu {
+    font-size: 20px;
+    padding: 4px 12px;
+}
+
+.hdr-title {
+    color: #fff;
+    text-decoration: none;
+    font-size: 18px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.hdr-title:hover {
+    color: #fde68a;
+}
+
+.hdr-title-short {
+    display: none;
+}
+
+.hdr-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.hdr-timer {
+    font-size: 13px;
+    color: #cbd5e1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 /* ================= LAYOUT ================= */
@@ -32,7 +90,8 @@ body {
 /* ================= SIDEBAR ================= */
 #erp-sidebar {
     width: 260px;
-    background: #111a2779;
+    background: #e5e7eb;
+    padding: 8px;
     color: #fff;
     height: 100%;
     overflow-y: auto;
@@ -70,6 +129,13 @@ body {
 
 .menu-group-title:hover {
     background: #374151;
+}
+
+/* icon、名稱、箭頭 */
+.menu-group-title span:nth-child(2) {
+    flex: 1;
+    margin-left: 10px;
+    text-align: left;
 }
 
 /* 左側 icon + title */
@@ -185,23 +251,138 @@ body.sidebar-collapsed #erp-main {
 }
 
 
-/* =========================
-    手機版 → 整體縮放
-========================= */
-.scale-wrapper {
-    width: 100%;
-    overflow: auto;
+/* 手機抽屜的背景遮罩（桌機不顯示） */
+#sidebarBackdrop {
+    display: none;
 }
 
+/* =========================
+    手機 / 平板（992px 以下）
+    - 側欄改為左側滑出的抽屜
+    - 主畫面佔滿寬度
+========================= */
+@media (max-width: 991.98px) {
 
+    #erp-header {
+        height: 52px;
+        padding: 0 8px;
+        gap: 8px;
+    }
 
-@media (max-width: 768px) {
+    .hdr-title {
+        font-size: 16px;
+    }
 
-    #erp-layout {
-        transform: scale(0.6);
-        /* 🔥 可調整 0.5 ~ 0.7 */
-        transform-origin: top left;
-        width: 1200px;
-        /* 🔥 固定桌機寬 */
+    .hdr-title-full {
+        display: none;
+    }
+
+    .hdr-title-short {
+        display: inline;
+    }
+
+    .hdr-btn {
+        padding: 5px 10px;
+        font-size: 14px;
+    }
+
+    .hdr-timer {
+        font-size: 12px;
+    }
+
+    #erp-sidebar,
+    #erp-sidebar.collapsed {
+        position: fixed;
+        top: 52px;
+        left: 0;
+        bottom: 0;
+        height: auto;
+        width: min(300px, 85vw);
+        transform: translateX(-105%);
+        transition: transform .25s ease;
+        z-index: 1045;
+        box-shadow: 4px 0 18px rgba(0, 0, 0, .25);
+    }
+
+    body.sidebar-open #erp-sidebar {
+        transform: none;
+    }
+
+    body.sidebar-open #sidebarBackdrop {
+        display: block;
+        position: fixed;
+        inset: 52px 0 0 0;
+        background: rgba(0, 0, 0, .45);
+        z-index: 1040;
+    }
+
+    /* 手機不使用「收合成圖示」模式 */
+    #erp-sidebar.collapsed .menu-group-title span:nth-child(2) {
+        display: inline;
+    }
+
+    #erp-sidebar.collapsed .arrow {
+        display: inline;
+    }
+
+    #erp-sidebar.collapsed .menu-group-title {
+        justify-content: space-between;
+    }
+
+    #erp-sidebar.collapsed .submenu.open {
+        display: block !important;
+    }
+
+    .menu-group-title {
+        padding: 14px;
+        font-size: 15px;
+    }
+
+    .submenu-item {
+        padding: 12px;
+        font-size: 15px;
+    }
+
+    #erp-main,
+    body.sidebar-collapsed #erp-main {
+        margin-left: 0;
+        padding: 10px;
+    }
+
+    #erp-main .container-fluid {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    #erp-main h2 {
+        font-size: 1.35rem;
+    }
+
+    #erp-main .card-body {
+        padding: 12px;
+    }
+
+    #erp-footer {
+        height: auto;
+        min-height: 36px;
+        padding: 6px 10px;
+        font-size: 11px;
+        flex-wrap: wrap;
+        text-align: center;
+        gap: 4px;
+    }
+}
+
+@media (max-width: 420px) {
+
+    .hdr-timer {
+        display: none;
+    }
+}
+
+@media (max-width: 991.98px) {
+
+    .footer-clock {
+        display: none;
     }
 }
