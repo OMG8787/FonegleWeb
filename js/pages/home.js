@@ -168,7 +168,7 @@ Pages.Home = (() => {
         <div class="memo-title">${m.Priority === "高" ? "❗ " : ""}${esc(m.Title || "")}</div>
         ${notice && m.Content ? `<div class="small text-muted" style="white-space:pre-line">${esc(m.Content)}</div>` : ""}
         <div class="small">${notice ? `<span class="badge bg-warning text-dark">系統通知</span>` : ""} ${dueBadge} ${m.IsShared ? `<span class="badge bg-info">${m.CreatedBy === me ? "已共享" : "同事共享"}</span>` : ""}
-        ${m.LinkType === "approveUser" && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往審核</a>` : ""}</div>
+        ${["approveUser", "resetPassword"].includes(m.LinkType) && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往處理</a>` : ""}</div>
     </div>
     ${mine ? `<div class="memo-actions"><button class="btn btn-sm btn-link text-danger p-0" data-delete="${m.ID}">刪除</button></div>` : ""}
 </div>`;
@@ -178,11 +178,13 @@ Pages.Home = (() => {
     // 新帳號待審核提醒（只有系統管理員會收到這類通知）
     function renderApprovalBanner() {
 
-        const pending = memos.filter(m => m.LinkType === "approveUser" && m.IsDone !== true);
+        const pending = memos.filter(m => ["approveUser", "resetPassword"].includes(m.LinkType) && m.IsDone !== true);
 
         dom.approvalBanner.classList.toggle("d-none", !pending.length);
         dom.approvalCount.textContent = pending.length;
-        dom.approvalNames.textContent = pending.map(m => String(m.Title || "").replace(/^.*新帳號申請：/, "")).join("、");
+        dom.approvalNames.textContent = pending.map(m =>
+            (m.LinkType === "resetPassword" ? "🔑 重設密碼 " : "🆕 新帳號 ") +
+            String(m.Title || "").replace(/^.*：/, "")).join("、");
     }
 
     async function addMemo() {

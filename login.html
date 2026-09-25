@@ -296,8 +296,8 @@
         <!-- FORGET -->
         <div id="forgetPanel" style="display:none;">
 
-            <div class="text-danger small mb-3">
-                請選擇驗證方式
+            <div class="small text-muted mb-3">
+                忘記密碼時請送出<b>重設申請</b>：系統管理員確認身分後，會提供臨時密碼給你，登入後需立即更改。
             </div>
 
             <!-- 驗證方式 -->
@@ -354,7 +354,7 @@
             <!-- Button -->
             <button class="btn btn-warning w-100" onclick="resetPassword()">
 
-                重設密碼
+                送出重設申請
 
             </button>
 
@@ -471,6 +471,14 @@
 
                 Auth.setSession(data);
 
+                // 管理員重設過密碼：先改密碼
+                if (data.mustChangePassword) {
+                    Auth.setMustChangePassword(true);
+                    alert("🔑 你正在使用臨時密碼，請先設定新密碼");
+                    location.href = Auth.root + "page/account.html?mustChange=1";
+                    return;
+                }
+
                 location.href = Auth.root + "home.html";
 
             } catch (ex) {
@@ -547,7 +555,10 @@
                     value2
                 });
 
-                alert(message || "密碼已重設");
+                alert(message || "已送出重設申請");
+
+                fValue1.value = "";
+                fValue2.value = "";
 
                 showPanel("login");
 

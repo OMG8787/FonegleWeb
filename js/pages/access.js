@@ -52,6 +52,10 @@ Pages.Access = (() => {
         dom.btnRevert.addEventListener("click", () => { edits.clear(); renderTable(); });
         dom.btnSave.addEventListener("click", save);
         dom.accessBody.addEventListener("change", onTableChange);
+        dom.accessBody.addEventListener("click", e => {
+            const btn = e.target.closest("[data-reset]");
+            if (btn) resetPassword(users.find(x => x.LineUserId === btn.closest("tr[data-uid]").dataset.uid));
+        });
         dom.pendingList.addEventListener("click", onPendingClick);
 
         renderHead();
@@ -120,22 +124,33 @@ Pages.Access = (() => {
         const esc = App.esc;
         const list = users.filter(u => u.ApprovalStatus === "待審核")
             .sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)));
+        const resets = users.filter(u => u.ResetRequestedAt)
+            .sort((a, b) => String(b.ResetRequestedAt).localeCompare(String(a.ResetRequestedAt)));
 
-        dom.pendingCount.textContent = list.length;
+        dom.pendingCount.textContent = list.length + resets.length;
 
-        dom.pendingList.innerHTML = list.length ? list.map(u => `
+        const resetHtml = resets.map(u => `
+<div class="pending-card d-flex flex-wrap align-items-center gap-2" data-uid="${esc(u.LineUserId)}">
+    <div class="me-auto">
+        <div class="fw-bold">🔑 密碼重設申請：${esc(u.Name || "")}</div>
+        <div class="small text-muted">📞 ${esc(u.PhoneNumber || "")}　🕒 申請 ${esc(String(u.ResetRequestedAt).slice(0, 16))}　<span class="text-danger">請先打電話向本人確認</span></div>
+    </div>
+    <button class="btn btn-sm btn-warning" data-reset>產生臨時密碼</button>
+</div>`).join("");
+
+        dom.pendingList.innerHTML = (list.length || resets.length) ? resetHtml + list.map(u => `
 <div class="pending-card d-flex flex-wrap align-items-center gap-2" data-uid="${esc(u.LineUserId)}">
     <div class="me-auto">
         <div class="fw-bold">${esc(u.Name || "")}</div>
         <div class="small text-muted">📞 ${esc(u.PhoneNumber || "")}　✉️ ${esc(u.Email || "")}　🕒 申請 ${esc(String(u.CreatedAt || "").slice(0, 16))}</div>
     </div>
     <select class="form-select form-select-sm" style="width:auto" data-preset>
-        ${PRESETS.filter(p => iAmAdmin() || !p.codes.includes(13)).map((p, i) =>
-            `<option value="${i}" ${p.name.includes("無權限") ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
+        ${PRESETS.map((p, i) => iAmAdmin() || !p.codes.includes(13)
+            ? `<option value="${i}" ${p.name.includes("無權限") ? "selected" : ""}>${esc(p.name)}</option>` : "").join("")}
     </select>
     <button class="btn btn-sm btn-success" data-approve>✅ 核准</button>
     <button class="btn btn-sm btn-outline-danger" data-reject>拒絕</button>
-</div>`).join("") : `<div class="text-muted small">目前沒有待審核的申請</div>`;
+</div>`).join("") : `<div class="text-muted small">目前沒有待處理的申請</div>`;
     }
 
     async function onPendingClick(e) {
@@ -144,6 +159,9 @@ Pages.Access = (() => {
         if (!card) return;
 
         const u = users.find(x => x.LineUserId === card.dataset.uid);
+
+        if (e.target.closest("[data-reset]")) return resetPassword(u);
+
         const approve = !!e.target.closest("[data-approve]");
         const reject = !!e.target.closest("[data-reject]");
         if (!u || (!approve && !reject)) return;
@@ -167,6 +185,29 @@ Pages.Access = (() => {
 
         } catch (err) {
             App.error(err, "操作失敗");
+        }
+    }
+
+    // =========================
+    // 重設密碼：產生臨時密碼，只顯示這一次
+    // =========================
+    async function resetPassword(u) {
+
+        if (!u) return;
+
+        if (!confirm(`確定要重設「${u.Name}」的密碼？\n\n・會產生一組臨時密碼（只顯示這一次）\n・對方所有裝置會立即登出\n・對方用臨時密碼登入後必須設定新密碼\n\n請先確認是本人提出的申請。`)) return;
+
+        try {
+            const r = await Auth.request("resetUserPassword", { userId: u.LineUserId });
+
+            try { await navigator.clipboard.writeText(r.tempPassword); } catch { }
+
+            prompt(`✅ 已重設「${r.name}」的密碼（帳號 ${r.phone}）\n請把臨時密碼告訴本人（已嘗試複製到剪貼簿）：`, r.tempPassword);
+
+            await load();
+
+        } catch (err) {
+            App.error(err, "重設失敗");
         }
     }
 
@@ -225,7 +266,10 @@ Pages.Access = (() => {
             return `
 <tr data-uid="${esc(u.LineUserId)}" class="${isChanged(u) ? "changed" : ""} ${!s.isActive ? "inactive" : ""}">
     <td>
-        <div class="fw-bold">${esc(u.Name || "")} ${u.IsMe ? `<span class="badge bg-info">我</span>` : ""}</div>
+        <div class="fw-bold">${esc(u.Name || "")} ${u.IsMe ? `<span class="badge bg-info">我</span>` : ""}
+            ${u.ResetRequestedAt ? `<span class="badge bg-danger">申請重設密碼</span>` : ""}
+            ${u.MustChangePassword ? `<span class="badge bg-secondary" title="已發臨時密碼，等待本人改密碼">臨時密碼</span>` : ""}
+            ${!u.IsMe && !pending && !(u.RoleList.includes(13) && !iAmAdmin()) ? `<button type="button" class="btn btn-link btn-sm p-0 ms-1" data-reset title="產生臨時密碼">🔑 重設密碼</button>` : ""}</div>
         <div class="small text-muted">${esc(u.PhoneNumber || "")}${others.length ? `　<span title="舊版權限代碼，會保留">其他：${others.join("、")}</span>` : ""}</div>
     </td>
     <td>${statusBadge(u, s)}</td>

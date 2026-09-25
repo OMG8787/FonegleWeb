@@ -15,6 +15,19 @@ Pages.Account = (() => {
         cacheDom();
 
         bindEvents();
+
+        // 使用臨時密碼登入：直接打開改密碼區塊
+        if (Auth.mustChangePassword() || /mustChange=1/.test(location.search)) {
+
+            if (dom.passwordArea.classList.contains("d-none")) togglePasswordArea();
+
+            const tip = document.createElement("div");
+            tip.id = "mustChangeTip";
+            tip.className = "alert alert-warning";
+            tip.innerHTML = "🔑 你目前使用的是管理員提供的<b>臨時密碼</b>，請先設定新密碼才能使用其他功能。「目前密碼」請輸入臨時密碼。";
+            dom.passwordArea.prepend(tip);
+            dom.currentPassword.focus();
+        }
     }
 
     // ==================================================
@@ -215,6 +228,11 @@ Pages.Account = (() => {
 
             alert(message || "密碼修改成功");
             clearPasswordForm();
+
+            if (Auth.mustChangePassword()) {
+                Auth.setMustChangePassword(false);
+                location.href = Auth.root + "home.html";
+            }
 
         } catch (err) {
 

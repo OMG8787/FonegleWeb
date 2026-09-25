@@ -177,6 +177,7 @@ const Auth = {
 
     cookieName: "erp_user_id",
     tokenCookieName: "erp_token",
+    mustChangeKey: "erp_must_change_password",
     roleCookieName: "erp_role_list",
     validatedKey: "erp_validated_at",
 
@@ -433,6 +434,19 @@ const Auth = {
             });
 
         sessionStorage.removeItem(this.validatedKey);
+        this.setMustChangePassword(false);
+    },
+
+    // 使用臨時密碼登入 → 在改密碼前只能使用帳號設定頁
+    setMustChangePassword(on) {
+        try {
+            if (on) localStorage.setItem(this.mustChangeKey, "1");
+            else localStorage.removeItem(this.mustChangeKey);
+        } catch { }
+    },
+
+    mustChangePassword() {
+        try { return localStorage.getItem(this.mustChangeKey) === "1"; } catch { return false; }
     },
 
     // =========================
@@ -591,6 +605,11 @@ const Auth = {
             return;
         }
 
+        if (this.mustChangePassword() && !/\/page\/account\.html$/i.test(location.pathname)) {
+            location.href = this.root + "page/account.html?mustChange=1";
+            return;
+        }
+
         const afterReady = () => {
             this.checkPagePermission();
         };
@@ -606,6 +625,7 @@ const Auth = {
 
                 // 以伺服器上的權限與到期時間為準
                 if (me.expireAt) this.setExpireTime(me.expireAt);
+                this.setMustChangePassword(me.user?.MustChangePassword === true);
                 this.setRoleList(me.roleList || []);
 
                 sessionStorage.setItem(this.validatedKey, String(Date.now()));

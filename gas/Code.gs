@@ -21,7 +21,7 @@ const CONFIG = {
     SESSION_HOURS: 6,                  // 登入有效時間（自登入起算；期間內除非登出或從 Sessions 分頁刪除，否則不會被登出）
     ACTIVE_UPDATE_MINUTES: 5,          // 最後活動時間的更新間隔（避免每次操作都寫入試算表）
     PASSWORD_SALT: 'ABC123',           // 與舊系統相同，舊資料的密碼雜湊可直接沿用
-    RESET_PASSWORD: 'Fonegle',         // 忘記密碼時重設成的密碼
+    TEMP_PASSWORD_LENGTH: 8,           // 管理員重設密碼時產生的臨時密碼長度（登入後必須改密碼）
     ADMIN_PERMISSIONS: [3, 12, 13, 20, 21, 22, 23, 24, 25], // 第一位註冊者自動取得
     MAIL_PERMISSIONS: [3],
     AI_PERMISSIONS: [25],
@@ -45,7 +45,7 @@ const SCHEMA = {
         cols: 'ID:n LineUserId Name PhoneNumber Email IdCardNumber PassWord BirthdayYear:n BirthdayMonth:n BirthdayDay:n ' +
             'RoleId:n RoleList FavoriteFeaturesList AccountManager IsWeb:b IsMember:b IsBlocked:b IsActive:b ' +
             'IsMailActive:b IsPushMessage:b IsConverted:b OpenClaw OpenClawAgent ' +
-            'CreatedAt UpdatedAt UpdateLineUserId ApprovalStatus ApprovedBy ApprovedAt'
+            'CreatedAt UpdatedAt UpdateLineUserId ApprovalStatus ApprovedBy ApprovedAt MustChangePassword:b'
     },
     // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
     Sessions: {
@@ -276,6 +276,7 @@ const COLUMN_LABELS = {
     Title: '標題', Content: '內容', DueDate: '到期日', Priority: '優先順序', IsDone: '已完成',
     Audience: '通知對象（perm:權限代碼）', LinkType: '通知類型', LinkId: '通知連結的資料',
     ApprovalStatus: '審核狀態（待審核 / 已核准 / 已拒絕，空白 = 已核准）', ApprovedBy: '審核人', ApprovedAt: '審核時間',
+    MustChangePassword: '下次登入必須改密碼',
     // 行事曆
     CalendarId: '行事曆活動編號', EventName: '活動名稱', StartEventDate: '開始時間', EndEventDate: '結束時間',
     EventAddress: '地址', CalendarType: '類型（1公開 2會議 3私人 4其他）', UserDB_ID: '私人活動代號', Line_ID: '建立人',
@@ -462,7 +463,8 @@ const PRIVATE_ACTIONS = {
     loginLog: loginLog_,
     accessList: accessList_,
     setUserAccess: setUserAccess_,
-    approveUser: approveUser_
+    approveUser: approveUser_,
+    resetUserPassword: resetUserPassword_
 };
 
 function handle_(req) {
@@ -772,7 +774,8 @@ function login_(req) {
             userId: u.LineUserId,
             name: u.Name,
             roleList: parsePerms_(u.RoleList),
-            expireAt
+            expireAt,
+            mustChangePassword: u.MustChangePassword === true
         };
     });
 }
@@ -849,6 +852,8 @@ function register_(req) {
     });
 }
 
+// 忘記密碼：不直接重設，改為送出「重設申請」給系統管理員
+//   不論資料是否符合都回覆相同訊息，避免被用來猜測帳號是否存在
 function forgetPassword_(req) {
     const type = String(req.type || '');
     const v1 = String(req.value1 || '').trim();
@@ -866,16 +871,36 @@ function forgetPassword_(req) {
 
     if (!match) fail_('驗證方式錯誤');
 
+    const reply = '📨 已送出密碼重設申請。系統管理員確認身分後，會提供臨時密碼給你（登入後需立即更改）。';
+
     return withLock_(() => {
-        const users = tbl_('Users');
-        const found = readRows_(users).find(x => match(x.obj));
+        const found = readRows_(tbl_('Users')).find(x => match(x.obj));
 
-        if (!found) fail_('查無符合資料');
+        if (!found || found.obj.ApprovalStatus === '待審核' || found.obj.ApprovalStatus === '已拒絕') return reply;
 
-        writeRow_(users, found, { PassWord: hash_(CONFIG.RESET_PASSWORD), UpdatedAt: now_() });
-        uncacheUser_(found.obj.LineUserId);
+        const u = found.obj;
+        const memos = tbl_('Memos');
 
-        return "密碼已重設為 '" + CONFIG.RESET_PASSWORD + "' 請進入後更新密碼";
+        // 已經有尚未處理的申請就不重複通知
+        const dup = readRows_(memos).some(x => x.obj.LinkType === 'resetPassword' && x.obj.LinkId === u.LineUserId && x.obj.IsDone !== true);
+
+        if (!dup) {
+            appendRow_(memos, {
+                ID: nextSeq_(memos),
+                Title: '🔑 密碼重設申請：' + u.Name,
+                Content: '電話 ' + u.PhoneNumber + '　申請時間 ' + now_() + '\n請先向本人確認，再到「帳號審核與權限」重設密碼',
+                Priority: '高',
+                IsDone: false,
+                IsShared: false,
+                Audience: 'perm:' + PERM.SYSTEM,
+                LinkType: 'resetPassword',
+                LinkId: u.LineUserId,
+                CreatedBy: 'SYSTEM',
+                CreatedAt: now_()
+            });
+        }
+
+        return reply;
     });
 }
 
@@ -1374,6 +1399,12 @@ function assertRoleChange_(ctx, oldList, newList, targetUserId) {
 function accessList_(req, ctx) {
     requirePerm_(ctx, [PERM.SYSTEM]);
 
+    // 尚未處理的密碼重設申請
+    const resetRequests = {};
+    readRows_(tbl_('Memos'))
+        .filter(x => x.obj.LinkType === 'resetPassword' && x.obj.IsDone !== true)
+        .forEach(x => resetRequests[x.obj.LinkId] = x.obj.CreatedAt);
+
     return readRows_(tbl_('Users')).map(x => {
         const u = x.obj;
         return {
@@ -1388,6 +1419,8 @@ function accessList_(req, ctx) {
             ApprovedBy: u.ApprovedBy,
             ApprovedAt: u.ApprovedAt,
             CreatedAt: u.CreatedAt,
+            MustChangePassword: u.MustChangePassword === true,
+            ResetRequestedAt: resetRequests[u.LineUserId] || '',
             IsMe: u.LineUserId === ctx.userId
         };
     });
@@ -1478,6 +1511,70 @@ function approveUser_(req, ctx) {
     });
 }
 
+// 管理員重設密碼：產生臨時密碼（只回傳這一次），對方登入後必須改密碼；並登出對方所有裝置
+//   { userId }
+function resetUserPassword_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    return withLock_(() => {
+        const t = tbl_('Users');
+        const found = findRow_(t, req.userId);
+
+        if (!found) fail_('找不到帳號');
+        if (found.obj.LineUserId === ctx.userId) fail_('自己的密碼請到「帳號設定」修改');
+
+        // 非最高管理員不能重設最高管理員的密碼（避免藉此登入更高權限的帳號）
+        if (parsePerms_(found.obj.RoleList).indexOf(PERM.ADMIN) >= 0 && !isAdmin_(ctx))
+            fail_('🔐 只有最高系統管理員可以重設「最高系統管理員」的密碼');
+
+        const temp = tempPassword_();
+
+        writeRow_(t, found, {
+            PassWord: hash_(temp),
+            MustChangePassword: true,
+            UpdatedAt: now_(),
+            UpdateLineUserId: ctx.userId
+        });
+        uncacheUser_(found.obj.LineUserId);
+
+        // 登出對方所有裝置
+        const sessions = tbl_('Sessions');
+        readRows_(sessions)
+            .filter(x => x.obj.LineUserId === found.obj.LineUserId)
+            .reverse()
+            .forEach(x => {
+                endLoginLog_(x.obj.SessionId, '管理員重設密碼');
+                sessions.sh.deleteRow(x.row);
+                cacheRemove_(['sid:' + x.obj.Token, 'act:' + x.obj.Token]);
+            });
+
+        // 相關申請標記為已處理
+        const memos = tbl_('Memos');
+        readRows_(memos)
+            .filter(x => x.obj.LinkType === 'resetPassword' && x.obj.LinkId === found.obj.LineUserId && x.obj.IsDone !== true)
+            .forEach(x => writeRow_(memos, x, {
+                IsDone: true,
+                Content: (x.obj.Content || '') + '\n→ 已重設（' + (ctx.user.Name || '') + '，' + now_() + '）',
+                UpdatedAt: now_(),
+                UpdatedBy: ctx.userId
+            }));
+
+        return { name: found.obj.Name, phone: found.obj.PhoneNumber, tempPassword: temp };
+    });
+}
+
+// 臨時密碼：去掉容易混淆的字元（0/O、1/l/I）
+function tempPassword_() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + Date.now());
+    let out = '';
+
+    for (let i = 0; i < CONFIG.TEMP_PASSWORD_LENGTH; i++)
+        out += chars.charAt((bytes[i] & 0xff) % chars.length);
+
+    return out;
+}
+
 function assertPhoneUnique_(phone, exceptUserId) {
     phone = String(phone || '').trim();
     if (!phone) return;
@@ -1531,7 +1628,10 @@ function changePassword_(req, ctx) {
         if (!found) fail_('查無使用者');
         if (found.obj.PassWord !== hash_(oldPw)) fail_('❌ 目前密碼錯誤');
 
-        writeRow_(t, found, { PassWord: hash_(newPw), UpdatedAt: now_(), UpdateLineUserId: ctx.userId });
+        if (hash_(newPw) === found.obj.PassWord) fail_('新密碼不能與目前密碼相同');
+
+        writeRow_(t, found, { PassWord: hash_(newPw), MustChangePassword: false, UpdatedAt: now_(), UpdateLineUserId: ctx.userId });
+        uncacheUser_(ctx.userId);
 
         return '密碼修改成功';
     });
