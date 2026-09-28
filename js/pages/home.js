@@ -17,7 +17,8 @@ Pages.Home = (() => {
 
         [
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
-            "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
+            "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince",
+            "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         if (!Auth.hasPermission(20, 10, 11)) dom.btnOpenCalendar.classList.add("d-none");
@@ -39,7 +40,14 @@ Pages.Home = (() => {
 
         // 每張表各自讀取：哪一區的資料先回來就先顯示（有快取時先顯示上次的資料）
         const tables = ["Memos", "Calendar", "CalendarDays"];
-        if (finance) tables.push("Receivable", "Expenses", "StallRecords");
+        if (finance) tables.push("Receivable", "Expenses", "StallRecords", "BrandCosts");
+
+        // 品牌損益是否含品牌攤提表（記住選擇）
+        try { dom.plIncludeBrand.checked = localStorage.getItem("fonegle_pl_include_brand") !== "0"; } catch { }
+        dom.plIncludeBrand.addEventListener("change", () => {
+            try { localStorage.setItem("fonegle_pl_include_brand", dom.plIncludeBrand.checked ? "1" : "0"); } catch { }
+            if (lastFinance) renderFinance(...lastFinance);
+        });
 
         const data = {};
         let frame = null;
@@ -58,9 +66,9 @@ Pages.Home = (() => {
             else if ("Calendar" in data && "CalendarDays" in data)
                 renderReminders(data.Calendar || [], data.CalendarDays || []);
 
-            if (finance && data.Receivable && "Expenses" in data && "StallRecords" in data) {
+            if (finance && data.Receivable && "Expenses" in data && "StallRecords" in data && "BrandCosts" in data) {
                 dom.financeRow.classList.remove("d-none");
-                renderFinance(data.Receivable, data.Expenses || [], data.StallRecords || []);
+                renderFinance(data.Receivable, data.Expenses || [], data.StallRecords || [], data.BrandCosts || []);
             }
         };
 
@@ -277,7 +285,11 @@ Pages.Home = (() => {
     // =========================
     // 財務
     // =========================
-    function renderFinance(receivables, expenses, stalls) {
+    let lastFinance = null;
+
+    function renderFinance(receivables, expenses, stalls, brand = []) {
+
+        lastFinance = [receivables, expenses, stalls, brand];
 
         const today = ymd(new Date());
         const soon = addDays(7);
@@ -303,8 +315,9 @@ Pages.Home = (() => {
         }).join("") || `<div class="text-muted small">沒有逾期或 7 天內到期的帳款 👍</div>`) +
             `<a href="page/receivable.html" class="btn btn-sm btn-link px-0 mt-2">前往帳務管理 →</a>`;
 
-        // 品牌損益：營收 = 收款（依付款日）+ 出攤營業額；支出 = 支出表 + 出攤費用
-        //   支出只從支出表計算（品牌攤提表不計入，避免同一筆輸入兩次被重複計算）
+        // 品牌損益：營收 = 收款（依付款日）+ 出攤營業額 + 品牌攤提表回收
+        //           支出 = 支出表 + 出攤費用 + 品牌攤提表投入（全額計入投入當時）
+        //   品牌攤提表與支出表同一天、同金額的視為同一筆，只算一次
         const q = Math.floor((Number(month.slice(5, 7)) - 1) / 3);
         const year = month.slice(0, 4);
         const periods = {
@@ -319,13 +332,27 @@ Pages.Home = (() => {
             return inRange(d) ? t + fn(r) : t;
         }, 0);
 
+        const useBrand = dom.plIncludeBrand.checked;
+        const expKey = new Set(expenses.map(r => (App.toDateInput(r.ExpenseDate) || "") + "|" + Math.round(App.num(r.Amount))));
+        const brandOut = useBrand ? brand.filter(e => e.Type !== "回收") : [];
+        const brandIn = useBrand ? brand.filter(e => e.Type === "回收") : [];
+        const brandOutOnly = brandOut.filter(e => !expKey.has((App.toDateInput(e.RecordDate) || "") + "|" + Math.round(App.num(e.Amount))));
+        const dupCount = brandOut.length - brandOutOnly.length;
+
         const calc = inRange => {
-            const arIncome = sum(receivables, "PaymentDate", r => App.num(r.PaidAmount), d => !!d && inRange(d));
+            // 已收款但沒填付款日的帳款：只算進「成立至今」
+            const arIncome = sum(receivables, "PaymentDate", r => App.num(r.PaidAmount), d => d ? inRange(d) : inRange === periods.a);
             const stallIncome = sum(stalls, "StallDate", r => App.num(r.Revenue), inRange);
             // 出攤費用不含「食材成本估算」，實際食材採購記在支出表，避免重複計算
             const stallCost = sum(stalls, "StallDate", r => App.num(r.TotalCost) - App.num(r.FoodCost), inRange);
             const expense = sum(expenses, "ExpenseDate", r => App.num(r.Amount), inRange);
-            return { arIncome, stallIncome, stallCost, expense, income: arIncome + stallIncome, out: expense + stallCost };
+            const brandCost = sum(brandOutOnly, "RecordDate", r => App.num(r.Amount), inRange);
+            const brandIncome = sum(brandIn, "RecordDate", r => App.num(r.Amount), inRange);
+            return {
+                arIncome, stallIncome, stallCost, expense, brandCost, brandIncome,
+                income: arIncome + stallIncome + brandIncome,
+                out: expense + stallCost + brandCost
+            };
         };
 
         let all = null;
@@ -340,18 +367,28 @@ Pages.Home = (() => {
             el.className = (k === "a" ? "pl-all " : "") + (net >= 0 ? "text-success" : "text-danger");
         });
 
-        // 成立至今：從最早一筆收入 / 支出 / 出攤紀錄起算
+        // 品牌總損益（成立至今）
+        const total = all.income - all.out;
+        dom.plTotal.textContent = money(total);
+        dom.plTotal.className = "pl-big " + (total >= 0 ? "text-success" : "text-danger");
+        dom.plTotalIncome.textContent = money(all.income);
+        dom.plTotalExpense.textContent = money(all.out);
+
+        // 成立日：最早一筆收入 / 支出 / 出攤 / 品牌投入
         const first = [
             ...receivables.filter(r => App.num(r.PaidAmount)).map(r => App.toDateInput(r.PaymentDate)),
             ...stalls.map(r => App.toDateInput(r.StallDate)),
-            ...expenses.map(r => App.toDateInput(r.ExpenseDate))
+            ...expenses.map(r => App.toDateInput(r.ExpenseDate)),
+            ...brandOut.concat(brandIn).map(r => App.toDateInput(r.RecordDate))
         ].filter(Boolean).sort()[0];
-        dom.plSince.textContent = first ? `自 ${first.replace(/-/g, "/")} 起` : "";
+        dom.plSince.textContent = first ? `成立至今，自 ${first.replace(/-/g, "/")}` : "成立至今";
 
-        dom.mDetail.innerHTML = `營收 = 帳款收款（依付款日）＋ 出攤營業額<br>
-            支出 = 支出表 ＋ 出攤費用（攤位、車資、人手、手續費等，不含食材估算）<br>
-            成立至今：帳款收款 ${money(all.arIncome)} ＋ 出攤營業額 ${money(all.stallIncome)}；支出表 ${money(all.expense)} ＋ 出攤費用 ${money(all.stallCost)}<br>
-            ※ 品牌攤提表不計入這裡，所有實際支出只要記在支出表即可`;
+        dom.mDetail.innerHTML = `營收 = 帳款收款（依付款日）＋ 出攤營業額${useBrand ? " ＋ 品牌攤提表「回收」" : ""}<br>
+            支出 = 支出表 ＋ 出攤費用（攤位、車資、人手、手續費等，不含食材估算）${useBrand ? " ＋ 品牌攤提表「支出」（全額計入投入當時）" : ""}<br>
+            <b>成立至今明細</b>：帳款收款 ${money(all.arIncome)}、出攤營業額 ${money(all.stallIncome)}${useBrand ? `、攤提表回收 ${money(all.brandIncome)}` : ""}；
+            支出表 ${money(all.expense)}、出攤費用 ${money(all.stallCost)}${useBrand ? `、攤提表投入 ${money(all.brandCost)}` : ""}<br>
+            ${useBrand && dupCount ? `※ 品牌攤提表有 ${dupCount} 筆與支出表同日同金額，視為同一筆只算一次<br>` : ""}
+            ${useBrand ? "" : "※ 目前未計入品牌攤提表（右上角可切換）"}`;
     }
 
     return {
