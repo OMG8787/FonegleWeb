@@ -477,6 +477,8 @@ const PRIVATE_ACTIONS = {
     testAiConfig: testAiConfig_,
     loginSessions: loginSessions_,
     kickUser: kickUser_,
+    kickAll: kickAll_,
+    clearLoginLog: clearLoginLog_,
     loginLogConfig: loginLogConfig_,
     kickSession: kickSession_,
     loginLog: loginLog_,
@@ -1298,15 +1300,55 @@ function pruneLoginLog_(userId, account) {
 
     if (!drop.size) return 0;
 
-    const kept = rows.filter(x => !drop.has(x.row)).map(x => x.obj);
-    replaceTableRows_(t, kept);
-
-    // 刪掉多出來的空白列，釋放試算表儲存格
-    const sh = t.sh;
-    const extra = sh.getMaxRows() - (kept.length + 1) - 5;
-    if (extra > 0) sh.deleteRows(kept.length + 7, extra);
+    rewriteRows_(t, rows.filter(x => !drop.has(x.row)).map(x => x.obj));
 
     return drop.size;
+}
+
+// 整張表改寫成指定資料，並刪掉多出來的空白列（釋放試算表儲存格）
+function rewriteRows_(t, objs) {
+    replaceTableRows_(t, objs);
+
+    const sh = t.sh;
+    const extra = sh.getMaxRows() - (objs.length + 1) - 5;
+    if (extra > 0) sh.deleteRows(objs.length + 7, extra);
+}
+
+// 一鍵登出所有人（自己目前這台除外）
+function kickAll_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    return withLock_(() => {
+        const t = tbl_('Sessions');
+        const rows = readRows_(t);
+        const others = rows.filter(x => x.obj.Token !== ctx.token);
+        const who = '強制登出（' + (ctx.user.Name || '') + '）';
+
+        others.forEach(x => {
+            endLoginLog_(x.obj.SessionId, who);
+            cacheRemove_(['sid:' + x.obj.Token, 'act:' + x.obj.Token, 's:' + x.obj.Token]);
+        });
+
+        if (others.length) rewriteRows_(t, rows.filter(x => x.obj.Token === ctx.token).map(x => x.obj));
+
+        return { count: others.length };
+    });
+}
+
+// 一鍵清除登入歷程（目前登入中的紀錄保留，才能繼續記錄最後使用時間）
+function clearLoginLog_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    return withLock_(() => {
+        const t = tbl_('LoginLog');
+        const rows = readRows_(t);
+        const active = new Set(readRows_(tbl_('Sessions')).map(x => String(x.obj.SessionId)));
+        const kept = rows.filter(x => active.has(String(x.obj.SessionId)) && !x.obj.EndAt).map(x => x.obj);
+
+        if (kept.length !== rows.length) rewriteRows_(t, kept);
+
+        return { removed: rows.length - kept.length, kept: kept.length };
+    });
 }
 
 // 讀取 / 設定保留筆數（設定後立即清理）

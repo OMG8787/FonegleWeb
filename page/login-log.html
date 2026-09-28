@@ -52,7 +52,10 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <h5 class="mb-0">🟢 目前登入中 <span id="onlineCount" class="badge bg-success">0</span></h5>
-                            <button id="btnRefresh" class="btn btn-sm btn-outline-secondary">重新整理</button>
+                            <div class="d-flex gap-2">
+                                <button id="btnRefresh" class="btn btn-sm btn-outline-secondary">重新整理</button>
+                                <button id="btnKickAll" class="btn btn-sm btn-danger">一鍵全部登出</button>
+                            </div>
                         </div>
                         <div class="table-responsive">
                             <table class="table table-sm table-hover mb-0">
@@ -135,6 +138,7 @@
                                         <th class="text-end">使用時間</th>
                                         <th>最近登入</th>
                                         <th>最近裝置</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="userBody"></tbody>
@@ -146,7 +150,10 @@
                 <!-- 登入歷程 -->
                 <div class="card border-0 shadow-sm">
                     <div class="card-body">
-                        <h5 class="mb-2">📜 登入歷程 <span id="logCount" class="text-muted small"></span></h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="mb-0">📜 登入歷程 <span id="logCount" class="text-muted small"></span></h5>
+                            <button id="btnClearLog" class="btn btn-sm btn-outline-danger">一鍵清除歷程</button>
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-sm table-hover mb-0">
                                 <thead class="table-light">

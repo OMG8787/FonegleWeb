@@ -10,6 +10,7 @@ Pages.LoginLog = (() => {
     const dom = {};
 
     let logs = [];
+    let online = [];    // 目前登入中（給各帳號表判斷能不能登出）
 
     // =========================
     // 初始化
@@ -17,7 +18,7 @@ Pages.LoginLog = (() => {
     async function init() {
 
         ["onlineBody", "onlineCount", "btnRefresh", "qFrom", "qTo", "qKeyword", "qResult",
-            "btnSearch", "btnThisMonth", "btnToday", "userBody", "logBody", "logCount", "logKeep", "btnSaveKeep", "logKeepInfo"]
+            "btnSearch", "btnThisMonth", "btnToday", "userBody", "logBody", "logCount", "logKeep", "btnSaveKeep", "logKeepInfo", "btnKickAll", "btnClearLog"]
             .forEach(id => dom[id] = document.getElementById(id));
 
         dom.btnRefresh.addEventListener("click", loadOnline);
@@ -27,7 +28,37 @@ Pages.LoginLog = (() => {
         dom.qKeyword.addEventListener("input", render);
         dom.qResult.addEventListener("change", render);
 
-        dom.onlineBody.addEventListener("click", async e => {
+        dom.onlineBody.addEventListener("click", onKickClick);
+        dom.userBody.addEventListener("click", onKickClick);
+
+        dom.btnKickAll.addEventListener("click", async () => {
+            const n = online.filter(s => !s.IsMe).length;
+            if (!n) return alert("除了你以外，目前沒有人登入");
+            if (!confirm(`確定要讓其他 ${n} 個登入立即登出？\n（你目前這台裝置不會被登出）`)) return;
+
+            try {
+                const r = await Auth.request("kickAll", {}, { loadingText: "登出中…" });
+                alert(`✅ 已登出 ${r.count} 個登入`);
+                await Promise.all([loadOnline(), loadLogs()]);
+            } catch (ex) {
+                App.error(ex);
+            }
+        });
+
+        dom.btnClearLog.addEventListener("click", async () => {
+            if (!confirm("確定要清除全部登入歷程？\n\n・目前登入中的紀錄會保留\n・清除後無法復原")) return;
+
+            try {
+                const r = await Auth.request("clearLoginLog", {}, { loadingText: "清除中…" });
+                alert(`✅ 已清除 ${r.removed} 筆登入歷程${r.kept ? `（保留登入中的 ${r.kept} 筆）` : ""}`);
+                await loadLogs();
+                Auth.request("loginLogConfig", {}, { silent: true }).then(showKeep).catch(() => { });
+            } catch (ex) {
+                App.error(ex);
+            }
+        });
+
+        async function onKickClick(e) {
             const btn = e.target.closest("[data-kick],[data-kick-user]");
             if (!btn) return;
 
@@ -45,7 +76,7 @@ Pages.LoginLog = (() => {
                 App.error(ex);
                 btn.disabled = false;
             }
-        });
+        }
 
         dom.btnSaveKeep.addEventListener("click", async () => {
             try {
@@ -103,6 +134,7 @@ Pages.LoginLog = (() => {
 
         try {
             const list = await Auth.request("loginSessions");
+            online = list;
 
             dom.onlineCount.textContent = list.length;
 
@@ -120,9 +152,11 @@ Pages.LoginLog = (() => {
                         <td class="text-end text-nowrap">${s.IsMe || !s.SessionId ? "" :
                         `<button class="btn btn-sm btn-outline-danger" data-kick="${App.esc(s.SessionId)}" data-name="${App.esc(s.UserName)}">登出此裝置</button>`}
                         ${!s.IsMe && s.LineUserId && perUser[s.LineUserId] > 1 ?
-                        `<button class="btn btn-sm btn-danger ms-1" data-kick-user="${App.esc(s.LineUserId)}" data-name="${App.esc(s.UserName)}">登出全部裝置</button>` : ""}</td>
+                        `<button class="btn btn-sm btn-danger ms-1" data-kick-user="${App.esc(s.LineUserId)}" data-name="${App.esc(s.UserName)}">登出此帳號（${perUser[s.LineUserId]} 台）</button>` : ""}</td>
                     </tr>`).join("")
                 : `<tr><td colspan="5" class="text-muted">目前沒有人登入</td></tr>`;
+
+            if (logs.length) renderUsers(filtered());
 
         } catch (ex) {
             dom.onlineBody.innerHTML = `<tr><td colspan="5" class="text-danger">${App.esc(ex.message)}</td></tr>`;
@@ -203,7 +237,7 @@ Pages.LoginLog = (() => {
 
         list.forEach(o => {
             const key = o.LineUserId || "acc:" + o.Account;
-            const u = map.get(key) || { name: o.UserName, account: o.Account, count: 0, fail: 0, minutes: 0, last: "", device: "" };
+            const u = map.get(key) || { uid: o.LineUserId, name: o.UserName, account: o.Account, count: 0, fail: 0, minutes: 0, last: "", device: "" };
 
             if (isOk(o)) {
                 u.count++;
@@ -232,8 +266,18 @@ Pages.LoginLog = (() => {
                     <td class="text-end">${minutesText(u.minutes)}</td>
                     <td>${App.esc(short(u.last))}</td>
                     <td class="device small">${App.esc(u.device)}</td>
+                    <td class="text-end text-nowrap">${kickUserButton(u)}</td>
                 </tr>`).join("")
-            : `<tr><td colspan="7" class="text-muted">查無紀錄</td></tr>`;
+            : `<tr><td colspan="8" class="text-muted">查無紀錄</td></tr>`;
+    }
+
+    // 登入中的帳號（不是自己）才顯示登出按鈕
+    function kickUserButton(u) {
+        if (!u.uid) return "";
+        const mine = online.filter(s => s.LineUserId === u.uid);
+        const others = mine.filter(s => !s.IsMe);
+        if (!others.length) return mine.length ? `<span class="badge bg-secondary">目前裝置</span>` : "";
+        return `<button class="btn btn-sm btn-outline-danger" data-kick-user="${App.esc(u.uid)}" data-name="${App.esc(u.name || u.account)}">登出此帳號${others.length > 1 ? `（${others.length} 台）` : ""}</button>`;
     }
 
     return { init };
