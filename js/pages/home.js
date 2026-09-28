@@ -17,8 +17,7 @@ Pages.Home = (() => {
 
         [
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
-            "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mIncome",
-            "mExpense", "mNet", "mDetail", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
+            "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         if (!Auth.hasPermission(20, 10, 11)) dom.btnOpenCalendar.classList.add("d-none");
@@ -304,22 +303,55 @@ Pages.Home = (() => {
         }).join("") || `<div class="text-muted small">沒有逾期或 7 天內到期的帳款 👍</div>`) +
             `<a href="page/receivable.html" class="btn btn-sm btn-link px-0 mt-2">前往帳務管理 →</a>`;
 
-        // 本月收支：收款（依付款日）+ 出攤營業額 − 支出
-        const inMonth = v => App.toDateInput(v).startsWith(month);
-        const arIncome = receivables.filter(r => inMonth(r.PaymentDate)).reduce((s, r) => s + App.num(r.PaidAmount), 0);
-        const stallIncome = stalls.filter(r => inMonth(r.StallDate)).reduce((s, r) => s + App.num(r.Revenue), 0);
-        // 出攤費用不含「食材成本估算」，實際食材採購請記在支出表，避免重複計算
-        const stallCost = stalls.filter(r => inMonth(r.StallDate)).reduce((s, r) => s + App.num(r.TotalCost) - App.num(r.FoodCost), 0);
-        const expense = expenses.filter(r => inMonth(r.ExpenseDate)).reduce((s, r) => s + App.num(r.Amount), 0);
-        const income = arIncome + stallIncome;
-        const out = expense + stallCost;
+        // 品牌損益：營收 = 收款（依付款日）+ 出攤營業額；支出 = 支出表 + 出攤費用
+        //   支出只從支出表計算（品牌攤提表不計入，避免同一筆輸入兩次被重複計算）
+        const q = Math.floor((Number(month.slice(5, 7)) - 1) / 3);
+        const year = month.slice(0, 4);
+        const periods = {
+            m: d => d.startsWith(month),
+            q: d => d.startsWith(year) && Math.floor((Number(d.slice(5, 7)) - 1) / 3) === q,
+            y: d => d.startsWith(year),
+            a: () => true
+        };
 
-        dom.mIncome.textContent = money(income);
-        dom.mExpense.textContent = money(out);
-        dom.mNet.textContent = money(income - out);
-        dom.mNet.className = "money " + (income - out >= 0 ? "text-success" : "text-danger");
-        dom.mDetail.innerHTML = `收入 = 帳款收款 ${money(arIncome)} ＋ 出攤營業額 ${money(stallIncome)}<br>
-            支出 = 支出表 ${money(expense)} ＋ 出攤費用 ${money(stallCost)}（攤位、車資、人手、手續費等，不含食材估算）`;
+        const sum = (rows, dateKey, fn, inRange) => rows.reduce((t, r) => {
+            const d = App.toDateInput(r[dateKey]) || "";
+            return inRange(d) ? t + fn(r) : t;
+        }, 0);
+
+        const calc = inRange => {
+            const arIncome = sum(receivables, "PaymentDate", r => App.num(r.PaidAmount), d => !!d && inRange(d));
+            const stallIncome = sum(stalls, "StallDate", r => App.num(r.Revenue), inRange);
+            // 出攤費用不含「食材成本估算」，實際食材採購記在支出表，避免重複計算
+            const stallCost = sum(stalls, "StallDate", r => App.num(r.TotalCost) - App.num(r.FoodCost), inRange);
+            const expense = sum(expenses, "ExpenseDate", r => App.num(r.Amount), inRange);
+            return { arIncome, stallIncome, stallCost, expense, income: arIncome + stallIncome, out: expense + stallCost };
+        };
+
+        let all = null;
+        Object.keys(periods).forEach(k => {
+            const c = calc(periods[k]);
+            if (k === "a") all = c;
+            const net = c.income - c.out;
+            document.getElementById(k + "Income").textContent = money(c.income);
+            document.getElementById(k + "Expense").textContent = money(c.out);
+            const el = document.getElementById(k + "Net");
+            el.textContent = money(net);
+            el.className = (k === "a" ? "pl-all " : "") + (net >= 0 ? "text-success" : "text-danger");
+        });
+
+        // 成立至今：從最早一筆收入 / 支出 / 出攤紀錄起算
+        const first = [
+            ...receivables.filter(r => App.num(r.PaidAmount)).map(r => App.toDateInput(r.PaymentDate)),
+            ...stalls.map(r => App.toDateInput(r.StallDate)),
+            ...expenses.map(r => App.toDateInput(r.ExpenseDate))
+        ].filter(Boolean).sort()[0];
+        dom.plSince.textContent = first ? `自 ${first.replace(/-/g, "/")} 起` : "";
+
+        dom.mDetail.innerHTML = `營收 = 帳款收款（依付款日）＋ 出攤營業額<br>
+            支出 = 支出表 ＋ 出攤費用（攤位、車資、人手、手續費等，不含食材估算）<br>
+            成立至今：帳款收款 ${money(all.arIncome)} ＋ 出攤營業額 ${money(all.stallIncome)}；支出表 ${money(all.expense)} ＋ 出攤費用 ${money(all.stallCost)}<br>
+            ※ 品牌攤提表不計入這裡，所有實際支出只要記在支出表即可`;
     }
 
     return {

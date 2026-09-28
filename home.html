@@ -56,6 +56,12 @@
             font-weight: bold;
         }
     </style>
+    <style>
+        .pl-table td, .pl-table th { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .pl-table td.pl-all, .pl-table th.pl-all { background: #fff7ed; }
+        .pl-table tr.fw-bold td { font-size: 1.05rem; }
+        @media (max-width: 480px) { .pl-table { font-size: .82rem; } }
+    </style>
 </head>
 
 <body>
@@ -139,32 +145,60 @@
 
                 <!-- 財務（有權限才顯示） -->
                 <div class="row g-3 mb-3 d-none" id="financeRow">
-                    <div class="col-lg-6">
+                    <div class="col-lg-7">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <span>📊 品牌損益</span>
+                                <small id="plSince" class="text-muted"></small>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle text-end mb-0 pl-table">
+                                        <thead>
+                                            <tr class="small text-muted">
+                                                <th class="text-start"></th>
+                                                <th>本月</th>
+                                                <th>本季</th>
+                                                <th>今年</th>
+                                                <th class="pl-all">成立至今</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <th class="text-start small text-muted">營收</th>
+                                                <td id="mIncome" class="text-success"></td>
+                                                <td id="qIncome" class="text-success"></td>
+                                                <td id="yIncome" class="text-success"></td>
+                                                <td id="aIncome" class="text-success pl-all"></td>
+                                            </tr>
+                                            <tr>
+                                                <th class="text-start small text-muted">支出</th>
+                                                <td id="mExpense" class="text-danger"></td>
+                                                <td id="qExpense" class="text-danger"></td>
+                                                <td id="yExpense" class="text-danger"></td>
+                                                <td id="aExpense" class="text-danger pl-all"></td>
+                                            </tr>
+                                            <tr class="fw-bold">
+                                                <th class="text-start small">損益</th>
+                                                <td id="mNet"></td>
+                                                <td id="qNet"></td>
+                                                <td id="yNet"></td>
+                                                <td id="aNet" class="pl-all"></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <details class="small text-muted mt-2">
+                                    <summary>怎麼算的？</summary>
+                                    <div id="mDetail" class="mt-2"></div>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
                         <div class="card border-0 shadow-sm h-100">
                             <div class="card-header bg-white">💰 待收款提醒</div>
                             <div class="card-body" id="arList"></div>
-                        </div>
-                    </div>
-                    <div class="col-lg-6">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-header bg-white">📈 本月收支</div>
-                            <div class="card-body">
-                                <div class="row text-center">
-                                    <div class="col-4">
-                                        <div class="small text-muted">收入</div>
-                                        <div id="mIncome" class="money text-success">$0</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="small text-muted">支出</div>
-                                        <div id="mExpense" class="money text-danger">$0</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="small text-muted">淨額</div>
-                                        <div id="mNet" class="money">$0</div>
-                                    </div>
-                                </div>
-                                <div id="mDetail" class="small text-muted mt-3"></div>
-                            </div>
                         </div>
                     </div>
                 </div>
