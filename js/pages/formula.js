@@ -63,7 +63,7 @@ Pages.Formula = (() => {
 
     function cacheDom() {
         FIELDS.concat([
-            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive", "qWarn",
+            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive", "qWarn", "qVerified", "IsVerified", "verifiedInfo",
             "formulaList", "emptyHint", "listCount", "detailList", "materialNames", "btnAddMaterial", "btnNormalize",
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
@@ -76,7 +76,15 @@ Pages.Formula = (() => {
 
         dom.qKeyword.addEventListener("input", renderList);
         dom.qInactive.addEventListener("change", renderList);
-        dom.qWarn.addEventListener("change", renderList);
+        // 「只看已確認」與「只看待確認」互斥
+        dom.qWarn.addEventListener("change", () => {
+            if (dom.qWarn.checked) dom.qVerified.checked = false;
+            renderList();
+        });
+        dom.qVerified.addEventListener("change", () => {
+            if (dom.qVerified.checked) dom.qWarn.checked = false;
+            renderList();
+        });
 
         dom.btnNew.addEventListener("click", () => openCreate(true));
         dom.btnClear.addEventListener("click", () => openCreate(false));
@@ -416,6 +424,10 @@ Pages.Formula = (() => {
         return allDetails.some(d => d.FormulaID === f.FormulaID && d.Remark);
     }
 
+    function isVerified(f) {
+        return f.IsVerified === true;
+    }
+
     function renderList() {
 
         const kw = dom.qKeyword.value.trim();
@@ -423,7 +435,9 @@ Pages.Formula = (() => {
 
         listCache = formulas
             .filter(f => dom.qInactive.checked || f.IsActive !== false)
-            .filter(f => !dom.qWarn.checked || hasWarning(f))
+            .filter(f => !dom.qVerified.checked || isVerified(f))
+            // 待確認：還沒標記為正確配方的
+            .filter(f => !dom.qWarn.checked || !isVerified(f))
             .filter(f => !kw ||
                 App.like(f.FormulaName, kw) || App.like(f.FormulaCode, kw) ||
                 allDetails.some(d => d.FormulaID === f.FormulaID && App.like(d.MaterialName, kw)))
@@ -431,6 +445,9 @@ Pages.Formula = (() => {
 
         dom.listCount.textContent = `${listCache.length} 筆`;
         dom.emptyHint.classList.toggle("d-none", listCache.length > 0);
+        dom.emptyHint.textContent = dom.qVerified.checked && !formulas.some(isVerified)
+            ? "還沒有已確認的配方。關閉「只看已確認」查看全部，打開配方確認無誤後勾選「✅ 已確認為正確配方」並儲存。"
+            : "查無配方";
 
         dom.formulaList.innerHTML = listCache.map((f, i) => {
 
@@ -442,7 +459,7 @@ Pages.Formula = (() => {
 <div class="formula-card ${current && current.FormulaID === f.FormulaID ? "active" : ""}" data-index="${i}">
     <div class="d-flex justify-content-between gap-1">
         <b>🧪 ${esc(f.FormulaName || "")}</b>
-        <span>${hasWarning(f) ? `<span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
+        <span class="text-nowrap">${isVerified(f) ? `<span class="badge bg-success" title="已確認為正確配方${f.VerifiedBy ? `（${esc(f.VerifiedBy)}）` : ""}">✅ 已確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
     </div>
     <div class="small text-muted">${esc(f.YieldUnit || "")}${f.UnitWeight ? `（${g(f.UnitWeight)}g）` : ""} × ${f.YieldQty ?? "-"}</div>
     <div class="small">單位成本 <b>${unit ? money(unit, 2) : "-"}</b>
@@ -470,6 +487,8 @@ Pages.Formula = (() => {
         tryPortion = null;
         dom.formulaForm.reset();
         dom.IsActive.checked = true;
+        dom.IsVerified.checked = false;
+        dom.verifiedInfo.textContent = "";
         dom.YieldUnit.value = "1L";
         dom.UnitWeight.value = 1000;
         dom.YieldQty.value = 1;
@@ -492,6 +511,9 @@ Pages.Formula = (() => {
         FIELDS.forEach(k => dom[k].value = f[k] ?? "");
         dom.ProductID.value = f.ProductID ? String(f.ProductID) : "";
         dom.IsActive.checked = f.IsActive !== false;
+        dom.IsVerified.checked = isVerified(f);
+        dom.verifiedInfo.textContent = isVerified(f) && (f.VerifiedBy || f.VerifiedAt)
+            ? `（${[f.VerifiedBy, String(f.VerifiedAt || "").slice(0, 10)].filter(Boolean).join("，")}）` : "";
 
         rows = detailsOf(f.FormulaID).map(d => ({
             MaterialID: d.MaterialID ?? "",
@@ -534,7 +556,8 @@ Pages.Formula = (() => {
                 TotalCost: round(c.totalCost, 2),
                 UnitCost: round(c.unitCost, 2),
                 Description: dom.Description.value.trim(),
-                IsActive: dom.IsActive.checked
+                IsActive: dom.IsActive.checked,
+                IsVerified: dom.IsVerified.checked
             },
             details: rows
                 .filter(r => String(r.MaterialName || "").trim() || r.MaterialID)
@@ -564,6 +587,21 @@ Pages.Formula = (() => {
         if (overrideName) {
             formula.FormulaName = overrideName;
             formula.FormulaCode = "";
+            formula.IsVerified = false;     // 另存的新配方需要重新確認
+        }
+
+        const wasVerified = !isCreate && current && isVerified(current);
+
+        if (formula.IsVerified && !wasVerified) {
+            const warn = details.filter(d => d.Remark).length;
+            if (warn && !confirm(`這個配方還有 ${warn} 項原料標記 ⚠️ 待確認，確定要標記為「已確認為正確配方」？`)) return;
+            let name = "";
+            try { name = (await API.me({ silent: true }))?.user?.Name || ""; } catch { }
+            formula.VerifiedBy = name;
+            formula.VerifiedAt = new Date().toLocaleString("sv-SE").slice(0, 16);
+        } else if (!formula.IsVerified) {
+            formula.VerifiedBy = "";
+            formula.VerifiedAt = "";
         }
 
         if (!formula.FormulaName) return alert("請輸入配方名稱");
