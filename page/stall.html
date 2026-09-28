@@ -25,6 +25,26 @@
             transition: .15s;
         }
 
+        /* 列表獨立捲動（不用整頁往下滑） */
+        .list-wrap {
+            max-height: calc(100vh - 330px);
+            min-height: 240px;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding-right: 4px;
+            margin-right: -4px;
+        }
+
+        .list-wrap::-webkit-scrollbar { width: 8px; }
+        .list-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+        .list-wrap::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .list-count { font-size: .85rem; color: #6c757d; }
+
+        @media (max-width: 991.98px) {
+            .list-wrap { max-height: 60vh; }
+        }
+
         .stall-card:hover,
         .stall-card.active {
             border-color: #0d6efd;
@@ -134,8 +154,14 @@
                                         <button id="btnSearchAll" class="btn btn-outline-secondary">全部</button>
                                     </div>
                                 </div>
-                                <div id="stallList"></div>
-                                <div id="emptyHint" class="text-muted d-none">查無出攤紀錄</div>
+                                <div class="d-flex justify-content-between list-count mb-2">
+                                    <span>出攤列表</span>
+                                    <span id="listCount"></span>
+                                </div>
+                                <div class="list-wrap" id="listWrap">
+                                    <div id="stallList"></div>
+                                    <div id="emptyHint" class="text-muted d-none">查無出攤紀錄</div>
+                                </div>
                             </div>
                         </div>
                     </div>

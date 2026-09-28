@@ -36,6 +36,10 @@ Pages.Stall = (() => {
         bindEvents();
         openCreate(false);
 
+        // 列表高度：從列表頂端到頁尾上方（電腦版）；手機版用 CSS 的 60vh
+        fitList();
+        window.addEventListener("resize", fitList);
+
         try {
 
             const data = await API.getMany(["StallRecords", "Calendar"]);
@@ -53,7 +57,7 @@ Pages.Stall = (() => {
     function cacheDom() {
 
         FIELDS.concat([
-            "stallForm", "formTitle", "editHint", "stallList", "emptyHint", "qMonth", "qKeyword",
+            "stallForm", "formTitle", "editHint", "stallList", "emptyHint", "listCount", "qMonth", "qKeyword",
             "btnSearch", "btnSearchAll", "btnNew", "btnCreate", "btnUpdate", "btnDelete", "btnClear",
             "btnImportPOS", "sumCount", "sumRevenue", "sumCost", "sumProfit", "sumAvgProfit",
             "resultProfit", "resultMargin", "resultCost", "resultPerStaff", "resultLowText",
@@ -274,11 +278,21 @@ Pages.Stall = (() => {
         dom.sumAvgProfit.textContent = list.length ? money(profit / list.length) : "$0";
     }
 
+    function fitList() {
+        const w = document.getElementById("listWrap");
+        if (!w) return;
+        if (window.innerWidth < 992) { w.style.maxHeight = ""; return; }
+        const top = w.getBoundingClientRect().top + window.scrollY;
+        const footer = document.getElementById("erp-footer")?.offsetHeight || 0;
+        w.style.maxHeight = Math.max(280, window.innerHeight - top - footer - 24) + "px";
+    }
+
     function renderList(list) {
 
         const esc = App.esc;
 
         dom.emptyHint.classList.toggle("d-none", list.length > 0);
+        if (dom.listCount) dom.listCount.textContent = `${list.length} 筆`;
 
         dom.stallList.innerHTML = list.map((r, i) => {
 
