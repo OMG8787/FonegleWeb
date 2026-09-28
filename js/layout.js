@@ -8,7 +8,6 @@ const Layout = {
 
 
         this.startClock();
-        this.startLogoutTimer();
 
         if (window.Favorite) {
             await Favorite.init();
@@ -24,107 +23,13 @@ const Layout = {
         return Auth.hasPermission(...item.Permission);
     },
 
-    startLogoutTimer() {
-
-        const timerEl =
-            document.getElementById(
-                "logoutTimer"
-            );
-
-        if (!timerEl) return;
-
-        const updateTimer = () => {
-
-            const expireTime =
-                Auth.getExpireTime();
-
-            if (!expireTime) {
-
-                timerEl.innerText = "已過期";
-
-                Auth.logout();
-
-                return;
-            }
-
-            const remain =
-                expireTime - Date.now();
-
-            // =========================
-            // 已到期
-            // =========================
-            if (remain <= 0) {
-
-                timerEl.innerText =
-                    "00:00:00";
-
-                alert(
-                    "登入已逾時，請重新登入"
-                );
-
-                Auth.logout();
-
-                return;
-            }
-
-            // =========================
-            // 剩餘5分鐘提醒
-            // =========================
-            if (
-                remain <= 5 * 60 * 1000 &&
-                !this.warningShown
-            ) {
-
-                this.warningShown = true;
-
-                // 登入時間固定，無法延長：提醒先存檔
-                alert("登入將於 5 分鐘內到期，請先儲存資料，到期後需重新登入");
-            }
-
-            // 超過5分鐘重置
-            if (remain > 5 * 60 * 1000) {
-
-                this.warningShown = false;
-            }
-
-            // =========================
-            // 顯示倒數
-            // =========================
-            const hours =
-                Math.floor(remain / 3600000);
-
-            const minutes =
-                Math.floor(
-                    (remain % 3600000)
-                    / 60000
-                );
-
-            const seconds =
-                Math.floor(
-                    (remain % 60000)
-                    / 1000
-                );
-
-            timerEl.innerText =
-                `${String(hours).padStart(2, "0")}:` +
-                `${String(minutes).padStart(2, "0")}:` +
-                `${String(seconds).padStart(2, "0")}`;
-        };
-
-        // 立即執行一次
-        updateTimer();
-
-        // 每秒更新
-        setInterval(updateTimer, 1000);
-    },
-
+    // 登入綁定裝置、不會自動過期（登出或管理員強制登出才結束），不再顯示倒數
     renderHeader() {
         document.getElementById("headerArea").innerHTML = `
         <div id="erp-header">
             <button type="button" id="btnMenu" class="hdr-btn" onclick="Layout.toggleSidebar()" aria-label="功能選單" title="功能選單">☰</button>
             <a class="hdr-title" href="${Auth.root}home.html">🍦 <span class="hdr-title-full">瘋菓內部管理系統</span><span class="hdr-title-short">瘋菓管理</span></a>
             <div class="hdr-right">
-                <span class="hdr-timer" title="自動登出剩餘時間">⏱ <span id="logoutTimer">--:--:--</span></span>
                 <button type="button" class="hdr-btn hdr-logout" onclick="Auth.logout()">登出</button>
             </div>
         </div>`;

@@ -396,7 +396,7 @@ const Auth = {
     // =========================
     setSession({ userId, token, roleList, expireAt }) {
 
-        this.setExpireTime(expireAt);
+        this.setExpireTime(0);   // 登入是否有效以伺服器為準；cookie 一律保存 400 天
         this.setCookie(this.cookieName, userId);
         this.setCookie(this.tokenCookieName, token);
         this.setRoleList(roleList || []);
@@ -693,7 +693,7 @@ const Auth = {
                 try { sessionStorage.setItem("erp_me", JSON.stringify({ t: Date.now(), uid: this.getUserId(), me })); } catch { }
 
                 // 以伺服器上的權限為準；登入 cookie 往後延長
-                this.setExpireTime(me.expireAt || 0);
+                this.setExpireTime(0);
                 this.setMustChangePassword(me.user?.MustChangePassword === true);
                 this.setRoleList(me.roleList || []);
 
