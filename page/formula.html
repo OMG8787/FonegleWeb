@@ -10,6 +10,11 @@
     <link href="../css/layout.css" rel="stylesheet">
 
     <style>
+        .q-view .btn { white-space: nowrap; border-radius: 999px; padding: .2rem .6rem; }
+
+        .fav-btn { font-size: 1.15rem; line-height: 1; text-decoration: none; color: #f59e0b; }
+        .fav-btn:hover { transform: scale(1.15); }
+
         .formula-card {
             border: 1px solid #e5e5e5;
             border-radius: 12px;
@@ -137,19 +142,17 @@
                         <div class="card border-0 shadow-sm">
                             <div class="card-body">
                                 <input id="qKeyword" class="form-control mb-2" placeholder="🔍 配方名稱 / 代碼 / 原料">
-                                <div class="d-flex flex-wrap gap-3 mb-2">
-                                    <div class="form-check form-switch mb-0">
-                                        <input id="qVerified" class="form-check-input" type="checkbox" checked>
-                                        <label class="form-check-label small" for="qVerified">只看已確認</label>
-                                    </div>
-                                    <div class="form-check form-switch mb-0">
-                                        <input id="qInactive" class="form-check-input" type="checkbox">
-                                        <label class="form-check-label small" for="qInactive">顯示停用</label>
-                                    </div>
-                                    <div class="form-check form-switch mb-0">
-                                        <input id="qWarn" class="form-check-input" type="checkbox">
-                                        <label class="form-check-label small" for="qWarn">只看待確認</label>
-                                    </div>
+                                <div class="q-view d-flex flex-wrap gap-1 mb-2" role="group" aria-label="配方篩選">
+                                    <input type="radio" class="btn-check" name="qView" id="qvFav" value="fav" checked>
+                                    <label class="btn btn-sm btn-outline-warning" for="qvFav">⭐ 常用配方</label>
+                                    <input type="radio" class="btn-check" name="qView" id="qvVerified" value="verified">
+                                    <label class="btn btn-sm btn-outline-success" for="qvVerified">✅ 顯示已確認</label>
+                                    <input type="radio" class="btn-check" name="qView" id="qvPending" value="pending">
+                                    <label class="btn btn-sm btn-outline-danger" for="qvPending">⚠️ 顯示待確認</label>
+                                    <input type="radio" class="btn-check" name="qView" id="qvInactive" value="inactive">
+                                    <label class="btn btn-sm btn-outline-secondary" for="qvInactive">⛔ 顯示停用</label>
+                                    <input type="radio" class="btn-check" name="qView" id="qvAll" value="all">
+                                    <label class="btn btn-sm btn-outline-dark" for="qvAll">📋 顯示全部</label>
                                 </div>
                                 <div class="d-flex justify-content-between small text-muted mb-2">
                                     <span>配方列表 <span id="verifyStat" class="badge bg-light text-success border ms-1"></span></span>
@@ -345,6 +348,7 @@
                                             <label class="form-check-label" for="IsVerified">✅ 已確認為正確配方</label>
                                             <span id="verifiedInfo" class="small text-muted ms-1"></span>
                                         </div>
+                                        <button type="button" id="btnFavorite" class="btn btn-sm btn-outline-warning" disabled>☆ 加入常用</button>
                                     </div>
 
                                     <div class="d-flex flex-wrap gap-2 mt-3">

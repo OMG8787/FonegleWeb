@@ -191,7 +191,7 @@ const SCHEMA = {
         key: 'FormulaID', seq: 'FormulaID',
         cols: 'FormulaID:n FormulaCode ProductID FormulaName VersionNo YieldQty:n YieldUnit IsActive:b Description Remark ' +
             'PackagingCost:n LaborCost:n OtherCost:n TargetPrice:n TargetCostRate:n MaterialCost:n TotalCost:n UnitCost:n ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt UnitWeight:n YieldRate:n BaseWeight:n IsVerified:b VerifiedBy VerifiedAt',
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt UnitWeight:n YieldRate:n BaseWeight:n IsVerified:b VerifiedBy VerifiedAt IsFavorite:b',
         money: 'PackagingCost LaborCost OtherCost TargetPrice MaterialCost TotalCost UnitCost'
     },
     FormulaDetail: {
@@ -311,7 +311,7 @@ const COLUMN_LABELS = {
     MfgDate: '製造日期', ExpDate: '有效日期', LastInventoryDate: '最後盤點日', FormulaCode: '配方代碼',
     FormulaName: '配方名稱', VersionNo: '版本', YieldQty: '預設倍數（製作幾個單位）', YieldUnit: '單位名稱（1L / 一份）', PackagingCost: '包材成本',
     UnitWeight: '單位重量（g，例如 1L = 1000）', YieldRate: '成品率 %（扣除損耗，預設 100）', BaseWeight: '基準總重（g）', SortOrder: '排序',
-    IsVerified: '已確認為正確配方', VerifiedBy: '確認人', VerifiedAt: '確認時間',
+    IsVerified: '已確認為正確配方', VerifiedBy: '確認人', VerifiedAt: '確認時間', IsFavorite: '常用配方',
     LaborCost: '人工成本', TargetPrice: '預計售價', TargetCostRate: '目標成本率 %', MaterialCost: '原料成本',
     UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',

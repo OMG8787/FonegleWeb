@@ -28,7 +28,7 @@ Pages.Formula = (() => {
     let listCache = [];
     let tryMult = null;     // 目前試算倍數（份數，不一定等於預設倍數）
     let tryPortion = null;  // 目前試算的每份重量 g（不一定等於配方的單位重量）
-    let verifiedTouched = false;    // 使用者自己切換過「只看已確認」
+    let viewTouched = false;        // 使用者自己切換過篩選（常用 / 已確認 / 待確認 / 全部）
 
     // =========================
     // 初始化
@@ -47,8 +47,8 @@ Pages.Formula = (() => {
                 onTable(name, rows) {
                     if (name === "Formula") {
                         formulas = rows || [];
-                        // 還沒有任何已確認的配方：先顯示全部，避免一打開是空的
-                        if (!verifiedTouched) dom.qVerified.checked = formulas.some(isVerified);
+                        // 預設顯示常用；沒有常用 → 已確認；都沒有 → 全部（避免一打開是空的）
+                        if (!viewTouched) setView(defaultView());
                     }
                     if (name === "FormulaDetail") allDetails = rows || [];
                     if (name === "Material") { materials = (rows || []).filter(m => m.IsActive !== false); renderMaterialNames(); }
@@ -68,7 +68,7 @@ Pages.Formula = (() => {
 
     function cacheDom() {
         FIELDS.concat([
-            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive", "qWarn", "qVerified", "IsVerified", "verifiedInfo", "verifyStat",
+            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "IsVerified", "verifiedInfo", "verifyStat", "btnFavorite",
             "formulaList", "emptyHint", "listCount", "detailList", "materialNames", "btnAddMaterial", "btnNormalize",
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
@@ -80,18 +80,11 @@ Pages.Formula = (() => {
     function bindEvents() {
 
         dom.qKeyword.addEventListener("input", renderList);
-        dom.qInactive.addEventListener("change", renderList);
-        // 「只看已確認」與「只看待確認」互斥
-        dom.qWarn.addEventListener("change", () => {
-            verifiedTouched = true;
-            if (dom.qWarn.checked) dom.qVerified.checked = false;
+        document.querySelectorAll("input[name=qView]").forEach(r => r.addEventListener("change", () => {
+            viewTouched = true;
             renderList();
-        });
-        dom.qVerified.addEventListener("change", () => {
-            verifiedTouched = true;
-            if (dom.qVerified.checked) dom.qWarn.checked = false;
-            renderList();
-        });
+        }));
+        dom.btnFavorite.addEventListener("click", () => current && toggleFavorite(current));
 
         dom.btnNew.addEventListener("click", () => openCreate(true));
         dom.btnClear.addEventListener("click", () => openCreate(false));
@@ -172,6 +165,8 @@ Pages.Formula = (() => {
         });
 
         dom.formulaList.addEventListener("click", e => {
+            const fav = e.target.closest("[data-fav]");
+            if (fav) { e.stopPropagation(); return toggleFavorite(listCache[fav.dataset.fav]); }
             const card = e.target.closest(".formula-card");
             if (card) loadDetail(listCache[card.dataset.index]);
         });
@@ -439,30 +434,95 @@ Pages.Formula = (() => {
         return !hasWarning(f);
     }
 
+    // =========================
+    // 篩選：常用 / 已確認 / 待確認 / 全部
+    // =========================
+    function isFavorite(f) {
+        return f.IsFavorite === true;
+    }
+
+    function view() {
+        return document.querySelector("input[name=qView]:checked")?.value || "all";
+    }
+
+    function setView(v) {
+        const el = document.querySelector(`input[name=qView][value="${v}"]`);
+        if (el) el.checked = true;
+    }
+
+    const isActive = f => f.IsActive !== false;
+
+    function defaultView() {
+        const active = formulas.filter(isActive);
+        if (active.some(isFavorite)) return "fav";
+        if (active.some(isVerified)) return "verified";
+        return "all";
+    }
+
+    // 常用 / 已確認 / 待確認只列啟用中的；停用另外看；全部 = 含停用
+    const VIEW_FILTER = {
+        fav: f => isActive(f) && isFavorite(f),
+        verified: f => isActive(f) && isVerified(f),
+        pending: f => isActive(f) && !isVerified(f),
+        inactive: f => !isActive(f),
+        all: () => true
+    };
+
+    // 加入 / 移出常用（只有已確認的配方可以加入）
+    async function toggleFavorite(f) {
+
+        if (!f) return;
+        const on = !isFavorite(f);
+
+        if (on && !isVerified(f))
+            return alert("只有已確認的配方可以加入常用。\n請先核對配方，勾選「✅ 已確認為正確配方」並儲存。");
+
+        try {
+            const row = await API.update("Formula", f.FormulaID, { IsFavorite: on },
+                { loadingText: on ? "加入常用中…" : "移出常用中…" });
+            f.IsFavorite = row && row.IsFavorite !== undefined ? row.IsFavorite : on;
+            if (current && current.FormulaID === f.FormulaID) current.IsFavorite = f.IsFavorite;
+            renderFavoriteButton();
+            renderList();
+        } catch (err) {
+            App.error(err, "更新常用失敗");
+        }
+    }
+
+    function renderFavoriteButton() {
+        const f = current;
+        const fav = !!f && isFavorite(f);
+        dom.btnFavorite.disabled = !f || (!fav && !isVerified(f));
+        dom.btnFavorite.textContent = fav ? "⭐ 已加入常用" : "☆ 加入常用";
+        dom.btnFavorite.className = "btn btn-sm " + (fav ? "btn-warning" : "btn-outline-warning");
+        dom.btnFavorite.title = !f ? "請先選擇配方" : !fav && !isVerified(f) ? "已確認的配方才能加入常用" : fav ? "點一下移出常用" : "";
+    }
+
     function renderList() {
 
         const kw = dom.qKeyword.value.trim();
         const esc = App.esc;
+        const v = view();
 
         listCache = formulas
-            .filter(f => dom.qInactive.checked || f.IsActive !== false)
-            .filter(f => !dom.qVerified.checked || isVerified(f))
-            // 待確認：還沒標記為正確配方的
-            .filter(f => !dom.qWarn.checked || !isVerified(f))
+            .filter(VIEW_FILTER[v] || VIEW_FILTER.all)
             .filter(f => !kw ||
                 App.like(f.FormulaName, kw) || App.like(f.FormulaCode, kw) ||
                 allDetails.some(d => d.FormulaID === f.FormulaID && App.like(d.MaterialName, kw)))
-            .sort((a, b) => String(a.FormulaName).localeCompare(String(b.FormulaName), "zh-Hant"));
+            // 常用排最前面
+            .sort((a, b) => isFavorite(b) - isFavorite(a) || String(a.FormulaName).localeCompare(String(b.FormulaName), "zh-Hant"));
 
         dom.listCount.textContent = `${listCache.length} 筆`;
         dom.emptyHint.classList.toggle("d-none", listCache.length > 0);
-        dom.emptyHint.textContent = dom.qVerified.checked && !formulas.some(isVerified)
-            ? "還沒有已確認的配方。關閉「只看已確認」查看全部，打開配方確認無誤後勾選「✅ 已確認為正確配方」並儲存。"
-            : dom.qWarn.checked ? "全部配方都已確認 👍" : "查無配方";
+        dom.emptyHint.textContent = kw ? "查無配方"
+            : v === "fav" ? "還沒有常用配方。到「✅ 已確認」點配方卡片右上角的 ☆，就能加入常用。"
+                : v === "verified" ? "還沒有已確認的配方。打開配方核對無誤後，勾選「✅ 已確認為正確配方」並儲存。"
+                    : v === "pending" ? "全部配方都已確認 👍"
+                        : v === "inactive" ? "沒有停用的配方" : "查無配方";
 
         // 目前有幾個已確認 / 待確認
-        const ok = formulas.filter(f => isVerified(f) && (dom.qInactive.checked || f.IsActive !== false)).length;
-        const all = formulas.filter(f => dom.qInactive.checked || f.IsActive !== false).length;
+        const ok = formulas.filter(f => isVerified(f) && isActive(f)).length;
+        const all = formulas.filter(isActive).length;
         dom.verifyStat.textContent = all ? `已確認 ${ok} / ${all}` : "";
 
         dom.formulaList.innerHTML = listCache.map((f, i) => {
@@ -475,7 +535,8 @@ Pages.Formula = (() => {
 <div class="formula-card ${current && current.FormulaID === f.FormulaID ? "active" : ""}" data-index="${i}">
     <div class="d-flex justify-content-between gap-1">
         <b>🧪 ${esc(f.FormulaName || "")}</b>
-        <span class="text-nowrap">${isVerified(f) ? `<span class="badge bg-success" title="已確認為正確配方${f.VerifiedBy ? `（${esc(f.VerifiedBy)}）` : ""}">✅ 已確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
+        <span class="text-nowrap">${isFavorite(f) || isVerified(f)
+                    ? `<button type="button" class="btn btn-link p-0 me-1 fav-btn" data-fav="${i}" title="${isFavorite(f) ? "移出常用" : "加入常用"}" aria-label="${isFavorite(f) ? "移出常用" : "加入常用"}">${isFavorite(f) ? "⭐" : "☆"}</button>` : ""}${isVerified(f) ? `<span class="badge bg-success" title="已確認為正確配方${f.VerifiedBy ? `（${esc(f.VerifiedBy)}）` : ""}">✅ 已確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
     </div>
     <div class="small text-muted">${esc(f.YieldUnit || "")}${f.UnitWeight ? `（${g(f.UnitWeight)}g）` : ""} × ${f.YieldQty ?? "-"}</div>
     <div class="small">單位成本 <b>${unit ? money(unit, 2) : "-"}</b>
@@ -505,6 +566,7 @@ Pages.Formula = (() => {
         dom.IsActive.checked = true;
         dom.IsVerified.checked = false;
         dom.verifiedInfo.textContent = "";
+        renderFavoriteButton();
         dom.YieldUnit.value = "1L";
         dom.UnitWeight.value = 1000;
         dom.YieldQty.value = 1;
@@ -531,6 +593,7 @@ Pages.Formula = (() => {
         dom.verifiedInfo.textContent = !isVerified(f) ? ""
             : f.VerifiedBy || f.VerifiedAt ? `（${[f.VerifiedBy, String(f.VerifiedAt || "").slice(0, 10)].filter(Boolean).join("，")}）`
                 : f.IsVerified !== true ? "（沒有 ⚠️ 待確認項目）" : "";
+        renderFavoriteButton();
 
         rows = detailsOf(f.FormulaID).map(d => ({
             MaterialID: d.MaterialID ?? "",
