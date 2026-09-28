@@ -196,9 +196,37 @@ const Auth = {
         }
     },
 
-    // 伺服器沒回傳到期時間時的備用值（實際以 Apps Script 的 SESSION_HOURS 為準）
+    // 登入不會自動過期：cookie 保存 400 天（瀏覽器上限），每次使用時自動延長
     get sessionMs() {
-        return (window.APP_SETTINGS?.SESSION_HOURS || 6) * 60 * 60 * 1000;
+        return (window.APP_SETTINGS?.SESSION_DAYS || 400) * 24 * 60 * 60 * 1000;
+    },
+
+    // =========================
+    // 裝置金鑰：每台裝置（瀏覽器）第一次使用時產生，之後固定不變
+    //   登入時與帳號綁定，Token 被複製到其他裝置也無法使用
+    // =========================
+    deviceKeyName: "erp_device_key",
+
+    deviceKey() {
+
+        if (this._deviceKey) return this._deviceKey;
+
+        let key = null;
+        try { key = localStorage.getItem(this.deviceKeyName); } catch { }
+        key = key || this.getCookie(this.deviceKeyName);
+
+        if (!/^[A-Za-z0-9_-]{16,80}$/.test(key || "")) {
+            const bytes = new Uint8Array(24);
+            (window.crypto || window.msCrypto).getRandomValues(bytes);
+            key = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+        }
+
+        // localStorage 與 cookie 各存一份，其中一邊被清掉也能找回
+        try { localStorage.setItem(this.deviceKeyName, key); } catch { }
+        document.cookie = `${this.deviceKeyName}=${key}; max-age=${400 * 24 * 3600}; path=${this.cookiePath}; SameSite=Lax`;
+
+        this._deviceKey = key;
+        return key;
     },
 
     // =========================
@@ -316,7 +344,8 @@ const Auth = {
                     ...payload,
                     action,
                     reqId,
-                    token: this.getToken()
+                    token: this.getToken(),
+                    deviceKey: this.deviceKey()
                 }),
                 signal: ctrl?.signal
             });
@@ -395,7 +424,7 @@ const Auth = {
             new Date(this.getExpireTime() || Date.now() + this.sessionMs).toUTCString();
 
         document.cookie =
-            `${name}=${encodeURIComponent(value ?? "")}; expires=${expires}; path=${this.cookiePath}`;
+            `${name}=${encodeURIComponent(value ?? "")}; expires=${expires}; path=${this.cookiePath}; SameSite=Lax`;
     },
 
     getCookie(name) {
@@ -411,7 +440,7 @@ const Auth = {
     },
 
     // =========================
-    // 登入到期時間（自登入起算固定時數，不因操作延長）
+    // 登入 cookie 到期時間：伺服器登入不會過期（expireAt = 0），cookie 每次驗證時延長 400 天
     // =========================
     setExpireTime(expireAt) {
 
@@ -420,7 +449,7 @@ const Auth = {
         const expires = new Date(expireTime).toUTCString();
 
         document.cookie =
-            `erp_expire_time=${expireTime}; expires=${expires}; path=${this.cookiePath}`;
+            `erp_expire_time=${expireTime}; expires=${expires}; path=${this.cookiePath}; SameSite=Lax`;
 
         // 同步延長其他 cookie
         [this.cookieName, this.tokenCookieName, this.roleCookieName].forEach(name => {
@@ -428,7 +457,7 @@ const Auth = {
             const v = this.getCookie(name);
 
             if (v !== null)
-                document.cookie = `${name}=${encodeURIComponent(v)}; expires=${expires}; path=${this.cookiePath}`;
+                document.cookie = `${name}=${encodeURIComponent(v)}; expires=${expires}; path=${this.cookiePath}; SameSite=Lax`;
         });
     },
 
@@ -504,7 +533,7 @@ const Auth = {
                     method: "POST",
                     keepalive: true,
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ action: "logout", token })
+                    body: JSON.stringify({ action: "logout", token, deviceKey: this.deviceKey() })
                 }).catch(() => { });
             } catch { }
         }
@@ -663,8 +692,8 @@ const Auth = {
                 const me = await this.request("me", {}, { silent: true });
                 try { sessionStorage.setItem("erp_me", JSON.stringify({ t: Date.now(), uid: this.getUserId(), me })); } catch { }
 
-                // 以伺服器上的權限與到期時間為準
-                if (me.expireAt) this.setExpireTime(me.expireAt);
+                // 以伺服器上的權限為準；登入 cookie 往後延長
+                this.setExpireTime(me.expireAt || 0);
                 this.setMustChangePassword(me.user?.MustChangePassword === true);
                 this.setRoleList(me.roleList || []);
 

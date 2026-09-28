@@ -43,7 +43,7 @@
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-body">
                         <h2 class="mb-1">🕒 登入紀錄</h2>
-                        <p class="text-muted mb-0">查看誰在什麼時間、用哪個裝置登入，以及使用了多久。登入有效 6 小時，期間內除非登出或被移除，否則不會被登出。</p>
+                        <p class="text-muted mb-0">查看誰在什麼時間、用哪個裝置登入、最後什麼時候使用。登入綁定「帳號 + 裝置」，不會自動過期，除非本人登出或管理員強制登出。</p>
                     </div>
                 </div>
 
@@ -61,15 +61,29 @@
                                         <th>姓名</th>
                                         <th>裝置</th>
                                         <th>登入時間</th>
-                                        <th>最後活動</th>
-                                        <th>到期時間</th>
+                                        <th>最後使用</th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="onlineBody"></tbody>
                             </table>
                         </div>
-                        <div class="small text-muted mt-2">「最後活動」約每 5 分鐘更新一次。也可以直接到試算表「Sessions」分頁刪除該列，效果相同。</div>
+                        <div class="small text-muted mt-2">「最後使用」約每 5 分鐘更新一次。也可以直接到試算表「Sessions」分頁刪除該列，效果相同。</div>
+                    </div>
+                </div>
+
+                <!-- 紀錄保留 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <h5 class="mb-0 me-2">🧹 紀錄保留</h5>
+                            <span class="small">每個帳號保留最近</span>
+                            <input id="logKeep" type="number" min="5" max="1000" step="1" class="form-control form-control-sm" style="width:90px">
+                            <span class="small">筆</span>
+                            <button id="btnSaveKeep" class="btn btn-sm btn-outline-primary">儲存並清理</button>
+                            <span id="logKeepInfo" class="small text-muted ms-md-2"></span>
+                        </div>
+                        <div class="small text-muted mt-2">超過的舊紀錄會在該帳號下次登入時自動刪除（登入中的那筆一定保留），避免試算表越來越大。</div>
                     </div>
                 </div>
 

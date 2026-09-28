@@ -18,7 +18,9 @@
 // 基本設定
 // ============================================================
 const CONFIG = {
-    SESSION_HOURS: 6,                  // 登入有效時間（自登入起算；期間內除非登出或從 Sessions 分頁刪除，否則不會被登出）
+    // 登入不會自動過期：除非本人登出、管理員強制登出，或從 Sessions 分頁刪除該列
+    // 每次登入綁定「帳號 + 裝置金鑰」，Token 被複製到別的裝置也無法使用
+    LOGIN_LOG_KEEP: 20,                // 登入紀錄每個帳號保留最近幾筆（系統管理可在登入紀錄頁調整）
     ACTIVE_UPDATE_MINUTES: 5,          // 最後活動時間的更新間隔（避免每次操作都寫入試算表）
     SESSION_CACHE_SECONDS: 60,         // 登入驗證快取（登出 / 強制登出會立即清除；手動刪除 Sessions 列最多 60 秒後生效）
     TABLE_CACHE_SECONDS: 300,          // 資料表讀取快取（透過系統寫入、在試算表手動編輯儲存格時會立即清除）
@@ -54,7 +56,7 @@ const SCHEMA = {
     // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
     Sessions: {
         key: 'Token', internal: true,
-        cols: 'Token LineUserId ExpireAt:n CreatedAt SessionId UserName Device LoginAt LastActiveAt ExpireAtText'
+        cols: 'Token LineUserId ExpireAt:n CreatedAt SessionId UserName Device LoginAt LastActiveAt ExpireAtText DeviceKey'
     },
     // 登入歷程：每次登入（含失敗）一列，登出 / 逾時 / 被移除時補上結束時間與使用分鐘數
     LoginLog: {
@@ -279,7 +281,7 @@ const COLUMN_LABELS = {
     AccountManager: '負責專員', IsWeb: '可登入網站', IsMember: '會員', IsBlocked: '黑名單', IsMailActive: '可收發信',
     IsPushMessage: '接受推播', IsConverted: '曾交易', OpenClaw: 'OpenClaw 聊天室ID', OpenClawAgent: '代理人編號',
     RoleName: '角色名稱', Permission: '權限名稱', Token: '登入權杖', ExpireAt: '到期時間（毫秒）',
-    SessionId: '登入編號', UserName: '姓名', Device: '裝置', LoginAt: '登入時間', LastActiveAt: '最後活動時間',
+    SessionId: '登入編號', UserName: '姓名', Device: '裝置', DeviceKey: '裝置金鑰（雜湊，請勿修改）', LoginAt: '登入時間', LastActiveAt: '最後活動時間',
     ExpireAtText: '到期時間', Account: '登入帳號', Result: '結果', UserAgent: '瀏覽器資訊',
     EndAt: '結束時間', EndReason: '結束原因', UsedMinutes: '使用分鐘數',
     Subject: '主旨', Recipients: '收件人', Attachments: '附件', SentBy: '寄件人',
@@ -474,6 +476,8 @@ const PRIVATE_ACTIONS = {
     setAiConfig: setAiConfig_,
     testAiConfig: testAiConfig_,
     loginSessions: loginSessions_,
+    kickUser: kickUser_,
+    loginLogConfig: loginLogConfig_,
     kickSession: kickSession_,
     loginLog: loginLog_,
     accessList: accessList_,
@@ -484,6 +488,7 @@ const PRIVATE_ACTIONS = {
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
 const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig'];
+// loginLogConfig 不帶 keep 時只是讀取；帶 keep 會修改（由 reqId 防重複）
 
 function handle_(req) {
     const action = String(req.action || '');
@@ -502,7 +507,7 @@ function handle_(req) {
 
     const result = PUBLIC_ACTIONS[action]
         ? PUBLIC_ACTIONS[action](req)
-        : PRIVATE_ACTIONS[action](req, auth_(req.token));
+        : PRIVATE_ACTIONS[action](req, auth_(req.token, req.deviceKey));
 
     if (reqId) cachePut_(reqId, { result }, 600);
 
@@ -831,6 +836,7 @@ function login_(req) {
     const password = String(req.password || '');
     const device = clip_(req.device, 120);
     const userAgent = clip_(req.userAgent, 300);
+    const deviceKey = deviceKeyHash_(req.deviceKey);
 
     if (!phone || !password)
         fail_('請輸入電話與密碼');
@@ -846,6 +852,7 @@ function login_(req) {
                 SessionId: newSessionId_(), LoginAt: now_(), LineUserId: u.LineUserId || '', UserName: u.Name || '',
                 Account: phone, Result: '失敗：' + message, Device: device, UserAgent: userAgent
             });
+            pruneLoginLog_(u.LineUserId || '', phone);
             fail_(message);
         };
 
@@ -858,8 +865,21 @@ function login_(req) {
 
         purgeSessions_();
 
+        // 同一帳號在同一台裝置重新登入：結束舊的登入，不重複佔用
+        if (deviceKey) {
+            const st = tbl_('Sessions');
+            readRows_(st)
+                .filter(x => x.obj.LineUserId === u.LineUserId && x.obj.DeviceKey === deviceKey)
+                .reverse()
+                .forEach(x => {
+                    endLoginLog_(x.obj.SessionId, '同裝置重新登入');
+                    deleteRow_(st, x.row);
+                    cacheRemove_(['sid:' + x.obj.Token, 'act:' + x.obj.Token, 's:' + x.obj.Token]);
+                });
+        }
+
         const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-        const expireAt = Date.now() + CONFIG.SESSION_HOURS * 3600 * 1000;
+        const expireAt = 0;   // 不會自動過期
         const sessionId = newSessionId_();
         const loginAt = now_();
 
@@ -873,13 +893,16 @@ function login_(req) {
             Device: device,
             LoginAt: loginAt,
             LastActiveAt: loginAt,
-            ExpireAtText: fmtMs_(expireAt)
+            ExpireAtText: '不會自動登出',
+            DeviceKey: deviceKey
         });
 
         appendRow_(tbl_('LoginLog'), {
             SessionId: sessionId, LoginAt: loginAt, LineUserId: u.LineUserId, UserName: u.Name,
             Account: phone, Result: '成功', Device: device, UserAgent: userAgent, LastActiveAt: loginAt
         });
+
+        pruneLoginLog_(u.LineUserId, phone);
 
         // Session 被從試算表刪除時，仍能找到對應的登入歷程
         cachePut_('sid:' + token, sessionId, 21600);
@@ -1022,17 +1045,30 @@ function forgetPassword_(req) {
 // ============================================================
 // Session
 // ============================================================
-function auth_(token) {
+// 裝置金鑰只存雜湊值（試算表看不到原始金鑰）
+function deviceKeyHash_(key) {
+    key = String(key || '').trim();
+    if (!/^[A-Za-z0-9_-]{16,80}$/.test(key)) return '';
+    const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'dev:' + key, Utilities.Charset.UTF_8);
+    return bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
+}
+
+const DEVICE_MISMATCH_ = '此登入不屬於這台裝置，請重新登入';
+
+function auth_(token, deviceKey) {
     if (!token) fail_('未登入', 'AUTH');
+
+    const dk = deviceKeyHash_(deviceKey);
 
     // 驗證結果快取 60 秒（登出 / 強制登出 / 重設密碼會立即清除）
     const cached = cacheGet_('s:' + token);
 
-    if (cached && cached.exp > Date.now()) {
+    if (cached && (!cached.exp || cached.exp > Date.now())) {
+        if (cached.dk && cached.dk !== dk) fail_(DEVICE_MISMATCH_, 'AUTH');
         const u = getUser_(cached.userId);
         if (u && u.IsActive !== false) {
-            if (!cacheGet_('act:' + token)) touchSession_(tbl_('Sessions'), token, {});
-            return { token, userId: u.LineUserId, user: u, perms: parsePerms_(u.RoleList), expireAt: cached.exp };
+            if (!cacheGet_('act:' + token)) touchSession_(tbl_('Sessions'), token, {}, dk);
+            return { token, userId: u.LineUserId, user: u, perms: parsePerms_(u.RoleList), expireAt: cached.exp || 0 };
         }
     }
 
@@ -1053,7 +1089,11 @@ function auth_(token) {
     const s = found.obj;
     const exp = Number(s.ExpireAt) || 0;
 
-    if (exp < Date.now()) {
+    // 綁定其他裝置的登入：拒絕（不刪除，避免被別人拿 Token 把本人登出）
+    if (s.DeviceKey && s.DeviceKey !== dk) fail_(DEVICE_MISMATCH_, 'AUTH');
+
+    // 舊版有到期時間的登入：已經過期的結束；還沒過期的改成不會過期
+    if (exp && exp < Date.now()) {
         withLock_(() => {
             const again = findRow_(t, token);
             if (again) {
@@ -1061,11 +1101,11 @@ function auth_(token) {
                 deleteRow_(t, again.row);
             }
         });
-        fail_('登入已超過 ' + CONFIG.SESSION_HOURS + ' 小時，請重新登入', 'AUTH');
+        fail_('登入已逾時，請重新登入', 'AUTH');
     }
 
-    touchSession_(t, token, s);
-    cachePut_('s:' + token, { userId: s.LineUserId, exp }, CONFIG.SESSION_CACHE_SECONDS);
+    touchSession_(t, token, s, dk);
+    cachePut_('s:' + token, { userId: s.LineUserId, exp: 0, dk: s.DeviceKey || dk }, CONFIG.SESSION_CACHE_SECONDS);
 
     const user = getUser_(s.LineUserId);
 
@@ -1077,12 +1117,12 @@ function auth_(token) {
         userId: user.LineUserId,
         user,
         perms: parsePerms_(user.RoleList),
-        expireAt: exp
+        expireAt: 0
     };
 }
 
 // 更新最後活動時間（每 ACTIVE_UPDATE_MINUTES 分鐘最多寫一次）
-function touchSession_(t, token, s) {
+function touchSession_(t, token, s, dk) {
     if (cacheGet_('act:' + token)) return;
 
     cachePut_('act:' + token, 1, CONFIG.ACTIVE_UPDATE_MINUTES * 60);
@@ -1095,11 +1135,17 @@ function touchSession_(t, token, s) {
             const now = now_();
             const patch = { LastActiveAt: now };
 
+            // 舊版登入：改成不會過期，並綁定目前這台裝置
+            if (Number(found.obj.ExpireAt)) {
+                patch.ExpireAt = 0;
+                patch.ExpireAtText = '不會自動登出';
+            }
+            if (!found.obj.DeviceKey && dk) patch.DeviceKey = dk;
+
             // 舊版登入沒有登入編號，補上
             if (!found.obj.SessionId) {
                 patch.SessionId = newSessionId_();
                 patch.LoginAt = found.obj.CreatedAt;
-                patch.ExpireAtText = fmtMs_(Number(found.obj.ExpireAt) || 0);
                 patch.UserName = (getUser_(found.obj.LineUserId) || {}).Name || '';
             }
 
@@ -1139,12 +1185,13 @@ function endLoginLog_(sessionId, reason) {
     });
 }
 
+// 清除舊版有到期時間、而且已經過期的登入（新版登入不會過期）
 function purgeSessions_() {
     const t = tbl_('Sessions');
     const now = Date.now();
 
     readRows_(t)
-        .filter(x => (Number(x.obj.ExpireAt) || 0) < now)
+        .filter(x => { const e = Number(x.obj.ExpireAt) || 0; return e && e < now; })
         .reverse()
         .slice(0, 100)
         .forEach(x => {
@@ -1160,7 +1207,7 @@ function loginSessions_(req, ctx) {
     const now = Date.now();
 
     return readRows_(tbl_('Sessions'))
-        .filter(x => (Number(x.obj.ExpireAt) || 0) >= now)
+        .filter(x => { const e = Number(x.obj.ExpireAt) || 0; return !e || e >= now; })
         .map(x => ({
             SessionId: x.obj.SessionId,
             LineUserId: x.obj.LineUserId,
@@ -1193,6 +1240,89 @@ function kickSession_(req, ctx) {
 
         return true;
     });
+}
+
+// 讓某個帳號在所有裝置登出（自己目前這台除外）
+function kickUser_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const uid = String(req.userId || '');
+    if (!uid) fail_('缺少帳號');
+
+    return withLock_(() => {
+        const t = tbl_('Sessions');
+        const list = readRows_(t).filter(x => x.obj.LineUserId === uid && x.obj.Token !== ctx.token);
+
+        list.reverse().forEach(x => {
+            endLoginLog_(x.obj.SessionId, '強制登出（' + (ctx.user.Name || '') + '）');
+            deleteRow_(t, x.row);
+            cacheRemove_(['sid:' + x.obj.Token, 'act:' + x.obj.Token, 's:' + x.obj.Token]);
+        });
+
+        return { count: list.length };
+    });
+}
+
+// ---------- 登入紀錄保留筆數 ----------
+function loginLogKeep_() {
+    const v = Number(PropertiesService.getScriptProperties().getProperty('LOGIN_LOG_KEEP'));
+    return v >= 5 ? Math.floor(v) : CONFIG.LOGIN_LOG_KEEP;
+}
+
+// 每個帳號只保留最近 N 筆登入紀錄（登入中的那筆一定保留）
+//   account：只檢查這個帳號（登入時用）；不給 = 全部帳號
+function pruneLoginLog_(userId, account) {
+    const t = tbl_('LoginLog');
+    const keep = loginLogKeep_();
+    const rows = readRows_(t);
+    const keyOf = o => o.LineUserId ? 'u:' + o.LineUserId : 'a:' + String(o.Account || '');
+    const only = arguments.length ? (userId ? 'u:' + userId : 'a:' + String(account || '')) : null;
+
+    const groups = {};
+    rows.forEach(x => {
+        const k = keyOf(x.obj);
+        if (only && k !== only) return;
+        (groups[k] = groups[k] || []).push(x);
+    });
+
+    const active = new Set(readRows_(tbl_('Sessions')).map(x => String(x.obj.SessionId)));
+    const drop = new Set();
+
+    Object.keys(groups).forEach(k => {
+        const list = groups[k];
+        if (list.length <= keep) return;
+        list.slice().sort((a, b) => String(b.obj.LoginAt).localeCompare(String(a.obj.LoginAt)) || b.row - a.row)
+            .slice(keep)
+            .forEach(x => { if (!active.has(String(x.obj.SessionId))) drop.add(x.row); });
+    });
+
+    if (!drop.size) return 0;
+
+    const kept = rows.filter(x => !drop.has(x.row)).map(x => x.obj);
+    replaceTableRows_(t, kept);
+
+    // 刪掉多出來的空白列，釋放試算表儲存格
+    const sh = t.sh;
+    const extra = sh.getMaxRows() - (kept.length + 1) - 5;
+    if (extra > 0) sh.deleteRows(kept.length + 7, extra);
+
+    return drop.size;
+}
+
+// 讀取 / 設定保留筆數（設定後立即清理）
+function loginLogConfig_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    let removed = 0;
+
+    if (req.keep !== undefined && req.keep !== null && req.keep !== '') {
+        const keep = Math.floor(Number(req.keep));
+        if (!(keep >= 5 && keep <= 1000)) fail_('保留筆數請輸入 5 ~ 1000');
+        PropertiesService.getScriptProperties().setProperty('LOGIN_LOG_KEEP', String(keep));
+        removed = withLock_(() => pruneLoginLog_());
+    }
+
+    return { keep: loginLogKeep_(), removed, total: readRows_(tbl_('LoginLog')).length };
 }
 
 function loginLog_(req, ctx) {
@@ -1232,7 +1362,7 @@ function uncacheUser_(userId) {
 }
 
 function me_(req, ctx) {
-    return { user: ctx.user, roleList: ctx.perms, expireAt: ctx.expireAt };
+    return { user: ctx.user, roleList: ctx.perms, expireAt: ctx.expireAt || 0 };
 }
 
 function logout_(req, ctx) {

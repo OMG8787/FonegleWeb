@@ -17,7 +17,7 @@ Pages.LoginLog = (() => {
     async function init() {
 
         ["onlineBody", "onlineCount", "btnRefresh", "qFrom", "qTo", "qKeyword", "qResult",
-            "btnSearch", "btnThisMonth", "btnToday", "userBody", "logBody", "logCount"]
+            "btnSearch", "btnThisMonth", "btnToday", "userBody", "logBody", "logCount", "logKeep", "btnSaveKeep", "logKeepInfo"]
             .forEach(id => dom[id] = document.getElementById(id));
 
         dom.btnRefresh.addEventListener("click", loadOnline);
@@ -28,13 +28,18 @@ Pages.LoginLog = (() => {
         dom.qResult.addEventListener("change", render);
 
         dom.onlineBody.addEventListener("click", async e => {
-            const btn = e.target.closest("[data-kick]");
+            const btn = e.target.closest("[data-kick],[data-kick-user]");
             if (!btn) return;
-            if (!confirm(`確定要讓「${btn.dataset.name}」的這個裝置立即登出？`)) return;
+
+            const all = !!btn.dataset.kickUser;
+            if (!confirm(all
+                ? `確定要讓「${btn.dataset.name}」在所有裝置立即登出？`
+                : `確定要讓「${btn.dataset.name}」的這個裝置立即登出？`)) return;
 
             try {
                 btn.disabled = true;
-                await Auth.request("kickSession", { sessionId: btn.dataset.kick });
+                if (all) await Auth.request("kickUser", { userId: btn.dataset.kickUser });
+                else await Auth.request("kickSession", { sessionId: btn.dataset.kick });
                 await Promise.all([loadOnline(), loadLogs()]);
             } catch (ex) {
                 App.error(ex);
@@ -42,7 +47,20 @@ Pages.LoginLog = (() => {
             }
         });
 
+        dom.btnSaveKeep.addEventListener("click", async () => {
+            try {
+                const r = await Auth.request("loginLogConfig", { keep: dom.logKeep.value }, { loadingText: "清理登入紀錄中…" });
+                showKeep(r);
+                alert(r.removed ? `✅ 已儲存，清除 ${r.removed} 筆舊紀錄` : "✅ 已儲存（目前沒有需要清除的紀錄）");
+                await loadLogs();
+            } catch (ex) {
+                App.error(ex);
+            }
+        });
+
         setRange("month");
+
+        Auth.request("loginLogConfig", {}, { silent: true }).then(showKeep).catch(() => { });
 
         await Promise.all([loadOnline(), loadLogs()]);
     }
@@ -71,9 +89,9 @@ Pages.LoginLog = (() => {
         return `${Math.floor(m / 60)} 小時 ${m % 60} 分`;
     }
 
-    function remainText(ms) {
-        const m = Math.max(0, Math.round((ms - Date.now()) / 60000));
-        return `剩 ${minutesText(m)}`;
+    function showKeep(r) {
+        dom.logKeep.value = r.keep;
+        dom.logKeepInfo.textContent = `目前共 ${r.total} 筆紀錄`;
     }
 
     // =========================
@@ -81,12 +99,16 @@ Pages.LoginLog = (() => {
     // =========================
     async function loadOnline() {
 
-        dom.onlineBody.innerHTML = `<tr><td colspan="6" class="text-muted">載入中…</td></tr>`;
+        dom.onlineBody.innerHTML = `<tr><td colspan="5" class="text-muted">載入中…</td></tr>`;
 
         try {
             const list = await Auth.request("loginSessions");
 
             dom.onlineCount.textContent = list.length;
+
+            // 同一帳號有幾台裝置登入中
+            const perUser = {};
+            list.forEach(s => perUser[s.LineUserId] = (perUser[s.LineUserId] || 0) + 1);
 
             dom.onlineBody.innerHTML = list.length
                 ? list.map(s => `
@@ -95,14 +117,15 @@ Pages.LoginLog = (() => {
                         <td class="device small">${App.esc(s.Device || "（舊版登入，未記錄）")}</td>
                         <td>${App.esc(short(s.LoginAt))}</td>
                         <td>${App.esc(short(s.LastActiveAt))}</td>
-                        <td><span class="small text-muted">${remainText(s.ExpireAt)}</span></td>
-                        <td class="text-end">${s.IsMe || !s.SessionId ? "" :
-                        `<button class="btn btn-sm btn-outline-danger" data-kick="${App.esc(s.SessionId)}" data-name="${App.esc(s.UserName)}">強制登出</button>`}</td>
+                        <td class="text-end text-nowrap">${s.IsMe || !s.SessionId ? "" :
+                        `<button class="btn btn-sm btn-outline-danger" data-kick="${App.esc(s.SessionId)}" data-name="${App.esc(s.UserName)}">登出此裝置</button>`}
+                        ${!s.IsMe && s.LineUserId && perUser[s.LineUserId] > 1 ?
+                        `<button class="btn btn-sm btn-danger ms-1" data-kick-user="${App.esc(s.LineUserId)}" data-name="${App.esc(s.UserName)}">登出全部裝置</button>` : ""}</td>
                     </tr>`).join("")
-                : `<tr><td colspan="6" class="text-muted">目前沒有人登入</td></tr>`;
+                : `<tr><td colspan="5" class="text-muted">目前沒有人登入</td></tr>`;
 
         } catch (ex) {
-            dom.onlineBody.innerHTML = `<tr><td colspan="6" class="text-danger">${App.esc(ex.message)}</td></tr>`;
+            dom.onlineBody.innerHTML = `<tr><td colspan="5" class="text-danger">${App.esc(ex.message)}</td></tr>`;
         }
     }
 
