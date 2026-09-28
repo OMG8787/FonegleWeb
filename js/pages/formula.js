@@ -28,6 +28,7 @@ Pages.Formula = (() => {
     let listCache = [];
     let tryMult = null;     // 目前試算倍數（份數，不一定等於預設倍數）
     let tryPortion = null;  // 目前試算的每份重量 g（不一定等於配方的單位重量）
+    let verifiedTouched = false;    // 使用者自己切換過「只看已確認」
 
     // =========================
     // 初始化
@@ -44,7 +45,11 @@ Pages.Formula = (() => {
         try {
             await API.getMany(["Formula", "FormulaDetail", "Material", "Products"], {
                 onTable(name, rows) {
-                    if (name === "Formula") formulas = rows || [];
+                    if (name === "Formula") {
+                        formulas = rows || [];
+                        // 還沒有任何已確認的配方：先顯示全部，避免一打開是空的
+                        if (!verifiedTouched) dom.qVerified.checked = formulas.some(isVerified);
+                    }
                     if (name === "FormulaDetail") allDetails = rows || [];
                     if (name === "Material") { materials = (rows || []).filter(m => m.IsActive !== false); renderMaterialNames(); }
                     if (name === "Products") {
@@ -63,7 +68,7 @@ Pages.Formula = (() => {
 
     function cacheDom() {
         FIELDS.concat([
-            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive", "qWarn", "qVerified", "IsVerified", "verifiedInfo",
+            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "qInactive", "qWarn", "qVerified", "IsVerified", "verifiedInfo", "verifyStat",
             "formulaList", "emptyHint", "listCount", "detailList", "materialNames", "btnAddMaterial", "btnNormalize",
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
@@ -78,10 +83,12 @@ Pages.Formula = (() => {
         dom.qInactive.addEventListener("change", renderList);
         // 「只看已確認」與「只看待確認」互斥
         dom.qWarn.addEventListener("change", () => {
+            verifiedTouched = true;
             if (dom.qWarn.checked) dom.qVerified.checked = false;
             renderList();
         });
         dom.qVerified.addEventListener("change", () => {
+            verifiedTouched = true;
             if (dom.qVerified.checked) dom.qWarn.checked = false;
             renderList();
         });
@@ -424,8 +431,12 @@ Pages.Formula = (() => {
         return allDetails.some(d => d.FormulaID === f.FormulaID && d.Remark);
     }
 
+    // 已確認：手動標記為正確配方；沒有標記過的，沒有 ⚠️ 待確認原料就視為已確認
+    //   （取消勾選儲存 = 明確標記為待確認）
     function isVerified(f) {
-        return f.IsVerified === true;
+        if (f.IsVerified === true) return true;
+        if (f.IsVerified === false) return false;
+        return !hasWarning(f);
     }
 
     function renderList() {
@@ -447,7 +458,12 @@ Pages.Formula = (() => {
         dom.emptyHint.classList.toggle("d-none", listCache.length > 0);
         dom.emptyHint.textContent = dom.qVerified.checked && !formulas.some(isVerified)
             ? "還沒有已確認的配方。關閉「只看已確認」查看全部，打開配方確認無誤後勾選「✅ 已確認為正確配方」並儲存。"
-            : "查無配方";
+            : dom.qWarn.checked ? "全部配方都已確認 👍" : "查無配方";
+
+        // 目前有幾個已確認 / 待確認
+        const ok = formulas.filter(f => isVerified(f) && (dom.qInactive.checked || f.IsActive !== false)).length;
+        const all = formulas.filter(f => dom.qInactive.checked || f.IsActive !== false).length;
+        dom.verifyStat.textContent = all ? `已確認 ${ok} / ${all}` : "";
 
         dom.formulaList.innerHTML = listCache.map((f, i) => {
 
@@ -512,8 +528,9 @@ Pages.Formula = (() => {
         dom.ProductID.value = f.ProductID ? String(f.ProductID) : "";
         dom.IsActive.checked = f.IsActive !== false;
         dom.IsVerified.checked = isVerified(f);
-        dom.verifiedInfo.textContent = isVerified(f) && (f.VerifiedBy || f.VerifiedAt)
-            ? `（${[f.VerifiedBy, String(f.VerifiedAt || "").slice(0, 10)].filter(Boolean).join("，")}）` : "";
+        dom.verifiedInfo.textContent = !isVerified(f) ? ""
+            : f.VerifiedBy || f.VerifiedAt ? `（${[f.VerifiedBy, String(f.VerifiedAt || "").slice(0, 10)].filter(Boolean).join("，")}）`
+                : f.IsVerified !== true ? "（沒有 ⚠️ 待確認項目）" : "";
 
         rows = detailsOf(f.FormulaID).map(d => ({
             MaterialID: d.MaterialID ?? "",
@@ -599,6 +616,8 @@ Pages.Formula = (() => {
             try { name = (await API.me({ silent: true }))?.user?.Name || ""; } catch { }
             formula.VerifiedBy = name;
             formula.VerifiedAt = new Date().toLocaleString("sv-SE").slice(0, 16);
+        } else if (wasVerified && current.IsVerified !== true) {
+            // 原本是「沒有 ⚠️ 自動視為已確認」：保持原狀，不記錄確認人
         } else if (!formula.IsVerified) {
             formula.VerifiedBy = "";
             formula.VerifiedAt = "";
