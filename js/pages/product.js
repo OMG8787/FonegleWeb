@@ -4,6 +4,7 @@ Pages.Product = (() => {
     "use strict";
     const dom = {};
     let listCache = [];
+    let allProducts = [];       // 全部產品（分類管理用來計算每個分類的產品數）
     let currentDetail = null;
     let mode = "view";
 
@@ -81,6 +82,9 @@ Pages.Product = (() => {
     }
 
     function bindEvents() {
+
+        document.querySelectorAll(".btn-manage-category")
+            .forEach(b => b.addEventListener("click", openCategoryManager));
         dom.btnSearch.addEventListener(
             "click",
             searchProducts
@@ -183,6 +187,8 @@ Pages.Product = (() => {
     }
 
     function applySearch(all) {
+
+        allProducts = all || [];
 
         const q = {
             sku: dom.qSKU.value.trim(),
@@ -290,6 +296,12 @@ ${App.esc(x.Status || "未知")}
     }
 
     function fillForm(d) {
+
+        // 產品使用的分類已停用：選單補上，才不會顯示成空白
+        if (d && d.CategoryID && ![...dom.CategoryID.options].some(o => o.value === String(d.CategoryID))) {
+            const c = categoryList.find(x => String(x.ID) === String(d.CategoryID));
+            dom.CategoryID.add(new Option((c ? c.CategoryName : "分類 " + d.CategoryID) + "（已停用）", String(d.CategoryID)));
+        }
         Object.keys(dom)
             .forEach(key => {
                 if (!dom[key])
@@ -395,19 +407,45 @@ ${App.esc(x.Status || "未知")}
 
     function renderCategory(categories) {
 
+        // 重畫時保留目前選擇
+        const q = dom.qCategory.value;
+        const f = dom.CategoryID.value;
+
         dom.qCategory.innerHTML =
             `<option value="">全部分類</option>`;
 
         dom.CategoryID.innerHTML =
             `<option value="">請選擇分類</option>`;
 
-        categories
+        (categories || [])
             // 只載入啟用（未設定也視為啟用）
             .filter(c => c.IsActive !== false && c.CategoryName)
             .forEach(c => {
                 dom.qCategory.add(new Option(c.CategoryName, c.ID));
                 dom.CategoryID.add(new Option(c.CategoryName, c.ID));
             });
+
+        // 編輯中的產品使用已停用的分類：仍顯示該分類，避免儲存時被清掉
+        if (f && ![...dom.CategoryID.options].some(o => o.value === f)) {
+            const c = (categories || []).find(x => String(x.ID) === f);
+            dom.CategoryID.add(new Option((c ? c.CategoryName : "分類 " + f) + "（已停用）", f));
+        }
+
+        dom.qCategory.value = [...dom.qCategory.options].some(o => o.value === q) ? q : "";
+        dom.CategoryID.value = f;
+        categoryList = categories || [];
+    }
+
+    let categoryList = [];
+
+    function openCategoryManager() {
+        CategoryManager.open({
+            products: () => allProducts,
+            onChange: list => {
+                renderCategory(list);
+
+            }
+        });
     }
 
     async function submitProduct() {

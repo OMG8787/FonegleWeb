@@ -155,9 +155,12 @@
                                     <input id="qBarcode" class="form-control mb-2" placeholder="Barcode">
                                     <input id="qProductName" class="form-control mb-2" placeholder="產品名稱">
                                     <input id="qBrand" class="form-control mb-2" placeholder="品牌">
-                                    <select id="qCategory" class="form-select mb-2">
-                                        <option value="">全部分類</option>
-                                    </select>
+                                    <div class="input-group mb-2">
+                                        <select id="qCategory" class="form-select">
+                                            <option value="">全部分類</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline-secondary btn-manage-category" title="管理分類">🏷️ 管理分類</button>
+                                    </div>
                                     <input id="qStatus" class="form-control mb-3" placeholder="產品狀態">
                                     <button id="btnSearch" class="btn btn-primary w-100">
                                         查詢產品
@@ -232,8 +235,9 @@
                                     </h5>
                                     <div class="row">
                                         <div class="col-md-4 mb-3">
-                                            <label class="form-label">
-                                                分類
+                                            <label class="form-label d-flex justify-content-between align-items-center">
+                                                <span>分類</span>
+                                                <button type="button" class="btn btn-link btn-sm p-0 btn-manage-category">🏷️ 管理分類</button>
                                             </label>
                                             <select id="CategoryID" class="form-select">
                                                 <option value="">請選擇分類</option>
@@ -473,6 +477,7 @@
     <script src="../js/core.js"></script>
     <script src="../js/ai-chat.js"></script>
     <script src="../js/favorite.js"></script>
+    <script src="../js/pages/category-manager.js"></script>
     <script src="../js/pages/product.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
