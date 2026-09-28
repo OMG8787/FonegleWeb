@@ -469,6 +469,10 @@
                     ...Auth.deviceInfo()
                 });
 
+                // 沒拿到登入憑證就不要當作登入成功（避免進了首頁又被退回）
+                if (!data || !data.token || !data.userId)
+                    throw new Error("登入回應異常，請再按一次登入");
+
                 Auth.setSession(data);
 
                 // 管理員重設過密碼：先改密碼

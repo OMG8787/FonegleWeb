@@ -20,6 +20,9 @@ const API = {
 
         const result = await Auth.request(action, payload, opts);
 
+        // 記錄哪些表被寫入過（讀取途中有寫入 → 讀回來的是舊資料，要重讀）
+        this.bumpVersion(action, payload);
+
         // 帳號相關資料有變動：清掉登入者暫存
         if (/^(setFavorite|updateProfile|changePassword)$/.test(action)) {
             try { sessionStorage.removeItem("erp_me"); } catch { }
@@ -39,6 +42,36 @@ const API = {
         return result;
     },
 
+    // =========================
+    // 資料表版本：每次寫入 +1
+    //   背景讀取需要時間，期間使用者新增 / 修改了同一張表時，讀回來的資料已經過時，
+    //   不能拿來覆蓋畫面與暫存（否則剛新增的資料會「消失」）→ 重讀一次
+    // =========================
+    versions: {},
+
+    version(table) {
+        return this.versions[table] || 0;
+    },
+
+    bumpVersion(action, payload) {
+        const tables = [];
+        if (/^(insert|update|remove|removeWhere)$/.test(action)) tables.push(payload.table);
+        if (action === "batch") (payload.ops || []).forEach(op => tables.push(op.table));
+        (this.SIDE_EFFECTS[action] || []).forEach(t => tables.push(t));
+        tables.filter(Boolean).forEach(t => this.versions[t] = this.version(t) + 1);
+    },
+
+    // 向伺服器讀取整張表；讀取途中這張表有寫入就重讀（最多 3 次）
+    async fetchTable(table, where, opts) {
+        let rows;
+        for (let i = 0; i < 3; i++) {
+            const v = this.version(table);
+            rows = await this.call("list", { table, where }, opts);
+            if (this.version(table) === v) break;
+        }
+        return rows;
+    },
+
     // 取得整張表（可帶 where 做完全比對，例如 { FormulaID: 3 }）
     //   opts.fresh：強制向伺服器讀取
     async list(table, where = null, opts = {}) {
@@ -48,7 +81,7 @@ const API = {
             if (hit) return where ? hit.filter(r => this.matchWhere(r, where)) : hit;
         }
 
-        const rows = await this.call("list", { table, where }, opts);
+        const rows = await this.fetchTable(table, where, opts);
         if (!where) this.cachePut(table, rows);
         return rows;
     },
@@ -88,7 +121,7 @@ const API = {
 
         await Promise.all(tables.filter(n => !fresh[n]).map(async name => {
             try {
-                const rows = await this.call("list", { table: name }, opts);
+                const rows = await this.fetchTable(name, null, opts);
                 out[name] = rows;
                 this.cachePut(name, rows);
                 emit(name, rows, { cached: false });

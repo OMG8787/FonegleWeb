@@ -374,6 +374,11 @@ const Auth = {
             throw retryable("Google 伺服器回應異常，請稍後再試一次");
         }
 
+        // Google 偶爾把結果送錯（回傳的是 doGet 的「API 運作中」而不是這次操作的結果）：
+        //   伺服器其實已經執行完，用同一個 reqId 重試就會拿到正確結果（寫入不會重複）
+        if (data.success && action !== "ping" && typeof data.data === "string" && /API 運作中$/.test(data.data))
+            throw retryable("Google 回傳了錯誤的內容，重新取得結果中");
+
         if (!data.success) {
 
             if (data.code === "AUTH" && !this.isLoginPage()) {
