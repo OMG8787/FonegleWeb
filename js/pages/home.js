@@ -189,7 +189,20 @@ Pages.Home = (() => {
                 (rank[a.Priority] ?? 1) - (rank[b.Priority] ?? 1) ||
                 String(a.DueDate || "9999").localeCompare(String(b.DueDate || "9999")));
 
-        dom.memoList.innerHTML = list.map(m => {
+        // 帳務提醒（開發票 / 收帳 / 保證金，逾期與 7 天內）也列在備忘錄最上面
+        const todoHtml = todoItems.map(x => `
+<div class="memo">
+    <span class="mt-1">${Billing.ICONS[x.kind]}</span>
+    <div>
+        <div class="memo-title">${esc(x.title)}　<b>${money(x.amount)}</b></div>
+        <div class="small text-muted">${esc(x.sub)}</div>
+        <div class="small"><span class="badge bg-info text-dark">帳務提醒</span>
+            ${x.level === "overdue" ? `<span class="badge bg-danger">逾期 ${-x.days} 天</span>` : x.level === "today" ? `<span class="badge bg-warning text-dark">今天</span>` : `<span class="badge bg-light text-dark border">${esc(label(x.date))}</span>`}
+            <a class="btn btn-sm btn-outline-primary py-0 ms-1" href="page/reminders.html">前往處理</a></div>
+    </div>
+</div>`).join("");
+
+        dom.memoList.innerHTML = todoHtml + list.map(m => {
 
             const due = App.toDateInput(m.DueDate);
             const notice = !!m.Audience;   // 系統通知（例如新帳號申請）
@@ -213,8 +226,10 @@ Pages.Home = (() => {
     </div>
     ${mine ? `<div class="memo-actions"><button class="btn btn-sm btn-link text-danger p-0" data-delete="${m.ID}">刪除</button></div>` : ""}
 </div>`;
-        }).join("") || `<div class="text-muted small">沒有待辦事項</div>`;
+        }).join("") || (todoHtml ? "" : `<div class="text-muted small">沒有待辦事項</div>`);
     }
+
+    let todoItems = [];
 
     // 新帳號待審核提醒（只有系統管理員會收到這類通知）
     function renderApprovalBanner() {
@@ -316,6 +331,8 @@ Pages.Home = (() => {
 
         const esc = App.esc;
         const r = Billing.build({ receivables, companies, deposits, horizon: 7 });
+        todoItems = r.all;
+        renderMemos();
         const totalUnpaid = receivables.reduce((s, x) => s + Billing.unpaid(x), 0);
         const badge = (icon, n, name) => n ? `<span class="badge ${name} ms-1">${icon} ${n}</span>` : "";
 

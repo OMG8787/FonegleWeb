@@ -58,6 +58,8 @@ const API = {
         if (/^(insert|update|remove|removeWhere)$/.test(action)) tables.push(payload.table);
         if (action === "batch") (payload.ops || []).forEach(op => tables.push(op.table));
         (this.SIDE_EFFECTS[action] || []).forEach(t => tables.push(t));
+        // 訂單寫入會自動建立 / 更新應收帳款
+        if (tables.includes("Orders")) { tables.push("Receivable"); this.cacheDrop("Receivable"); }
         tables.filter(Boolean).forEach(t => this.versions[t] = this.version(t) + 1);
     },
 

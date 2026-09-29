@@ -99,7 +99,7 @@ Pages.Reminders = (() => {
                 if (no === null) return;
                 const rows = await API.batch(x.items.map(r => ({
                     action: "update", table: "Receivable", id: r.ReceivableID,
-                    data: { InvoiceDate: today, InvoiceNo: no.trim() || r.InvoiceNo || "" }
+                    data: { InvoiceDate: today, InvoiceNo: no.trim() || r.InvoiceNo || "", InvoiceStatus: "已開" }
                 })), { loadingText: "更新發票中…" });
                 merge("Receivable", "ReceivableID", rows);
             }

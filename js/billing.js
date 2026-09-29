@@ -8,7 +8,8 @@
 //   PayTermDays   開票後幾天付款（沒設定 = 30 天）
 //
 // 提醒規則：
-//   開發票：還沒收款、還沒開發票（沒有發票號碼也沒有開立日）的帳款；已收款的舊帳不提醒
+//   開發票：發票狀態「待開」的帳款（由訂單自動建立的都是待開，付過款也要開）；
+//           沒有發票狀態的舊帳款：還沒收款、還沒開發票才提醒；已開 / 免開 / 有發票號碼或開立日 → 不提醒
 //   收帳  ：還沒收齊的帳款；應收日 = 帳款到期日 → 依客戶規則計算
 //   保證金：還沒退還的保證金；應退日 = 預計退還日 → 活動日 + 14 天
 // =========================================================
@@ -90,6 +91,15 @@ window.Billing = {
         return this.addDays(base, days);
     },
 
+    needsInvoice(r, c) {
+        if (App.num(r.Amount) <= 0) return false;
+        if (String(r.InvoiceNo || "").trim() || this.date(r.InvoiceDate)) return false;
+        if (r.InvoiceStatus === "已開" || r.InvoiceStatus === "免開") return false;
+        if (this.cycleOf(c) === "不開") return false;
+        if (r.InvoiceStatus === "待開") return true;
+        return this.unpaid(r) > 0;
+    },
+
     unpaid(r) {
         return Math.max(0, App.num(r.Amount) - App.num(r.PaidAmount));
     },
@@ -115,9 +125,8 @@ window.Billing = {
         // 開發票：同一家、同一個應開立日合併
         const groups = new Map();
         receivables.forEach(r => {
-            if (App.num(r.Amount) <= 0 || this.unpaid(r) <= 0) return;
-            if (String(r.InvoiceNo || "").trim() || this.date(r.InvoiceDate)) return;
             const c = companyOf(r);
+            if (!this.needsInvoice(r, c)) return;
             const due = this.invoiceDue(c, this.date(r.BillDate));
             if (!due) return;
             const key = (r.CompanyId || "n:" + (r.PayerName || "")) + "|" + due;

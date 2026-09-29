@@ -203,6 +203,15 @@
                                             <input id="InvoiceDate" type="date" class="form-control">
                                         </div>
                                         <div class="col-6">
+                                            <label class="form-label small">發票狀態</label>
+                                            <select id="InvoiceStatus" class="form-select">
+                                                <option value="">（未設定：未收款才提醒）</option>
+                                                <option value="待開">待開</option>
+                                                <option value="已開">已開</option>
+                                                <option value="免開">免開</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
                                             <label class="form-label small">狀態（自動）</label>
                                             <input id="statusPreview" class="form-control bg-light" readonly>
                                         </div>

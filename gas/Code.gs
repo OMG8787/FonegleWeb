@@ -144,7 +144,7 @@ const SCHEMA = {
         key: 'ReceivableID', seq: 'ReceivableID',
         cols: 'ReceivableID:n CompanyId:n PayerName BillDate DueDate Item OrderID MemberID Amount:n PaidAmount:n ' +
             'DiscountAmount:n TaxAmount:n RefundAmount:n PaymentMethod PaymentStatus TransactionNo InvoiceNo PaymentDate RefundDate Note ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt InvoiceDate',
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt InvoiceDate InvoiceStatus',
         money: 'Amount PaidAmount DiscountAmount TaxAmount RefundAmount'
     },
     // 支出表
@@ -328,7 +328,7 @@ const COLUMN_LABELS = {
     UnitWeight: '單位重量（g，例如 1L = 1000）', YieldRate: '成品率 %（扣除損耗，預設 100）', BaseWeight: '基準總重（g）', SortOrder: '排序',
     RoleTemplateId: '角色（Roles 的 ID）', Permissions: '權限代碼（以 | 分隔）',
     InvoiceCycle: '開發票方式（每筆 / 月結 / 不開）', InvoiceDay: '月結開票日（31 = 月底）', PayTermDays: '開票後幾天付款',
-    PayDay: '每月固定匯款日', BillingNote: '帳務備註', InvoiceDate: '發票開立日',
+    PayDay: '每月固定匯款日', BillingNote: '帳務備註', InvoiceDate: '發票開立日', InvoiceStatus: '發票狀態（待開 / 已開 / 免開）',
     StallId: '出攤紀錄編號', Payee: '付款對象（主辦 / 廠商）', PaidDate: '付出日期', ExpectReturnDate: '預計退還日',
     ReturnedDate: '實際退還日', ReturnedAmount: '退還金額',
     IsVerified: '已確認為正確配方', VerifiedBy: '確認人', VerifiedAt: '確認時間', IsFavorite: '常用配方',
@@ -1685,6 +1685,8 @@ function doRemoveWhere_(name, where, ctx, isReplace) {
 
     rows.reverse().forEach(x => deleteRow_(t, x.row));
 
+    if (name === 'Orders' && !isReplace && where.OrderNo) removeOrderReceivable_(where.OrderNo);
+
     return rows.length;
 }
 
@@ -1692,6 +1694,10 @@ function doRemoveWhere_(name, where, ctx, isReplace) {
 // 資料表特殊邏輯
 // ============================================================
 const HOOKS = {
+    // 訂單（連到客戶的）自動建立 / 更新應收帳款，發票提醒與收帳提醒都依帳款計算
+    Orders: {
+        afterWrite(obj, ctx) { syncOrderReceivable_(obj.OrderNo, ctx); }
+    },
     Roles: {
         beforeInsert(obj, ctx) { normalizeRolePerms_(obj, null, ctx); },
         beforeUpdate(patch, old, ctx) { normalizeRolePerms_(patch, old, ctx); },
@@ -1741,6 +1747,75 @@ const HOOKS = {
         }
     }
 };
+
+// ------------------------------------------------------------
+// 訂單 → 應收帳款（一張訂單一筆，OrderID = 訂單號碼）
+//   新訂單：建立帳款，發票狀態「待開」（客戶設定不開發票 → 免開）；訂單已付款 → 帳款同時收齊
+//   修改訂單：更新金額、品項、日期；訂單改成已付款 → 帳款補成已收（不會把已收的改回未收）
+//   刪除訂單：由訂單自動建立、而且還沒收款的帳款一起刪除
+// ------------------------------------------------------------
+function syncOrderReceivable_(orderNo, ctx) {
+    if (!orderNo) return;
+
+    const rows = readRows_(tbl_('Orders')).map(x => x.obj).filter(o => o.OrderNo === orderNo);
+    if (!rows.length) return;
+
+    const o = rows[0];
+    if (o.CompanyId === null || o.CompanyId === undefined || o.CompanyId === '') return;   // 沒連到客戶：不建帳款
+
+    const rt = tbl_('Receivable');
+    const found = readRows_(rt).find(x => String(x.obj.OrderID) === String(orderNo));
+    const comp = findRow_(tbl_('Companies'), o.CompanyId);
+    const c = comp ? comp.obj : {};
+
+    const amount = Number(o.TotalAmount) || rows.reduce((s, r) => s + (Number(r.Qty) || 0) * (Number(r.UnitPrice) || 0), 0);
+    const paid = o.PaymentStatus === '已付款';
+    const billDate = String(o.OrderDate || now_()).slice(0, 10);
+    const item = rows.map(r => (r.ProductName || '') + (r.Qty ? '×' + r.Qty : '')).join('、').slice(0, 300);
+
+    if (!found) {
+        if (o.PaymentStatus === '退款') return;
+        appendRow_(rt, {
+            ReceivableID: nextSeq_(rt),
+            CompanyId: o.CompanyId,
+            PayerName: c.CompanyName || o.MemberName || '',
+            BillDate: billDate,
+            Item: item,
+            OrderID: orderNo,
+            Amount: amount,
+            PaidAmount: paid ? amount : 0,
+            PaymentMethod: o.PaymentMethod || '',
+            PaymentStatus: paid ? '已付款' : '未付款',
+            PaymentDate: paid ? billDate : '',
+            InvoiceStatus: c.InvoiceCycle === '不開' ? '免開' : '待開',
+            Note: '由訂單自動建立',
+            CreatedBy: ctx ? ctx.userId : '',
+            CreatedAt: now_(),
+            UpdatedAt: now_()
+        });
+        return;
+    }
+
+    const cur = found.obj;
+    const patch = { Amount: amount, Item: item, BillDate: billDate, CompanyId: o.CompanyId, PayerName: c.CompanyName || cur.PayerName, UpdatedAt: now_() };
+    if (paid && (Number(cur.PaidAmount) || 0) < amount) {
+        patch.PaidAmount = amount;
+        patch.PaymentStatus = '已付款';
+        if (!cur.PaymentDate) patch.PaymentDate = now_().slice(0, 10);
+    } else if ((Number(cur.PaidAmount) || 0) > 0) {
+        patch.PaymentStatus = (Number(cur.PaidAmount) || 0) >= amount ? '已付款' : '部分付款';
+    }
+    writeRow_(rt, found, patch);
+}
+
+function removeOrderReceivable_(orderNo) {
+    if (!orderNo) return;
+    const rt = tbl_('Receivable');
+    readRows_(rt)
+        .filter(x => String(x.obj.OrderID) === String(orderNo) && String(x.obj.Note || '').indexOf('由訂單自動建立') >= 0 && !(Number(x.obj.PaidAmount) > 0))
+        .reverse()
+        .forEach(x => deleteRow_(rt, x.row));
+}
 
 function normalizeRolePerms_(obj, old, ctx) {
     if (obj.RoleName !== undefined && !String(obj.RoleName).trim()) fail_('請輸入角色名稱');

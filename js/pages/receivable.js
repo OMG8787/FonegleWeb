@@ -10,7 +10,7 @@ Pages.Receivable = (() => {
     "use strict";
 
     const dom = {};
-    const FIELDS = ["Item", "BillDate", "DueDate", "Amount", "PaidAmount", "PaymentMethod", "PaymentDate", "InvoiceNo", "InvoiceDate", "Note", "PayerName"];
+    const FIELDS = ["Item", "BillDate", "DueDate", "Amount", "PaidAmount", "PaymentMethod", "PaymentDate", "InvoiceNo", "InvoiceDate", "InvoiceStatus", "Note", "PayerName"];
 
     let records = [];
     let companies = [];
@@ -296,6 +296,8 @@ Pages.Receivable = (() => {
             PaymentDate: dom.PaymentDate.value,
             InvoiceNo: dom.InvoiceNo.value.trim(),
             InvoiceDate: dom.InvoiceDate.value,
+            // 填了發票號碼或開立日 → 視為已開
+            InvoiceStatus: dom.InvoiceNo.value.trim() || dom.InvoiceDate.value ? "已開" : dom.InvoiceStatus.value,
             PaymentStatus: statusOf(dom.Amount.value, dom.PaidAmount.value),
             Note: dom.Note.value.trim()
         };
