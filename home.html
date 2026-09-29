@@ -61,6 +61,8 @@
         .pl-table td.pl-all, .pl-table th.pl-all { background: #fff7ed; }
         .pl-table tr.fw-bold td { font-size: 1.05rem; }
         .pl-total { background: #fff7ed; border: 1px solid #fed7aa; }
+        .pl-ch { background: #f8fafc; border: 1px solid #e2e8f0; }
+        @media (max-width: 480px) { #plChannels .fs-5 { font-size: 1rem !important; } #plChannels .small { font-size: .7rem; } }
         .pl-big { font-size: 2rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
         @media (max-width: 480px) { .pl-table { font-size: .82rem; } }
     </style>
@@ -169,6 +171,29 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="row g-2 mb-3 text-center" id="plChannels">
+                                    <div class="col-4">
+                                        <div class="pl-ch rounded-3 p-2 h-100">
+                                            <div class="small text-muted">🎪 活動出攤總損益</div>
+                                            <div id="chStall" class="fw-bold fs-5">$0</div>
+                                            <div id="chStallSub" class="small text-muted"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="pl-ch rounded-3 p-2 h-100">
+                                            <div class="small text-muted">🛒 線上訂單總損益</div>
+                                            <div id="chOnline" class="fw-bold fs-5">$0</div>
+                                            <div id="chOnlineSub" class="small text-muted"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="pl-ch rounded-3 p-2 h-100">
+                                            <div class="small text-muted">🏢 B2B 總損益</div>
+                                            <div id="chB2b" class="fw-bold fs-5">$0</div>
+                                            <div id="chB2bSub" class="small text-muted"></div>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="table-responsive">
                                     <table class="table table-sm align-middle text-end mb-0 pl-table">
                                         <thead>
@@ -248,6 +273,7 @@
     <script src="js/core.js"></script>
     <script src="js/ai-chat.js"></script>
     <script src="js/favorite.js"></script>
+    <script src="js/order-stats.js"></script>
     <script src="js/pages/home.js"></script>
 
     <script>

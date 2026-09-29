@@ -502,8 +502,9 @@ Pages.Order = (() => {
     function renderList(result) {
         dom.searchTitle.textContent =
             result.title;
+        const sum = result.list.reduce((t, o) => t + App.num(o.TotalAmount), 0);
         dom.searchCount.textContent =
-            `共 ${result.count} 筆`;
+            `共 ${result.count} 筆，共計 $${Math.round(sum).toLocaleString()} 元`;
         dom.orderList.innerHTML = "";
         if (!result.list.length) {
             dom.emptyHint.classList.remove("d-none");

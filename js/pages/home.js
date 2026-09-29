@@ -18,7 +18,8 @@ Pages.Home = (() => {
         [
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
             "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince",
-            "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
+            "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense",
+            "chStall", "chStallSub", "chOnline", "chOnlineSub", "chB2b", "chB2bSub", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         if (!Auth.hasPermission(20, 10, 11)) dom.btnOpenCalendar.classList.add("d-none");
@@ -40,7 +41,7 @@ Pages.Home = (() => {
 
         // 每張表各自讀取：哪一區的資料先回來就先顯示（有快取時先顯示上次的資料）
         const tables = ["Memos", "Calendar", "CalendarDays"];
-        if (finance) tables.push("Receivable", "Expenses", "StallRecords", "BrandCosts");
+        if (finance) tables.push("Receivable", "Expenses", "StallRecords", "BrandCosts", "Orders", "Products");
 
         // 品牌損益是否含品牌攤提表（記住選擇）
         try { dom.plIncludeBrand.checked = localStorage.getItem("fonegle_pl_include_brand") !== "0"; } catch { }
@@ -70,6 +71,9 @@ Pages.Home = (() => {
                 dom.financeRow.classList.remove("d-none");
                 renderFinance(data.Receivable, data.Expenses || [], data.StallRecords || [], data.BrandCosts || []);
             }
+
+            if (finance && "StallRecords" in data && "Orders" in data && "Products" in data)
+                renderChannels(data.StallRecords || [], data.Orders || [], data.Products || []);
         };
 
         try {
@@ -286,6 +290,29 @@ Pages.Home = (() => {
     // 財務
     // =========================
     let lastFinance = null;
+
+    // 各通路總損益（成立至今）：出攤 = 出攤紀錄盈虧；訂單 = 訂單總額 − 產品成本
+    function renderChannels(stalls, orderRows, products) {
+
+        const set = (el, sub, v, text) => {
+            el.textContent = money(v);
+            el.className = "fw-bold fs-5 " + (v >= 0 ? "text-success" : "text-danger");
+            sub.textContent = text;
+        };
+
+        const st = stalls.reduce((t, r) => ({ n: t.n + 1, p: t.p + App.num(r.ProfitLoss), r: t.r + App.num(r.Revenue) }), { n: 0, p: 0, r: 0 });
+        set(dom.chStall, dom.chStallSub, st.p, `${st.n} 場 · 營業額 ${money(st.r)}`);
+
+        const orders = OrderStats.group(orderRows, products);
+        const on = OrderStats.summarize(orders.filter(o => !o.b2b));
+        const b2b = OrderStats.summarize(orders.filter(o => o.b2b));
+        const sub = s => `${s.count} 筆 · 營收 ${money(s.revenue)} · 成本 ${money(s.cost)}`;
+        set(dom.chOnline, dom.chOnlineSub, on.profit, sub(on));
+        set(dom.chB2b, dom.chB2bSub, b2b.profit, sub(b2b));
+
+        const missing = on.missing + b2b.missing;
+        dom.chB2bSub.title = dom.chOnlineSub.title = missing ? `${missing} 個品項沒有產品成本價，以 0 計` : "";
+    }
 
     function renderFinance(receivables, expenses, stalls, brand = []) {
 

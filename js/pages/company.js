@@ -7,7 +7,9 @@ Pages.Business = (() => {
     const dom = {};
 
     let listCache = [];
-    let orderStats = new Map();   // CompanyId → { count, total, last }
+    let orderStats = new Map();   // CompanyId → { count, revenue, cost, profit, avg, missing, last }
+    let allOrders = [];          // 合併後的訂單（OrderStats.group）
+    let ordersAllowed = true;    // 沒有訂單讀取權限時不顯示交易統計
     let currentDetail = null;
     let mode = "view";
 
@@ -184,9 +186,10 @@ ${item.CompanyName}
             };
 
             // 訂單沒有讀取權限時（null）只顯示客戶
-            const data = await API.getMany(["Companies", "Orders"]);
+            const data = await API.getMany(["Companies", "Orders", "Products"]);
 
-            buildOrderStats(data.Orders || []);
+            ordersAllowed = data.Orders !== null;
+            buildOrderStats(data.Orders || [], data.Products || []);
 
             const list = (data.Companies || [])
                 .filter(c =>
@@ -209,31 +212,49 @@ ${item.CompanyName}
         }
     }
 
-    // 每個客戶的訂單數、金額、最近下單日（同一 OrderNo 算一張）
-    function buildOrderStats(orders) {
+    // 每個客戶的交易次數、總金額、平均、成本、毛利、最近下單日（同一 OrderNo 算一張）
+    function buildOrderStats(orders, products) {
 
+        allOrders = OrderStats.group(orders, products);
         orderStats = new Map();
 
-        const seen = new Set();
-
-        orders.forEach(o => {
-
-            if (o.CompanyId === null || o.CompanyId === undefined || o.CompanyId === "") return;
-
-            const key = String(o.CompanyId);
-            const st = orderStats.get(key) || { count: 0, total: 0, last: "" };
-
-            if (!seen.has(o.OrderNo)) {
-                seen.add(o.OrderNo);
-                st.count++;
-                st.total += App.num(o.TotalAmount);
-            }
-
-            const d = App.toDateInput(o.OrderDate);
-            if (d > st.last) st.last = d;
-
-            orderStats.set(key, st);
+        const by = new Map();
+        allOrders.filter(o => o.companyId).forEach(o => {
+            if (!by.has(o.companyId)) by.set(o.companyId, []);
+            by.get(o.companyId).push(o);
         });
+        by.forEach((list, id) => orderStats.set(id, OrderStats.summarize(list)));
+
+        const all = OrderStats.summarize(allOrders.filter(o => o.companyId));
+        const el = document.getElementById("allStats");
+        if (el) el.textContent = all.count
+            ? `全部客戶：交易 ${all.count} 次 · 共 ${money(all.revenue)} · 平均 ${money(all.avg)} · 成本 ${money(all.cost)} · 毛利 ${money(all.profit)}`
+            : "";
+    }
+
+    function money(v) {
+        const n = Math.round(Number(v) || 0);
+        return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString();
+    }
+
+    // 修改客戶時，表單上方顯示這個客戶的交易統計
+    function renderCompanyStats(item) {
+        const box = document.getElementById("companyStats");
+        if (!box) return;
+        const st = item && orderStats.get(String(item.ID));
+        if (!item || !ordersAllowed) { box.classList.add("d-none"); return; }
+        box.classList.remove("d-none");
+        if (!st) { box.innerHTML = `<div class="alert alert-light border small mb-0">🧾 這個客戶還沒有訂單</div>`; return; }
+        const tile = (label, value, cls = "") => `<div class="col-6 col-md"><div class="border rounded-3 p-2 h-100 bg-light">
+            <div class="small text-muted">${label}</div><div class="fw-bold fs-5 ${cls}">${value}</div></div></div>`;
+        box.innerHTML = `<div class="row g-2">
+            ${tile("總交易次數", st.count + " 次")}
+            ${tile("平均價格", money(st.avg))}
+            ${tile("總交易金額", money(st.revenue))}
+            ${tile("成本", money(st.cost))}
+            ${tile("毛利", money(st.profit), st.profit >= 0 ? "text-success" : "text-danger")}
+        </div>
+        <div class="small text-muted mt-1">最近下單 ${App.esc(st.last || "-")}${st.missing ? `・${st.missing} 個品項沒有產品成本價（以 0 計），可到產品管理補上成本價` : ""}</div>`;
     }
 
     function getPaymentText(score) {
@@ -321,7 +342,7 @@ ${item.CompanyName}
     </div>
 
     <div class="member-info">
-        🧾 ${st ? `訂單 ${st.count} 張 · $${st.total.toLocaleString()} · 最近 ${App.esc(st.last || "-")}` : "尚無訂單"}
+        🧾 ${st ? `交易 ${st.count} 次 · 共 ${money(st.revenue)} · 平均 ${money(st.avg)} · 成本 ${money(st.cost)} · 最近 ${App.esc(st.last || "-")}` : "尚無訂單"}
     </div>
 
     <div class="member-info">
@@ -399,6 +420,7 @@ ${item.CompanyName}
 
         currentDetail = item;
         fillForm(item);
+        renderCompanyStats(item);
         showForm();
         setModeUI("edit");
         scrollToForm();
@@ -467,6 +489,7 @@ ${item.CompanyName}
     }
 
     function openCreate(scroll = true) {
+        renderCompanyStats(null);
         currentDetail = null;
         dom.form.reset();
         dom.targetCompanyArea.classList.add("d-none");

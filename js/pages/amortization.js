@@ -17,6 +17,7 @@ Pages.Amortization = (() => {
 
     let entries = [];
     let stalls = [];
+    let orders = [];        // 合併後的訂單（OrderStats.group）
     let current = null;
 
     // =========================
@@ -35,10 +36,11 @@ Pages.Amortization = (() => {
 
         try {
 
-            const data = await API.getMany(["BrandCosts", "StallRecords"]);
+            const data = await API.getMany(["BrandCosts", "StallRecords", "Orders", "Products"]);
 
             entries = data.BrandCosts;
             stalls = data.StallRecords;
+            orders = OrderStats.group(data.Orders || [], data.Products || []);
             render();
 
         } catch (err) {
@@ -151,20 +153,31 @@ Pages.Amortization = (() => {
             : 0;
     }
 
+    // 訂單利潤：訂單總額 − 產品成本（filterFn 收到的是 { date }）
+    function orderProfit(filterFn = () => true, b2b = null) {
+        return dom.includeStall.checked
+            ? orders.filter(o => (b2b === null || o.b2b === b2b) && filterFn({ StallDate: o.date })).reduce((s, o) => s + o.profit, 0)
+            : 0;
+    }
+
     function renderSummary() {
 
         const expenses = entries.filter(isExpense);
         const invest = expenses.reduce((s, e) => s + App.num(e.Amount), 0);
         const manual = entries.filter(e => !isExpense(e)).reduce((s, e) => s + App.num(e.Amount), 0);
         const stall = stallProfit();
-        const recovered = manual + stall;
+        const online = orderProfit(undefined, false);
+        const b2b = orderProfit(undefined, true);
+        const recovered = manual + stall + online + b2b;
         const monthly = expenses.reduce((s, e) => s + amortOn(e, NOW_INDEX), 0);
         const rate = invest ? recovered / invest : 0;
 
         dom.sumInvest.textContent = money(invest);
         dom.sumRecovered.textContent = money(recovered);
+        const missing = orders.reduce((s, o) => s + o.missing, 0);
         dom.sumRecoveredNote.textContent = dom.includeStall.checked
-            ? `回收紀錄 ${money(manual)} ＋ 出攤盈虧 ${money(stall)}`
+            ? `回收紀錄 ${money(manual)} ＋ 出攤盈虧 ${money(stall)} ＋ 線上訂單 ${money(online)} ＋ B2B ${money(b2b)}` +
+              (missing ? `（${missing} 個訂單品項沒有產品成本價，以 0 計）` : "")
             : "僅計回收紀錄";
         dom.sumRemain.textContent = money(Math.max(0, invest - recovered));
         dom.sumMonthly.textContent = money(monthly);
@@ -230,7 +243,8 @@ Pages.Amortization = (() => {
             const recovered = entries.filter(e => !isExpense(e) && monthIndex(e.RecordDate) === i)
                 .reduce((s, e) => s + App.num(e.Amount), 0);
             const stall = stallProfit(r => monthIndex(r.StallDate) === i);
-            const net = recovered + stall - amort;
+            const order = orderProfit(r => monthIndex(r.StallDate) === i);
+            const net = recovered + stall + order - amort;
 
             rows.push(`
 <tr class="${i === NOW_INDEX ? "table-warning" : ""}">
@@ -238,6 +252,7 @@ Pages.Amortization = (() => {
     <td class="text-end">${money(amort)}</td>
     <td class="text-end">${money(recovered)}</td>
     <td class="text-end">${dom.includeStall.checked ? money(stall) : "-"}</td>
+    <td class="text-end">${dom.includeStall.checked ? money(order) : "-"}</td>
     <td class="text-end fw-bold ${net >= 0 ? "profit" : "loss"}">${money(net)}</td>
 </tr>`);
         }
