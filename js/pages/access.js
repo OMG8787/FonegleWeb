@@ -520,7 +520,7 @@ Pages.Access = (() => {
 
     function renderLegend() {
         dom.legendBody.innerHTML = PERMS.map(p =>
-            `<tr><td class="text-nowrap fw-bold">${App.esc(p.name)}（${p.id}）</td><td>${App.esc(p.desc)}</td></tr>`).join("");
+            `<tr><td class="text-nowrap fw-bold">${App.esc(p.name)}</td><td>${App.esc(p.desc)}</td></tr>`).join("");
     }
 
     return { init };
