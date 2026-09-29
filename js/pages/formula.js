@@ -28,6 +28,7 @@ Pages.Formula = (() => {
     let listCache = [];
     let tryMult = null;     // 目前試算倍數（份數，不一定等於預設倍數）
     let tryPortion = null;  // 目前試算的每份重量 g（不一定等於配方的單位重量）
+    let formMode = "create";        // "create" 新增 / "view" 瀏覽（唯讀） / "edit" 編輯中
     let viewTouched = false;        // 使用者自己切換過篩選（常用 / 已確認 / 待確認 / 全部）
 
     // =========================
@@ -68,7 +69,8 @@ Pages.Formula = (() => {
 
     function cacheDom() {
         FIELDS.concat([
-            "formulaForm", "formCard", "formTitle", "editHint", "IsActive", "qKeyword", "IsVerified", "verifiedInfo", "verifyStat", "btnFavorite",
+            "formulaForm", "formCard", "formTitle", "editHint", "viewHint", "btnEditToggle", "btnCancelEdit",
+            "IsActive", "qKeyword", "IsVerified", "verifiedInfo", "verifyStat", "btnFavorite",
             "formulaList", "emptyHint", "listCount", "detailList", "materialNames", "btnAddMaterial", "btnNormalize",
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
@@ -90,6 +92,9 @@ Pages.Formula = (() => {
         dom.btnClear.addEventListener("click", () => openCreate(false));
         dom.btnCreate.addEventListener("click", () => save(true));
         dom.btnUpdate.addEventListener("click", () => save(false));
+        // 點配方卡片會先進入「瀏覽」（唯讀，只能調整上方份數試算）；要修改內容需按「編輯配方」
+        dom.btnEditToggle.addEventListener("click", () => { if (formMode === "view") setMode("edit"); });
+        dom.btnCancelEdit.addEventListener("click", () => { if (current) loadDetail(current); });
         dom.btnCopy.addEventListener("click", copyAsNew);
         dom.btnDelete.addEventListener("click", remove);
         dom.btnPrint.addEventListener("click", printSheet);
@@ -249,7 +254,7 @@ Pages.Formula = (() => {
         dom.factorText.textContent = c.base
             ? `放大係數 ${round(c.factor, 4)}${c.yieldRate !== 1 ? `｜成品率 ${round(c.yieldRate * 100, 1)}%，需備料 ${g(c.target, 1)} g` : ""}${changed.length ? "｜" + changed.join("、") : ""}`
             : "";
-        dom.btnSetDefault.disabled = !c.mult || (!changed.length && round(c.mult, 4) === round(c.defMult, 4));
+        dom.btnSetDefault.disabled = formMode === "view" || !c.mult || (!changed.length && round(c.mult, 4) === round(c.defMult, 4));
 
         // 明細
         c.lines.forEach((l, i) => {
@@ -331,6 +336,7 @@ Pages.Formula = (() => {
     function renderRows() {
 
         const esc = App.esc;
+        const dis = formMode === "view" ? "disabled" : "";
 
         dom.detailList.innerHTML = rows.map((r, i) => {
             const linked = materialById(r.MaterialID);
@@ -339,20 +345,20 @@ Pages.Formula = (() => {
     <td class="text-muted small">${i + 1}</td>
     <td class="ing">
         <div class="input-group input-group-sm">
-            <input class="form-control" list="materialNames" data-f="MaterialName" value="${esc(r.MaterialName || "")}" placeholder="原料名稱">
+            <input class="form-control" list="materialNames" data-f="MaterialName" value="${esc(r.MaterialName || "")}" placeholder="原料名稱" ${dis}>
             ${linked ? `<span class="input-group-text link-badge" title="已連結原料庫：${esc(linked.MaterialName)}（$${esc(linked.CostPrice ?? "-")}/g）">🔗</span>` : ""}
             ${r.Remark ? `<span class="input-group-text link-badge text-danger" title="${esc(r.Remark)}">⚠️</span>` : ""}
         </div>
     </td>
-    <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Quantity" value="${esc(r.Quantity ?? "")}"></td>
+    <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Quantity" value="${esc(r.Quantity ?? "")}" ${dis}></td>
     <td class="text-end small" data-c="pct"></td>
-    <td class="text-end scaled"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Scaled"></td>
-    <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="UnitCost" value="${esc(r.UnitCost ?? "")}"></td>
+    <td class="text-end scaled"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Scaled" ${dis}></td>
+    <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="UnitCost" value="${esc(r.UnitCost ?? "")}" ${dis}></td>
     <td class="text-end" data-c="cost"></td>
     <td class="text-nowrap">
-        <button type="button" class="btn btn-sm btn-link p-0" data-act="up" data-i="${i}" title="上移">↑</button>
-        <button type="button" class="btn btn-sm btn-link p-0" data-act="down" data-i="${i}" title="下移">↓</button>
-        <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1" data-act="remove" data-i="${i}" title="刪除">✕</button>
+        <button type="button" class="btn btn-sm btn-link p-0" data-act="up" data-i="${i}" title="上移" ${dis}>↑</button>
+        <button type="button" class="btn btn-sm btn-link p-0" data-act="down" data-i="${i}" title="下移" ${dis}>↓</button>
+        <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1" data-act="remove" data-i="${i}" title="刪除" ${dis}>✕</button>
     </td>
 </tr>`;
         }).join("") || `<tr><td colspan="8" class="text-muted small">尚未加入原料</td></tr>`;
@@ -548,13 +554,44 @@ Pages.Formula = (() => {
     // =========================
     // 表單
     // =========================
-    function setMode(edit) {
-        dom.formTitle.textContent = edit ? "✏️ 修改配方" : "➕ 新增配方";
-        dom.editHint.classList.toggle("d-none", !edit);
-        dom.btnCreate.disabled = edit;
-        dom.btnUpdate.disabled = !edit;
-        dom.btnCopy.disabled = !edit;
-        dom.btnDelete.disabled = !edit;
+    // newMode：
+    //   "create" 新增配方（全部欄位可編輯）
+    //   "view"   點配方卡片後的預設狀態，只能調整上方試算列的份數 / 每份重量
+    //   "edit"   按「編輯配方」後，恢復可修改配方內容
+    function setMode(newMode) {
+
+        formMode = newMode;
+
+        dom.formTitle.textContent = newMode === "edit" ? "✏️ 修改配方" : newMode === "view" ? "🧪 配方明細" : "➕ 新增配方";
+        dom.editHint.classList.toggle("d-none", newMode !== "edit");
+        dom.viewHint.classList.toggle("d-none", newMode !== "view");
+        dom.btnEditToggle.classList.toggle("d-none", newMode !== "view");
+        dom.btnCancelEdit.classList.toggle("d-none", newMode !== "edit");
+
+        dom.btnCreate.disabled = newMode !== "create";
+        dom.btnUpdate.disabled = newMode !== "edit";
+        // 「另存為新配方」「刪除」不會動到目前配方的內容，瀏覽中也可以直接使用
+        dom.btnCopy.disabled = newMode === "create";
+        dom.btnDelete.disabled = newMode === "create";
+
+        applyLock();
+    }
+
+    // 鎖定 / 解鎖配方內容欄位（試算列 tryPortion / tryMult / tryTotal 不受影響，一直可以調整）
+    function applyLock() {
+
+        const locked = formMode === "view";
+
+        FIELDS.forEach(k => { if (dom[k]) dom[k].disabled = locked; });
+        dom.IsActive.disabled = locked;
+        dom.IsVerified.disabled = locked;
+        dom.btnAddMaterial.disabled = locked;
+        dom.btnNormalize.disabled = locked;
+        dom.btnRefreshCost.disabled = locked;
+
+        dom.formCard.classList.toggle("view-locked", locked);
+
+        renderRows();   // 依鎖定狀態重畫原料表（內部會呼叫 calculate()）
     }
 
     function openCreate(scroll) {
@@ -571,7 +608,7 @@ Pages.Formula = (() => {
         dom.UnitWeight.value = 1000;
         dom.YieldQty.value = 1;
         rows = [];
-        setMode(false);
+        setMode("create");
         renderRows();
         renderList();
 
@@ -603,7 +640,8 @@ Pages.Formula = (() => {
             Remark: d.Remark || ""
         }));
 
-        setMode(true);
+        // 先進入瀏覽（唯讀），避免不小心改到配方上方的數字；要修改請按「編輯配方」
+        setMode("view");
         renderRows();
         renderList();
 

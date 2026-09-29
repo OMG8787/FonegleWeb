@@ -108,6 +108,14 @@
         .link-badge {
             font-size: 11px;
         }
+
+        /* 瀏覽模式：除了上方試算列，其餘欄位鎖定唯讀 */
+        #formCard.view-locked input:disabled,
+        #formCard.view-locked select:disabled,
+        #formCard.view-locked textarea:disabled {
+            background: #f8fafc;
+            opacity: .9;
+        }
     </style>
 </head>
 
@@ -175,7 +183,10 @@
                                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                                     <h5 id="formTitle" class="mb-0">➕ 新增配方</h5>
                                     <div class="d-flex flex-wrap gap-2 align-items-center">
-                                        <span id="editHint" class="badge bg-warning text-dark d-none">編輯中</span>
+                                        <span id="viewHint" class="badge bg-secondary d-none" title="只有上方試算列（份數 / 每份重量）可以直接調整，避免不小心改到配方內容">👁 瀏覽中，僅可調整份數</span>
+                                        <span id="editHint" class="badge bg-warning text-dark d-none">✏️ 編輯中</span>
+                                        <button type="button" id="btnEditToggle" class="btn btn-sm btn-outline-primary d-none">✏️ 編輯配方</button>
+                                        <button type="button" id="btnCancelEdit" class="btn btn-sm btn-outline-secondary d-none">取消編輯</button>
                                         <div class="form-check mb-0">
                                             <input id="printCost" class="form-check-input" type="checkbox" checked>
                                             <label class="form-check-label small" for="printCost">輸出含成本</label>
