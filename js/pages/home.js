@@ -17,7 +17,7 @@ Pages.Home = (() => {
 
         [
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
-            "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince",
+            "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince", "todoCol",
             "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense",
             "chStall", "chStallSub", "chOnline", "chOnlineSub", "chB2b", "chB2bSub", "remindBadges", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
@@ -34,6 +34,9 @@ Pages.Home = (() => {
         dom.memoList.addEventListener("change", onMemoClick);
 
         const finance = Auth.hasPermission(24);
+        // 財務總覽（26）：只顯示品牌損益，不讀取任何財務資料表
+        const plOnly = !finance && Auth.hasPermission(26);
+        if (plOnly) loadFinanceSummary();
 
         API.me({ silent: true })
             .then(me => { if (me?.user?.Name) dom.greeting.textContent = `${me.user.Name}，歡迎回來 👋`; })
@@ -293,6 +296,20 @@ Pages.Home = (() => {
     // 財務
     // =========================
     let lastFinance = null;
+
+    // 財務總覽：伺服器只回傳日期與金額，畫出品牌損益與各通路損益（沒有待辦提醒）
+    async function loadFinanceSummary() {
+        try {
+            const d = await Auth.request("financeSummary", {}, { silent: true });
+            dom.todoCol.classList.add("d-none");
+            dom.financeRow.firstElementChild.className = "col-12";
+            dom.financeRow.classList.remove("d-none");
+            renderFinance(d.Receivable || [], d.Expenses || [], d.StallRecords || [], d.BrandCosts || []);
+            renderChannels(d.StallRecords || [], d.Orders || [], d.Products || []);
+        } catch (err) {
+            console.warn("讀取品牌損益失敗", err);
+        }
+    }
 
     // 待辦提醒：開發票、收帳、保證金（逾期與 7 天內到期；規則見 js/billing.js）
     function renderTodo(receivables, companies, deposits) {

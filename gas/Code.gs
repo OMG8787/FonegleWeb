@@ -377,11 +377,12 @@ const TYPE_LABELS = { s: '文字', n: '數字', b: '是否（TRUE/FALSE）' };
 //   12 刪除資料：刪除需要此權限（備忘錄、AI 文案刪除自己的除外）
 //   16 唯讀：只能查看，不能新增、修改、刪除
 //   20 行事曆  21 市集營運  22 商品與生產  23 銷售與客戶  24 財務  25 AI 行銷
+//   26 財務總覽：只能在首頁看品牌損益（伺服器只回傳日期與金額），不能使用財務功能
 //   6/8/9 代理人；10、11 為舊版權限（相容：行事曆、市集營運）
 //
 // read：可讀取的權限（'all' = 登入即可）；write：可新增 / 修改的權限
 // ============================================================
-const PERM = { ADMIN: 13, SYSTEM: 3, DELETE: 12, READONLY: 16 };
+const PERM = { ADMIN: 13, SYSTEM: 3, DELETE: 12, READONLY: 16, FINANCE: 24, FINANCE_VIEW: 26 };
 
 const PERMISSION_CODES = [
     { ID: 3, Permission: '系統管理（帳號、會員、權限、郵件）' },
@@ -393,7 +394,8 @@ const PERMISSION_CODES = [
     { ID: 22, Permission: '商品與生產（產品、配方成本、原料、庫存、生產）' },
     { ID: 23, Permission: '銷售與客戶（訂單、出貨、合作廠商）' },
     { ID: 24, Permission: '財務（帳務、支出、攤提）' },
-    { ID: 25, Permission: 'AI 行銷（文案發想）' }
+    { ID: 25, Permission: 'AI 行銷（文案發想）' },
+    { ID: 26, Permission: '財務總覽（首頁品牌損益，唯讀）' }
 ];
 
 const CAL = [20, 10, 11], MARKET = [21, 10], PRODUCT = [22], SALES = [23], FINANCE = [24], AI = [25], AGENT = [6, 8, 9];
@@ -496,6 +498,7 @@ const PRIVATE_ACTIONS = {
     aiChat: aiChat_,
     aiGenerate: aiGenerate_,
     getAiConfig: getAiConfig_,
+    financeSummary: financeSummary_,
     setAiConfig: setAiConfig_,
     testAiConfig: testAiConfig_,
     loginSessions: loginSessions_,
@@ -512,7 +515,7 @@ const PRIVATE_ACTIONS = {
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
-const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig'];
+const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary'];
 // loginLogConfig 不帶 keep 時只是讀取；帶 keep 會修改（由 reqId 防重複）
 
 function handle_(req) {
@@ -1417,6 +1420,28 @@ function loginLog_(req, ctx) {
         .filter(o => (!from || String(o.LoginAt) >= from) && String(o.LoginAt) <= to)
         .sort((a, b) => String(b.LoginAt).localeCompare(String(a.LoginAt)))
         .slice(0, 3000);
+}
+
+// ---------- 財務總覽（首頁品牌損益） ----------
+// 財務（24）或財務總覽（26）可用；只回傳計算損益需要的日期與金額，
+// 不含客戶名稱、品項、備註等明細，財務總覽的人看不到任何帳務資料
+function financeSummary_(req, ctx) {
+    requirePerm_(ctx, [PERM.FINANCE, PERM.FINANCE_VIEW]);
+
+    const pick = (name, cols) => cachedObjs_(tbl_(name)).map(o => {
+        const x = {};
+        cols.forEach(c => x[c] = o[c] === undefined ? null : o[c]);
+        return x;
+    });
+
+    return {
+        Receivable: pick('Receivable', ['PaymentDate', 'PaidAmount']),
+        Expenses: pick('Expenses', ['ExpenseDate', 'Amount']),
+        StallRecords: pick('StallRecords', ['StallDate', 'Revenue', 'TotalCost', 'FoodCost', 'ProfitLoss']),
+        BrandCosts: pick('BrandCosts', ['RecordDate', 'Type', 'Amount']),
+        Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate']),
+        Products: pick('Products', ['ID', 'CostPrice'])
+    };
 }
 
 function getUser_(userId) {
