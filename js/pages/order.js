@@ -615,14 +615,15 @@ ${x.CompanyId ? "🏢" : "👤"} ${App.esc(x.MemberName || "未知")}
             addDetailRow();
             const tr =
                 dom.orderDetailList.lastElementChild;
-            tr.querySelector(".productID").value =
-                p.ProductID;
+            const value = p.ProductID ? String(p.ProductID) : CUSTOM + (p.ProductName || "");
+            tr.querySelector(".productID").value = p.ProductID || "";
+            tr.querySelector(".productID").placeholder = p.ProductID ? "" : "自訂品項";
             const ts =
                 tr.querySelector(".productSelect").tomselect;
-            // 已刪除的產品也要能顯示
-            if (!ts.options[p.ProductID])
-                ts.addOption({ value: p.ProductID, text: p.ProductName || p.ProductID });
-            ts.setValue(p.ProductID, true);
+            // 已刪除的產品、自訂品項也要能顯示
+            if (!ts.options[value])
+                ts.addOption({ value, text: p.ProductName || p.ProductID });
+            ts.setValue(value, true);
             tr.querySelector(".qty").value =
                 p.Qty;
             tr.querySelector(".unit").value =
@@ -673,8 +674,9 @@ class="btn btn-danger btn-sm">
 `;
         tr.querySelector(".productSelect")
             .addEventListener("change", function () {
-                tr.querySelector(".productID").value =
-                    this.value;
+                const custom = isCustom(this.value);
+                tr.querySelector(".productID").value = custom ? "" : this.value;
+                tr.querySelector(".productID").placeholder = custom ? "自訂品項" : "";
                 // 自動帶入單位與售價
                 const product = productOptions.find(x => x.id === this.value);
                 if (product) {
@@ -695,11 +697,20 @@ class="btn btn-danger btn-sm">
         new TomSelect(
             tr.querySelector(".productSelect"),
             {
-                create: false,
+                // 清單沒有的產品（客製化）：直接輸入品名
+                create: input => ({ value: CUSTOM + input.trim(), text: input.trim() }),
+                createOnBlur: true,
+                createFilter: input => input.trim().length > 0,
+                dropdownParent: "body",
+                placeholder: "搜尋產品，或直接輸入自訂品名",
                 searchField: ["text"],
                 valueField: "value",
                 labelField: "text",
-                sortField: "text"
+                sortField: "text",
+                render: {
+                    option_create: (data, escape) => `<div class="create">＋ 使用自訂品名「<b>${escape(data.input)}</b>」</div>`,
+                    no_results: () => `<div class="no-results">找不到產品，輸入完整品名後按 Enter 加入自訂品項</div>`
+                }
             }
         );
         tr.querySelector(".qty")
@@ -711,8 +722,23 @@ class="btn btn-danger btn-sm">
         calculateTotal();
     }
 
+    // 自訂品項（不在產品清單）：選單值以 custom: 開頭，存檔時 ProductID 留空
+    const CUSTOM = "custom:";
+
+    function isCustom(v) {
+        return String(v || "").startsWith(CUSTOM);
+    }
+
+    function productNameOf(tr) {
+        const ts = tr.querySelector(".productSelect").tomselect;
+        const v = ts ? ts.getValue() : tr.querySelector(".productSelect").value;
+        return (ts && ts.options[v] && ts.options[v].text) || tr.querySelector(".productSelect").selectedOptions[0]?.text || "";
+    }
+
+    // 沒選產品、也沒輸入品名的空白列不算（新增表單預設會有一列空白）
     function getRows() {
-        return [...document.querySelectorAll("#orderDetailList tr")];
+        return [...document.querySelectorAll("#orderDetailList tr")]
+            .filter(tr => tr.querySelector(".productSelect").value);
     }
 
     function validateRows(rows) {
@@ -720,8 +746,8 @@ class="btn btn-danger btn-sm">
             alert("請至少加入一項商品");
             return false;
         }
-        if (rows.some(tr => !tr.querySelector(".productID").value)) {
-            alert("請選擇每一列的產品");
+        if (rows.some(tr => !tr.querySelector(".productSelect").value)) {
+            alert("請選擇或輸入每一列的產品");
             return false;
         }
         return true;
@@ -824,6 +850,7 @@ class="btn btn-danger btn-sm">
         }
         dom.OrderNo.readOnly = true;
         dom.OrderDate.value = formatDateTime(new Date());
+        addDetailRow();
         showForm();
         dom.editHint.classList.add("d-none");
         dom.btnCreate.classList.remove("d-none");
@@ -857,7 +884,6 @@ class="btn btn-danger btn-sm">
 
     function buildPayload(tr) {
 
-        const select = tr.querySelector(".productSelect");
 
         return {
             // ===== 訂單資料 =====
@@ -871,7 +897,7 @@ class="btn btn-danger btn-sm">
 
             // ===== 只有目前這一筆商品 =====
             ProductID: tr.querySelector(".productID").value,
-            ProductName: select.selectedOptions[0]?.text || "",
+            ProductName: productNameOf(tr),
             Qty: App.numOrNull(tr.querySelector(".qty").value),
             Unit: tr.querySelector(".unit").value.trim(),
             UnitPrice: App.numOrNull(tr.querySelector(".price").value),
