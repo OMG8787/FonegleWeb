@@ -98,7 +98,7 @@ Pages.Deposit = (() => {
             return `
 <tr class="clickable ${current && current.ID === r.ID ? "active" : ""}" data-id="${esc(r.ID)}">
     <td>${esc(date(r.EventDate))}</td>
-    <td><div class="fw-bold">${esc(r.EventName || "")}</div><div class="small text-muted">${esc(r.Payee || "")}</div></td>
+    <td><div class="fw-bold">${r.CalendarId ? `<span title="由行事曆建立">📅</span> ` : ""}${esc(r.EventName || "")}${/活動取消|活動已刪除/.test(r.Note || "") ? ` <span class="badge bg-secondary">活動取消</span>` : ""}</div><div class="small text-muted">${esc(r.Payee || "")}</div></td>
     <td class="text-end">${money(r.Amount)}</td>
     <td>${returned(r) ? esc(date(r.ReturnedDate)) : esc(due)}</td>
     <td>${badge}</td>

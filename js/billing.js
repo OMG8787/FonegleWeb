@@ -11,12 +11,13 @@
 //   開發票：發票狀態「待開」的帳款（由訂單自動建立的都是待開，付過款也要開）；
 //           沒有發票狀態的舊帳款：還沒收款、還沒開發票才提醒；已開 / 免開 / 有發票號碼或開立日 → 不提醒
 //   收帳  ：還沒收齊的帳款；應收日 = 帳款到期日 → 依客戶規則計算
-//   保證金：還沒退還的保證金；應退日 = 預計退還日 → 活動日 + 14 天
+//   保證金：還沒退還的保證金；應退日 = 預計退還日 → 活動日隔天；活動取消 = 當天
+//           活動還沒結束的不提醒（提醒中心選「全部」才看得到）
 // =========================================================
 window.Billing = {
 
     DEFAULT_PAY_DAYS: 30,
-    DEPOSIT_RETURN_DAYS: 14,
+    DEPOSIT_RETURN_DAYS: 1,     // 沒有預計退還日：活動日隔天就提醒追退費
 
     pad(n) {
         return String(n).padStart(2, "0");
@@ -163,10 +164,12 @@ window.Billing = {
             const base = this.date(d.EventDate) || this.date(d.PaidDate) || today;
             const due = this.date(d.ExpectReturnDate) || this.addDays(base, this.DEPOSIT_RETURN_DAYS);
             if (!within(due)) return;
+            if (horizon !== null && due > today) return;      // 活動還沒結束：先不提醒
+            const cancelled = /活動取消|活動已刪除/.test(d.Note || "");
             out.deposit.push(Object.assign({
                 kind: "deposit", date: due, name: d.Payee || d.EventName || "", items: [d], amount: App.num(d.Amount),
                 title: `保證金：${d.Payee || d.EventName || ""}`,
-                sub: `${d.EventName || ""}${base ? `（${base}）` : ""}・尚未退還`
+                sub: `${d.EventName || ""}${base ? `（${base}）` : ""}・${cancelled ? "活動已取消，" : "活動已結束，"}請追蹤退費`
             }, this.level(due, today)));
         });
 

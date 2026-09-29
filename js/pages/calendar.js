@@ -57,7 +57,7 @@ Pages.Calendar = (() => {
 
         [
             "calendarResult", "btnCreate", "btnSave", "activityName", "startDate", "endDate",
-            "defaultOpen", "defaultClose", "btnApplyTime", "dailyList", "address", "type", "cancel",
+            "defaultOpen", "defaultClose", "btnApplyTime", "dailyList", "address", "type", "cancel", "depositAmount", "depositPayee",
             "userId", "remark", "monthPicker", "btnSearchMonth", "calendarTitle", "btnPrevMonth",
             "btnNextMonth", "overviewStart", "overviewEnd", "btnOverview", "overviewResult",
             "btnPrivateCalendar", "calendarFilter", "btnShowRaw", "overviewRawText", "btnCopyRaw",
@@ -217,6 +217,8 @@ Pages.Calendar = (() => {
             endDate: days[days.length - 1]?.date || end.slice(0, 10),
             days,
             address: r.EventAddress || "",
+            depositAmount: r.DepositAmount ?? "",
+            depositPayee: r.DepositPayee || "",
             remark: r.Note || "",
             type: String(r.CalendarType || 1),
             cancel: r.IsDeleted === true ? "是" : "否",
@@ -481,6 +483,8 @@ title="活動:${esc(e.name)}
         dom.startDate.value = "";
         dom.endDate.value = "";
         dom.address.value = "";
+        dom.depositAmount.value = "";
+        dom.depositPayee.value = "";
         dom.remark.value = "";
         dom.userId.value = "";
         dom.cancel.value = "否";
@@ -507,6 +511,8 @@ title="活動:${esc(e.name)}
         dom.startDate.value = e.startDate;
         dom.endDate.value = e.endDate;
         dom.address.value = e.address;
+        dom.depositAmount.value = e.depositAmount ?? "";
+        dom.depositPayee.value = e.depositPayee || "";
         dom.remark.value = e.remark;
         dom.type.value = e.type;
         dom.cancel.value = e.cancel;
@@ -619,6 +625,8 @@ title="活動:${esc(e.name)}
                 StartEventDate: `${first.date} ${first.start || "00:00"}`,
                 EndEventDate: `${last.date} ${last.end || "23:59"}`,
                 EventAddress: dom.address.value.trim(),
+                DepositAmount: App.numOrNull(dom.depositAmount.value) ?? "",
+                DepositPayee: dom.depositPayee.value.trim(),
                 CalendarType: Number(type),
                 IsDeleted: dom.cancel.value === "是",
                 UserDB_ID: type === "1" ? "" : dom.userId.value.trim(),

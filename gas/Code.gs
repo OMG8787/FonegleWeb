@@ -72,7 +72,8 @@ const SCHEMA = {
     ID_Permission: { key: 'ID', cols: 'ID:n Permission' },
     Calendar: {
         key: 'CalendarId', seq: 'CalendarId',
-        cols: 'CalendarId:n EventName StartEventDate EndEventDate EventAddress Note CalendarType:n IsDeleted:b UserDB_ID Line_ID CreatedAt UpdatedAt'
+        cols: 'CalendarId:n EventName StartEventDate EndEventDate EventAddress Note CalendarType:n IsDeleted:b UserDB_ID Line_ID CreatedAt UpdatedAt ' +
+            'DepositAmount:n DepositPayee'
     },
     // 活動每一天的營業時段
     CalendarDays: {
@@ -92,7 +93,7 @@ const SCHEMA = {
     Deposits: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n StallId:n EventDate EventName Payee Amount:n PaidDate ExpectReturnDate ReturnedDate ReturnedAmount:n Status Note ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt CalendarId:n',
         money: 'Amount ReturnedAmount'
     },
     // 品牌攤提表（支出 / 回收）
@@ -329,6 +330,7 @@ const COLUMN_LABELS = {
     RoleTemplateId: '角色（Roles 的 ID）', Permissions: '權限代碼（以 | 分隔）',
     InvoiceCycle: '開發票方式（每筆 / 月結 / 不開）', InvoiceDay: '月結開票日（31 = 月底）', PayTermDays: '開票後幾天付款',
     PayDay: '每月固定匯款日', BillingNote: '帳務備註', InvoiceDate: '發票開立日', InvoiceStatus: '發票狀態（待開 / 已開 / 免開）',
+    DepositAmount: '保證金（填了會自動建立保證金追蹤）', DepositPayee: '保證金付款對象（主辦）',
     StallId: '出攤紀錄編號', Payee: '付款對象（主辦 / 廠商）', PaidDate: '付出日期', ExpectReturnDate: '預計退還日',
     ReturnedDate: '實際退還日', ReturnedAmount: '退還金額',
     IsVerified: '已確認為正確配方', VerifiedBy: '確認人', VerifiedAt: '確認時間', IsFavorite: '常用配方',
@@ -1694,6 +1696,10 @@ function doRemoveWhere_(name, where, ctx, isReplace) {
 // 資料表特殊邏輯
 // ============================================================
 const HOOKS = {
+    // 行事曆活動填了保證金 → 自動建立 / 更新保證金追蹤；活動取消或刪除 → 立即提醒追退費
+    Calendar: {
+        afterWrite(obj, ctx) { syncCalendarDeposit_(obj, ctx); }
+    },
     // 訂單（連到客戶的）自動建立 / 更新應收帳款，發票提醒與收帳提醒都依帳款計算
     Orders: {
         afterWrite(obj, ctx) { syncOrderReceivable_(obj.OrderNo, ctx); }
@@ -1806,6 +1812,77 @@ function syncOrderReceivable_(orderNo, ctx) {
         patch.PaymentStatus = (Number(cur.PaidAmount) || 0) >= amount ? '已付款' : '部分付款';
     }
     writeRow_(rt, found, patch);
+}
+
+// ------------------------------------------------------------
+// 行事曆 → 保證金追蹤（一個活動一筆，CalendarId 關聯）
+//   應退日：活動結束隔天；活動取消 / 刪除 → 當天（馬上出現在待辦提醒）
+//   已退還的不再變動；保證金改成 0 → 刪除自動建立、還沒退還的那筆
+// ------------------------------------------------------------
+function ymdAdd_(ymd, days) {
+    const p = String(ymd || '').slice(0, 10).split('-').map(Number);
+    if (p.length < 3 || !p[0]) return '';
+    return Utilities.formatDate(new Date(p[0], p[1] - 1, p[2] + days), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function syncCalendarDeposit_(cal, ctx) {
+    const id = cal && cal.CalendarId;
+    if (id === undefined || id === null || id === '') return;
+
+    const dt = tbl_('Deposits');
+    const found = readRows_(dt).find(x => String(x.obj.CalendarId) === String(id));
+    const still = findRow_(tbl_('Calendar'), id);            // 刪除活動時已經找不到
+    const cancelled = !still || cal.IsDeleted === true || String(cal.IsDeleted).toUpperCase() === 'TRUE';
+    const amount = Number(cal.DepositAmount) || 0;
+    const today = now_().slice(0, 10);
+    const endDate = String(cal.EndEventDate || cal.StartEventDate || '').slice(0, 10);
+    const due = cancelled ? today : (ymdAdd_(endDate, 1) || today);
+
+    if (!found) {
+        if (amount <= 0 || !still) return;
+        appendRow_(dt, {
+            ID: nextSeq_(dt),
+            CalendarId: id,
+            EventDate: endDate,
+            EventName: cal.EventName || '',
+            Payee: cal.DepositPayee || cal.EventName || '',
+            Amount: amount,
+            PaidDate: String(cal.StartEventDate || '').slice(0, 10),
+            ExpectReturnDate: due,
+            Status: '未退還',
+            Note: '由行事曆建立' + (cancelled ? '；活動取消' : ''),
+            CreatedBy: ctx ? ctx.userId : '',
+            CreatedAt: now_(),
+            UpdatedAt: now_()
+        });
+        return;
+    }
+
+    const cur = found.obj;
+    if (cur.Status === '已退還' || cur.ReturnedDate) return;
+
+    // 保證金清成 0：刪掉自動建立的那筆
+    if (still && amount <= 0 && String(cur.Note || '').indexOf('由行事曆建立') >= 0) {
+        deleteRow_(dt, found.row);
+        return;
+    }
+
+    const patch = { UpdatedAt: now_() };
+    if (still) {
+        if (amount > 0) patch.Amount = amount;
+        patch.EventName = cal.EventName || cur.EventName;
+        patch.EventDate = endDate || cur.EventDate;
+        if (cal.DepositPayee) patch.Payee = cal.DepositPayee;
+    }
+    // 應退日：取消 → 今天；否則跟著活動結束日（手動改過、比較早的預計日保留）
+    const curDue = String(cur.ExpectReturnDate || '').slice(0, 10);
+    if (cancelled) {
+        if (!curDue || curDue > today) patch.ExpectReturnDate = today;
+        if (String(cur.Note || '').indexOf('活動取消') < 0) patch.Note = (cur.Note ? cur.Note + '；' : '') + (still ? '活動取消' : '活動已刪除');
+    } else if (!curDue || curDue === ymdAdd_(cur.EventDate, 1)) {
+        patch.ExpectReturnDate = due;
+    }
+    writeRow_(dt, found, patch);
 }
 
 function removeOrderReceivable_(orderNo) {
