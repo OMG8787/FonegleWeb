@@ -370,6 +370,53 @@
 
                                     <hr>
 
+                                    <!-- 開票與收款 -->
+                                    <h6 class="mb-1">🧾 開票與收款設定</h6>
+                                    <div class="small text-muted mb-3">依這裡的設定，首頁與「提醒中心」會提醒什麼時候要開發票、什麼時候該收到款</div>
+
+                                    <div class="row">
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">開發票方式</label>
+                                            <select id="InvoiceCycle" class="form-select">
+                                                <option value="每筆">每筆（出貨 / 帳單日就開）</option>
+                                                <option value="月結">月結（每月固定一天開）</option>
+                                                <option value="不開">不需開發票</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4 mb-3" id="invoiceDayBox">
+                                            <label class="form-label">月結開票日</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">每月</span>
+                                                <input id="InvoiceDay" type="number" min="1" max="31" class="form-control" placeholder="31 = 月底">
+                                                <span class="input-group-text">號</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">每月固定匯款日</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">每月</span>
+                                                <input id="PayDay" type="number" min="1" max="31" class="form-control" placeholder="沒有就空白">
+                                                <span class="input-group-text">號</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">或：開票後幾天付款</label>
+                                            <div class="input-group">
+                                                <input id="PayTermDays" type="number" min="0" max="365" class="form-control" placeholder="空白 = 30">
+                                                <span class="input-group-text">天</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">帳務備註</label>
+                                            <input id="BillingNote" class="form-control" placeholder="例如：發票寄給會計 Amy">
+                                        </div>
+                                    </div>
+
+                                    <hr>
+
                                     <!-- 客戶追蹤 -->
                                     <h6 class="mb-3">📈 客戶追蹤</h6>
 

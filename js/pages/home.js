@@ -19,7 +19,7 @@ Pages.Home = (() => {
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
             "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince",
             "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense",
-            "chStall", "chStallSub", "chOnline", "chOnlineSub", "chB2b", "chB2bSub", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
+            "chStall", "chStallSub", "chOnline", "chOnlineSub", "chB2b", "chB2bSub", "remindBadges", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         if (!Auth.hasPermission(20, 10, 11)) dom.btnOpenCalendar.classList.add("d-none");
@@ -41,7 +41,7 @@ Pages.Home = (() => {
 
         // 每張表各自讀取：哪一區的資料先回來就先顯示（有快取時先顯示上次的資料）
         const tables = ["Memos", "Calendar", "CalendarDays"];
-        if (finance) tables.push("Receivable", "Expenses", "StallRecords", "BrandCosts", "Orders", "Products");
+        if (finance) tables.push("Receivable", "Expenses", "StallRecords", "BrandCosts", "Orders", "Products", "Companies", "Deposits");
 
         // 品牌損益是否含品牌攤提表（記住選擇）
         try { dom.plIncludeBrand.checked = localStorage.getItem("fonegle_pl_include_brand") !== "0"; } catch { }
@@ -74,6 +74,9 @@ Pages.Home = (() => {
 
             if (finance && "StallRecords" in data && "Orders" in data && "Products" in data)
                 renderChannels(data.StallRecords || [], data.Orders || [], data.Products || []);
+
+            if (finance && data.Receivable && "Companies" in data && "Deposits" in data)
+                renderTodo(data.Receivable, data.Companies || [], data.Deposits || []);
         };
 
         try {
@@ -291,6 +294,28 @@ Pages.Home = (() => {
     // =========================
     let lastFinance = null;
 
+    // 待辦提醒：開發票、收帳、保證金（逾期與 7 天內到期；規則見 js/billing.js）
+    function renderTodo(receivables, companies, deposits) {
+
+        const esc = App.esc;
+        const r = Billing.build({ receivables, companies, deposits, horizon: 7 });
+        const totalUnpaid = receivables.reduce((s, x) => s + Billing.unpaid(x), 0);
+        const badge = (icon, n, name) => n ? `<span class="badge ${name} ms-1">${icon} ${n}</span>` : "";
+
+        dom.remindBadges.innerHTML =
+            badge("🧾", r.invoice.length, "bg-info text-dark") + badge("💰", r.collect.length, "bg-warning text-dark") + badge("🔖", r.deposit.length, "bg-secondary");
+
+        dom.arList.innerHTML = `<div class="small text-muted mb-2">全部未收 <b>${money(totalUnpaid)}</b></div>` +
+            (r.all.slice(0, 8).map(x => `
+<div class="d-flex justify-content-between small py-1 border-bottom gap-2">
+    <span>${x.level === "overdue" ? `<span class="badge bg-danger">逾期</span>` : x.level === "today" ? `<span class="badge bg-warning text-dark">今天</span>` : `<span class="badge bg-light text-dark border">${x.days} 天後</span>`}
+        ${Billing.ICONS[x.kind]} ${esc(x.title)}</span>
+    <span class="text-nowrap"><b>${money(x.amount)}</b>　${esc(label(x.date))}</span>
+</div>`).join("") || `<div class="text-muted small">沒有 7 天內要開的發票、要收的帳或要追回的保證金 👍</div>`) +
+            (r.all.length > 8 ? `<div class="small text-muted mt-1">還有 ${r.all.length - 8} 則…</div>` : "") +
+            `<a href="page/reminders.html" class="btn btn-sm btn-link px-0 mt-2">前往提醒中心 →</a>`;
+    }
+
     // 各通路總損益（成立至今）：出攤 = 出攤紀錄盈虧；訂單 = 訂單總額 − 產品成本
     function renderChannels(stalls, orderRows, products) {
 
@@ -323,24 +348,6 @@ Pages.Home = (() => {
         const month = today.slice(0, 7);
         const esc = App.esc;
         const unpaid = r => App.num(r.Amount) - App.num(r.PaidAmount);
-
-        // 待收款：逾期或 7 天內到期
-        const list = receivables
-            .filter(r => unpaid(r) > 0 && App.toDateInput(r.DueDate) && App.toDateInput(r.DueDate) <= soon)
-            .sort((a, b) => App.toDateInput(a.DueDate).localeCompare(App.toDateInput(b.DueDate)));
-
-        const totalUnpaid = receivables.reduce((s, r) => s + Math.max(0, unpaid(r)), 0);
-
-        dom.arList.innerHTML = `<div class="small text-muted mb-2">全部未收 <b>${money(totalUnpaid)}</b></div>` + (list.map(r => {
-            const due = App.toDateInput(r.DueDate);
-            return `
-<div class="d-flex justify-content-between small py-1 border-bottom">
-    <span>${due < today ? `<span class="badge bg-danger">逾期</span>` : `<span class="badge bg-warning text-dark">即將到期</span>`}
-        ${esc(r.PayerName || "")}｜${esc(r.Item || "")}</span>
-    <span><b>${money(unpaid(r))}</b>　${esc(label(due))}</span>
-</div>`;
-        }).join("") || `<div class="text-muted small">沒有逾期或 7 天內到期的帳款 👍</div>`) +
-            `<a href="page/receivable.html" class="btn btn-sm btn-link px-0 mt-2">前往帳務管理 →</a>`;
 
         // 品牌損益：營收 = 收款（依付款日）+ 出攤營業額 + 品牌攤提表回收
         //           支出 = 支出表 + 出攤費用 + 品牌攤提表投入（全額計入投入當時）

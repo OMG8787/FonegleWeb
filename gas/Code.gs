@@ -51,7 +51,12 @@ const SCHEMA = {
         cols: 'ID:n LineUserId Name PhoneNumber Email IdCardNumber PassWord BirthdayYear:n BirthdayMonth:n BirthdayDay:n ' +
             'RoleId:n RoleList FavoriteFeaturesList AccountManager IsWeb:b IsMember:b IsBlocked:b IsActive:b ' +
             'IsMailActive:b IsPushMessage:b IsConverted:b OpenClaw OpenClawAgent ' +
-            'CreatedAt UpdatedAt UpdateLineUserId ApprovalStatus ApprovedBy ApprovedAt MustChangePassword:b'
+            'CreatedAt UpdatedAt UpdateLineUserId ApprovalStatus ApprovedBy ApprovedAt MustChangePassword:b RoleTemplateId:n'
+    },
+    // 角色（權限範本）：可自訂名稱（例如「老闆」）與可使用的權限模組；套用到帳號時複製權限
+    Roles: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n RoleName Permissions Description SortOrder:n CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
     // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
     Sessions: {
@@ -83,6 +88,13 @@ const SCHEMA = {
             'CreatedBy CreatedAt UpdatedBy UpdatedAt',
         money: 'BoothFee TransportCost StaffCost OtherCost CashIncome ElectronicPay PaymentFee Revenue FoodCost TotalCost ProfitLoss RevenueLow RevenueTarget'
     },
+    // 保證金追蹤（市集 / 場地 / 廠商押金）：付出去的錢，活動後要記得要回來
+    Deposits: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n StallId:n EventDate EventName Payee Amount:n PaidDate ExpectReturnDate ReturnedDate ReturnedAmount:n Status Note ' +
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'Amount ReturnedAmount'
+    },
     // 品牌攤提表（支出 / 回收）
     BrandCosts: {
         key: 'ID', seq: 'ID',
@@ -92,7 +104,8 @@ const SCHEMA = {
     Companies: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n CompanyName CompanyID CompanyPhone CompanyURL CompanyAddress ContactName ContactPhone ContactEmail ' +
-            'PaymentStstus:n IsMember:b IsConverted:b AccountManager TotalVisit:n TotalMail:n Source Note OpenClaw CreateLineID CreatedAt UpdateAt CustomerType'
+            'PaymentStstus:n IsMember:b IsConverted:b AccountManager TotalVisit:n TotalMail:n Source Note OpenClaw CreateLineID CreatedAt UpdateAt CustomerType ' +
+            'InvoiceCycle InvoiceDay:n PayTermDays:n PayDay:n BillingNote'
     },
     CrawlerSources: {
         key: 'ID', seq: 'ID',
@@ -131,7 +144,7 @@ const SCHEMA = {
         key: 'ReceivableID', seq: 'ReceivableID',
         cols: 'ReceivableID:n CompanyId:n PayerName BillDate DueDate Item OrderID MemberID Amount:n PaidAmount:n ' +
             'DiscountAmount:n TaxAmount:n RefundAmount:n PaymentMethod PaymentStatus TransactionNo InvoiceNo PaymentDate RefundDate Note ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt',
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt InvoiceDate',
         money: 'Amount PaidAmount DiscountAmount TaxAmount RefundAmount'
     },
     // 支出表
@@ -234,7 +247,8 @@ const MODULES = {
 
 const TABLE_INFO = {
     Users: ['system', '員工與會員帳號（密碼為雜湊，不可手動修改）'],
-    ID_UserRoles: ['system', '角色代碼'],
+    ID_UserRoles: ['system', '角色代碼（舊版）'],
+    Roles: ['system', '角色（權限範本，可自訂名稱與權限）'],
     ID_Permission: ['system', '權限代碼'],
     Memos: ['system', '備忘錄（個人，可共享；系統通知例如新帳號申請也會出現在這裡）'],
     Sessions: ['system', '目前登入中的裝置（刪除一列 = 強制該裝置登出，其他欄位請勿修改）'],
@@ -245,6 +259,7 @@ const TABLE_INFO = {
     MarketOrders: ['market', '市集現場點餐（每筆一張單，Items 為品項明細 JSON）'],
     StallRecords: ['market', '出攤紀錄（費用、收款、盈虧）'],
     CrawlerSources: ['market', '市集報名連結'],
+    Deposits: ['market', '保證金追蹤（付出 / 預計退還 / 已退還）'],
     Products: ['product', '產品'],
     ID_Category: ['product', '產品分類'],
     Material: ['product', '原料'],
@@ -311,6 +326,11 @@ const COLUMN_LABELS = {
     MfgDate: '製造日期', ExpDate: '有效日期', LastInventoryDate: '最後盤點日', FormulaCode: '配方代碼',
     FormulaName: '配方名稱', VersionNo: '版本', YieldQty: '預設倍數（製作幾個單位）', YieldUnit: '單位名稱（1L / 一份）', PackagingCost: '包材成本',
     UnitWeight: '單位重量（g，例如 1L = 1000）', YieldRate: '成品率 %（扣除損耗，預設 100）', BaseWeight: '基準總重（g）', SortOrder: '排序',
+    RoleTemplateId: '角色（Roles 的 ID）', Permissions: '權限代碼（以 | 分隔）',
+    InvoiceCycle: '開發票方式（每筆 / 月結 / 不開）', InvoiceDay: '月結開票日（31 = 月底）', PayTermDays: '開票後幾天付款',
+    PayDay: '每月固定匯款日', BillingNote: '帳務備註', InvoiceDate: '發票開立日',
+    StallId: '出攤紀錄編號', Payee: '付款對象（主辦 / 廠商）', PaidDate: '付出日期', ExpectReturnDate: '預計退還日',
+    ReturnedDate: '實際退還日', ReturnedAmount: '退還金額',
     IsVerified: '已確認為正確配方', VerifiedBy: '確認人', VerifiedAt: '確認時間', IsFavorite: '常用配方',
     LaborCost: '人工成本', TargetPrice: '預計售價', TargetCostRate: '目標成本率 %', MaterialCost: '原料成本',
     UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
@@ -390,6 +410,8 @@ const TABLE_PERMS = {
     StallRecords: { read: MARKET.concat(FINANCE), write: MARKET },
     MarketOrders: { read: MARKET.concat(FINANCE), write: MARKET },
     CrawlerSources: { read: MARKET, write: MARKET },
+    Deposits: { read: MARKET.concat(FINANCE), write: MARKET.concat(FINANCE) },
+    Roles: { read: 'all', write: [3] },
     ID_Category: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },
     Products: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },
     Material: { read: PRODUCT, write: PRODUCT },
@@ -557,6 +579,18 @@ function setup() {
         { ID: 14, Permission: '修改資料' },
         { ID: 15, Permission: '建立資料' }
     ].filter(r => !PERMISSION_CODES.some(c => c.ID === r.ID)).concat(PERMISSION_CODES));
+
+    // 預設角色（之後可在「帳號審核與權限」自行修改 / 新增）
+    seed('Roles', [
+        { ID: 1, RoleName: '👑 老闆', Permissions: '13', Description: '全部功能與資料', SortOrder: 1 },
+        { ID: 2, RoleName: '🧑‍💼 店長 / 營運', Permissions: '12|20|21|22|23', Description: '營運相關全部功能（不含財務與系統）', SortOrder: 2 },
+        { ID: 3, RoleName: '🎪 市集人員', Permissions: '20|21', Description: '行事曆、現場點餐、出攤紀錄、保證金', SortOrder: 3 },
+        { ID: 4, RoleName: '🏭 生產人員', Permissions: '20|22', Description: '產品、配方、原料、庫存、生產', SortOrder: 4 },
+        { ID: 5, RoleName: '💼 會計', Permissions: '23|24', Description: '訂單、客戶、帳務、支出、提醒中心', SortOrder: 5 },
+        { ID: 6, RoleName: '📣 行銷', Permissions: '20|25', Description: '行事曆、AI 文案', SortOrder: 6 },
+        { ID: 7, RoleName: '👀 唯讀', Permissions: '16|20|21|22', Description: '只能查看', SortOrder: 7 },
+        { ID: 8, RoleName: '🚫 無權限', Permissions: '', Description: '只能使用首頁、備忘錄與帳號設定', SortOrder: 8 }
+    ]);
 
     // 補上新版模組權限代碼（已存在的不覆蓋）
     const permTable = tbl_('ID_Permission');
@@ -1633,6 +1667,14 @@ function doRemoveWhere_(name, where, ctx, isReplace) {
 // 資料表特殊邏輯
 // ============================================================
 const HOOKS = {
+    Roles: {
+        beforeInsert(obj, ctx) { normalizeRolePerms_(obj, null, ctx); },
+        beforeUpdate(patch, old, ctx) { normalizeRolePerms_(patch, old, ctx); },
+        beforeRemove(old, ctx) {
+            if (parsePerms_(old.Permissions).indexOf(PERM.ADMIN) >= 0 && !isAdmin_(ctx))
+                fail_('🔐 只有最高系統管理員可以刪除含「最高系統管理員」的角色');
+        }
+    },
     Users: {
         beforeInsert(obj, ctx, t) {
             if (!obj.LineUserId)
@@ -1674,6 +1716,18 @@ const HOOKS = {
         }
     }
 };
+
+function normalizeRolePerms_(obj, old, ctx) {
+    if (obj.RoleName !== undefined && !String(obj.RoleName).trim()) fail_('請輸入角色名稱');
+    // 含「最高系統管理員」的角色：只有最高管理員可以修改（包含改名）
+    if (old && parsePerms_(old.Permissions).indexOf(PERM.ADMIN) >= 0 && !isAdmin_(ctx))
+        fail_('🔐 只有最高系統管理員可以修改含「最高系統管理員」的角色');
+    if (obj.Permissions === undefined) return;
+    const list = parsePerms_(obj.Permissions);
+    if (list.indexOf(PERM.ADMIN) >= 0 && !isAdmin_(ctx))
+        fail_('🔐 只有最高系統管理員可以設定含「最高系統管理員」的角色');
+    obj.Permissions = list.filter((n, i) => list.indexOf(n) === i).sort((a, b) => a - b).join('|');
+}
 
 // 權限變更檢查：
 //   - 只有最高管理員（13）可以授予或移除「最高管理員」
@@ -1719,6 +1773,7 @@ function accessList_(req, ctx) {
             ApprovedAt: u.ApprovedAt,
             CreatedAt: u.CreatedAt,
             MustChangePassword: u.MustChangePassword === true,
+            RoleTemplateId: u.RoleTemplateId === null || u.RoleTemplateId === undefined ? null : u.RoleTemplateId,
             ResetRequestedAt: resetRequests[u.LineUserId] || '',
             IsMe: u.LineUserId === ctx.userId
         };
@@ -1753,6 +1808,8 @@ function setUserAccess_(req, ctx) {
                 if (!c.isActive && found.obj.LineUserId === ctx.userId) fail_('不能停用自己的帳號');
                 patch.IsActive = c.isActive;
             }
+
+            if (c.roleId !== undefined) patch.RoleTemplateId = c.roleId === null || c.roleId === '' ? '' : Number(c.roleId);
 
             patch.UpdatedAt = now_();
             patch.UpdateLineUserId = ctx.userId;
@@ -1791,6 +1848,8 @@ function approveUser_(req, ctx) {
             assertRoleChange_(ctx, found.obj.RoleList, text, found.obj.LineUserId);
             patch.RoleList = text;
         }
+
+        if (approve && req.roleId !== undefined) patch.RoleTemplateId = req.roleId === null || req.roleId === '' ? '' : Number(req.roleId);
 
         writeRow_(t, found, patch);
         uncacheUser_(found.obj.LineUserId);

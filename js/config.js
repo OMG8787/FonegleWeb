@@ -33,6 +33,7 @@ const Config = {
                 { id: 31, Permission: [21, 10, 24], name: "📊 市集報表", page: "page/market-report.html" },
                 { id: 34, Permission: [21, 10, 24], name: "🧾 出攤紀錄", page: "page/stall.html" },
                 { id: 33, Permission: [21, 10], name: "🔗 市集報名連結", page: "page/market-link.html" },
+                { id: 39, Permission: [21, 10, 24], name: "🔖 保證金追蹤", page: "page/deposit.html" },
                 { id: 32, Permission: [], name: "🏷️ 品牌資訊", page: "page/brand.html" }
             ]
         },
@@ -63,6 +64,7 @@ const Config = {
             group: "財務",
             icon: "💰",
             items: [
+                { id: 41, Permission: [24], name: "🔔 提醒中心（發票 / 收帳 / 保證金）", page: "page/reminders.html" },
                 { id: 14, Permission: [24], name: "💰 帳務管理（應收）", page: "page/receivable.html" },
                 { id: 36, Permission: [24], name: "💸 支出表", page: "page/expense.html" },
                 { id: 35, Permission: [24], name: "📒 品牌攤提表", page: "page/amortization.html" }

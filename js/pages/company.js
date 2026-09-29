@@ -84,6 +84,8 @@ Pages.Business = (() => {
 
     function bindEvents() {
 
+        document.getElementById("InvoiceCycle")?.addEventListener("change", billingDom);
+
         dom.btnSearch?.addEventListener(
             "click",
             searchBusiness
@@ -426,7 +428,20 @@ ${item.CompanyName}
         scrollToForm();
     }
 
+    const BILLING = ["InvoiceCycle", "InvoiceDay", "PayDay", "PayTermDays", "BillingNote"];
+
+    function billingDom() {
+        BILLING.forEach(id => dom[id] = dom[id] || document.getElementById(id));
+        const box = document.getElementById("invoiceDayBox");
+        if (box) box.classList.toggle("d-none", dom.InvoiceCycle.value !== "月結");
+    }
+
     function fillForm(d) {
+
+        billingDom();
+        dom.InvoiceCycle.value = ["每筆", "月結", "不開"].includes(d.InvoiceCycle) ? d.InvoiceCycle : "每筆";
+        ["InvoiceDay", "PayDay", "PayTermDays", "BillingNote"].forEach(k => dom[k].value = d[k] ?? "");
+        billingDom();
 
         dom.TargetCompanyName.value =
             d.CompanyName || "";
@@ -608,7 +623,13 @@ ${item.CompanyName}
 
             Source: dom.Source.value.trim(),
 
-            Note: dom.Note.value
+            Note: dom.Note.value,
+
+            InvoiceCycle: (billingDom(), dom.InvoiceCycle.value),
+            InvoiceDay: App.numOrNull(dom.InvoiceDay.value),
+            PayDay: App.numOrNull(dom.PayDay.value),
+            PayTermDays: App.numOrNull(dom.PayTermDays.value),
+            BillingNote: dom.BillingNote.value.trim()
         };
     }
 

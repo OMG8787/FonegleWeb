@@ -10,7 +10,7 @@ Pages.Receivable = (() => {
     "use strict";
 
     const dom = {};
-    const FIELDS = ["Item", "BillDate", "DueDate", "Amount", "PaidAmount", "PaymentMethod", "PaymentDate", "InvoiceNo", "Note", "PayerName"];
+    const FIELDS = ["Item", "BillDate", "DueDate", "Amount", "PaidAmount", "PaymentMethod", "PaymentDate", "InvoiceNo", "InvoiceDate", "Note", "PayerName"];
 
     let records = [];
     let companies = [];
@@ -265,7 +265,7 @@ Pages.Receivable = (() => {
         current = r;
 
         FIELDS.forEach(f => {
-            dom[f].value = ["BillDate", "DueDate", "PaymentDate"].includes(f) ? App.toDateInput(r[f]) : (r[f] ?? "");
+            dom[f].value = ["BillDate", "DueDate", "PaymentDate", "InvoiceDate"].includes(f) ? App.toDateInput(r[f]) : (r[f] ?? "");
         });
 
         const known = companies.some(c => String(c.ID) === String(r.CompanyId));
@@ -295,6 +295,7 @@ Pages.Receivable = (() => {
             PaymentMethod: dom.PaymentMethod.value,
             PaymentDate: dom.PaymentDate.value,
             InvoiceNo: dom.InvoiceNo.value.trim(),
+            InvoiceDate: dom.InvoiceDate.value,
             PaymentStatus: statusOf(dom.Amount.value, dom.PaidAmount.value),
             Note: dom.Note.value.trim()
         };
@@ -307,6 +308,12 @@ Pages.Receivable = (() => {
         if (!data.PayerName) {
             alert("請選擇店家");
             return;
+        }
+
+        // 到期日空白：依客戶的開票與付款條件自動計算
+        if (!data.DueDate && data.BillDate && window.Billing) {
+            const c = companies.find(x => String(x.ID) === String(data.CompanyId));
+            data.DueDate = Billing.payDue(c, data);
         }
 
         if (!data.Item || !data.BillDate || data.Amount === null) {
