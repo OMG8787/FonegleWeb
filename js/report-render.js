@@ -136,7 +136,8 @@ ${o.web ? `body{background:${o.pageBg};padding:20px}
 .rp-cover{min-height:0;padding:30px 0;border-bottom:0;break-after:auto;page-break-after:auto}
 .mk-hero{margin:0 -26px}
 @media print{body{padding:0}.rp-page{border:0;box-shadow:none;border-radius:0}}` : ""}
-.rp-watermark{position:fixed;left:0;right:0;top:45%;text-align:center;font-size:88px;font-weight:700;color:var(--d);opacity:.05;transform:rotate(-24deg);pointer-events:none;z-index:0;white-space:nowrap}
+.rp-wm{position:fixed;pointer-events:none;z-index:5;white-space:nowrap}
+.rp-logo{margin:0 0 1em}.rp-logo img{max-width:100%;height:auto;display:inline-block}
 .rp-page>*{position:relative;z-index:1}
 h1,h2,h3{color:var(--d);line-height:1.35}
 .rp-cover{min-height:250mm;display:flex;flex-direction:column;justify-content:center;text-align:center;border-bottom:6px solid var(--p);break-after:page;page-break-after:always}
@@ -145,7 +146,6 @@ h1,h2,h3{color:var(--d);line-height:1.35}
 .rp-cover .sub{font-size:1.2em;color:#555}
 .rp-cover .cust{margin-top:1.5em;font-size:1.1em}
 .rp-cover img.cv{max-width:70%;max-height:90mm;margin:1.5em auto;border-radius:10px;object-fit:contain}
-.rp-cover .logo{max-height:22mm;margin:0 auto 1em}
 .rp-cover .meta{margin-top:2em;color:#777;font-size:.9em}
 .rp-h2{font-size:1.55em;margin:1.6em 0 .6em;padding-left:.6em;border-left:6px solid var(--p);break-after:avoid;page-break-after:avoid}
 .rp-h2 .no{color:var(--p);margin-right:.4em}
@@ -242,7 +242,7 @@ ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
         const text = safeColor(t.textColor, "#2b2b2b");
         const font = FONTS[t.font] || FONTS.jhenghei;
         const page = PAGES[t.pageSize] || PAGES.a4;
-        const baseSize = safeNum(t.baseSize, 14, 10, 22);
+        const baseSize = safeNum(t.baseSize, 14, 8, 48);
         const logo = safeImgSrc(t.logo);
         const web = t.layout === "web";
 
@@ -261,6 +261,56 @@ ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
         const bold = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
         const RATIOS = { "1/1": "1/1", "4/3": "4/3", "3/4": "3/4", "16/9": "16/9" };
         const withRatio = (html, r) => html.replace("<img ", `<img style="aspect-ratio:${RATIOS[r] || "1/1"}" `);
+
+        // Logo：可選擇顯示在封面 / 頁首 / 頁尾，並調整寬度、對齊與位移
+        const logoHtml = where => {
+            if (!logo || (t.logoShow || "cover") !== where) return "";
+            const al = ["left", "right"].includes(t.logoAlign) ? t.logoAlign : "center";
+            const dx = safeNum(t.logoDx, 0, -400, 400), dy = safeNum(t.logoDy, 0, -200, 200);
+            return `<div class="rp-logo" style="text-align:${al}"><img src="${esc(logo)}" alt="" style="width:${safeNum(t.logoW, 120, 20, 800)}px;${dx || dy ? `transform:translate(${dx}px,${dy}px)` : ""}"></div>`;
+        };
+
+        // 浮水印：文字或圖片，可調透明度、大小、角度、顏色與位置（含整頁平鋪）
+        function watermarkHtml() {
+            if (!t.watermark) return "";
+            const isImg = t.watermarkType === "image";
+            const wImg = safeImgSrc(t.wmImage);
+            const txt = String(t.watermarkText || "");
+            if (isImg ? !wImg : !txt) return "";
+
+            const op = safeNum(t.wmOpacity, 6, 1, 100) / 100;
+            const size = safeNum(t.wmSize, isImg ? 240 : 88, 10, 1200);
+            const ang = safeNum(t.wmAngle, -24, -180, 180);
+            const color = safeColor(t.wmColor, dark);
+            const pos = ["tile", "tl", "tr", "bl", "br"].includes(t.wmPos) ? t.wmPos : "center";
+
+            if (pos === "tile") {
+                const step = Math.round(size * (isImg ? 1.6 : Math.max(3, txt.length * 0.9 + 1.5)));
+                const inner = isImg
+                    ? `<image href="${esc(wImg)}" x="${step / 2 - size / 2}" y="${step / 2 - size / 2}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet" transform="rotate(${ang} ${step / 2} ${step / 2})"/>`
+                    : `<text x="${step / 2}" y="${step / 2}" font-size="${size}" font-weight="700" fill="${color}" text-anchor="middle" dominant-baseline="middle" transform="rotate(${ang} ${step / 2} ${step / 2})" font-family="Microsoft JhengHei,sans-serif">${esc(txt)}</text>`;
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${step}" height="${step}">${inner}</svg>`;
+                return `<div class="rp-wm" style="inset:0;opacity:${op};background-image:url(&quot;data:image/svg+xml;utf8,${encodeURIComponent(svg)}&quot;)"></div>`;
+            }
+
+            const place = { center: "left:0;right:0;top:45%;text-align:center", tl: "left:24px;top:24px", tr: "right:24px;top:24px", bl: "left:24px;bottom:24px", br: "right:24px;bottom:24px" }[pos];
+            const inner = isImg
+                ? `<img src="${esc(wImg)}" alt="" style="width:${size}px;height:auto">`
+                : `<span style="font-size:${size}px;font-weight:700;color:${color}">${esc(txt)}</span>`;
+            return `<div class="rp-wm" style="${place};opacity:${op};transform:rotate(${ang}deg)">${inner}</div>`;
+        }
+
+        // 每個區塊都可以微調：文字大小、上下間距、左右位移
+        function deco(b, html) {
+            const st = [];
+            const fs = safeNum(b.fs, 0, 0, 200);
+            if (fs) st.push(`font-size:${fs}px`);
+            const mt = safeNum(b.mt, 0, -60, 300), mb = safeNum(b.mb, 0, -60, 300), dx = safeNum(b.dx, 0, -400, 400);
+            if (mt) st.push(`margin-top:${mt}px`);
+            if (mb) st.push(`margin-bottom:${mb}px`);
+            if (dx) st.push(`position:relative;left:${dx}px`);
+            return st.length && b.type !== "pagebreak" ? `<div style="${st.join(";")}">${html}</div>` : html;
+        }
 
         function boxWrap(b, html) {
             const x = b.box;
@@ -283,11 +333,11 @@ ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
 
                 case "cover":
                     html = `<section class="rp-cover"${attr(b)}>
-${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ""}
+${logoHtml("cover")}
 ${b.kicker ? `<div class="kicker">${esc(b.kicker)}</div>` : ""}
 <h1>${esc(b.title || t.title || "")}</h1>
 ${b.subtitle ? `<div class="sub">${esc(b.subtitle)}</div>` : ""}
-${safeImgSrc(b.image) ? `<img class="cv" src="${esc(safeImgSrc(b.image))}" alt="">` : ""}
+${safeImgSrc(b.image) ? `<img class="cv" src="${esc(safeImgSrc(b.image))}" alt="" style="max-width:${safeNum(b.imgW, 70, 10, 100)}%;${Number(b.imgH) ? `height:${safeNum(b.imgH, 0, 20, 900)}px;max-height:none` : ""}">` : ""}
 ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
 <div class="meta">${[m.reportNo && "編號 " + esc(m.reportNo), m.date && esc(m.date), m.author && esc(m.author), m.version && esc(m.version)].filter(Boolean).join("　|　")}</div>
 </section>`;
@@ -335,13 +385,13 @@ ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
                     const n = Math.max(1, list.length);
                     html = `<div class="rp-figs ${["center", "right"].includes(b.align) ? b.align : ""}"${attr(b)}>${list.map(i => {
                         fig++;
-                        return `<figure class="rp-figure" style="width:calc(${w / n}% - 12px)">${img(i.src, i.caption)}<figcaption>圖 ${fig}${i.caption ? "　" + esc(i.caption) : ""}</figcaption></figure>`;
+                        return `<figure class="rp-figure" style="width:calc(${w / n}% - 12px)">${Number(b.imgH) ? img(i.src, i.caption).replace("<img ", `<img style="height:${safeNum(b.imgH, 0, 20, 900)}px;object-fit:contain" `) : img(i.src, i.caption)}<figcaption>圖 ${fig}${i.caption ? "　" + esc(i.caption) : ""}</figcaption></figure>`;
                     }).join("")}</div>`;
                     break;
                 }
 
                 case "imageText":
-                    html = `<div class="rp-it ${b.imageSide === "right" ? "rev" : ""}"${attr(b)}><div class="im">${img(b.image)}</div><div class="tx">${sanitizeRichHtml(b.html)}</div></div>`;
+                    html = `<div class="rp-it ${b.imageSide === "right" ? "rev" : ""}"${attr(b)}><div class="im" style="flex:0 0 ${safeNum(b.imgW, 42, 10, 90)}%">${img(b.image)}</div><div class="tx">${sanitizeRichHtml(b.html)}</div></div>`;
                     break;
 
                 case "columns": {
@@ -380,7 +430,7 @@ ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
 
                 case "hero": {
                     const bg = safeImgSrc(b.image);
-                    html = `<section class="mk-hero"${attr(b)} style="${bg ? `background-image:linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url(&quot;${esc(bg)}&quot;)` : ""}">
+                    html = `<section class="mk-hero"${attr(b)} style="${bg ? `background-image:linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url(&quot;${esc(bg)}&quot;)` : ""}${Number(b.minH) ? `;min-height:${safeNum(b.minH, 0, 40, 900)}px` : ""}">
 <h1>${esc(b.headline)}</h1>${b.sub ? `<p>${esc(b.sub)}</p>` : ""}
 ${b.ctaText ? btn({ text: b.ctaText, url: b.ctaUrl }, "mk-btn") : ""}</section>`;
                     break;
@@ -424,7 +474,7 @@ ${nm ? `<div class="pn">${url ? `<a href="${esc(url)}" target="_blank" rel="noop
                 case "cta":
                     html = `<div class="mk-cta"${attr(b)}><h2>${esc(b.title)}</h2><div>${esc(b.text)}</div>
 ${b.buttonText ? `<p>${btn({ text: b.buttonText, url: b.url }, "mk-btn")}</p>` : ""}
-${safeImgSrc(b.qr) ? `<img src="${esc(safeImgSrc(b.qr))}" alt="QR Code">` : ""}</div>`;
+${safeImgSrc(b.qr) ? `<img src="${esc(safeImgSrc(b.qr))}" alt="QR Code" style="width:${safeNum(b.qrSize, 110, 40, 400)}px;height:${safeNum(b.qrSize, 110, 40, 400)}px">` : ""}</div>`;
                     break;
 
                 case "gallery": {
@@ -445,7 +495,7 @@ ${safeImgSrc(b.qr) ? `<img src="${esc(safeImgSrc(b.qr))}" alt="QR Code">` : ""}<
                     html = "";
             }
 
-            return boxWrap(b, html);
+            return deco(b, boxWrap(b, html));
         });
 
         const gfont = font.google ? `<link href="https://fonts.googleapis.com/css2?family=${font.google}&display=swap" rel="stylesheet">` : "";
@@ -463,7 +513,7 @@ ${t.footerText ? `<div>${esc(t.footerText)}</div>` : ""}${t.footerBless ? `<div>
 
         return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>${gfont}<style>${css}</style></head>
-<body>${t.watermark && t.watermarkText ? `<div class="rp-watermark">${esc(t.watermarkText)}</div>` : ""}<div class="rp-page"><div class="rp-content">${parts.join("")}${footer}</div></div></body></html>`;
+<body>${watermarkHtml()}<div class="rp-page"><div class="rp-content">${logoHtml("top")}${parts.join("")}${logoHtml("bottom")}${footer}</div></div></body></html>`;
     }
 
     return { THEMES, FONTS, PAGES, CALLOUTS, BOX_STYLES, esc, safeColor, safeImgSrc, safeUrl, sanitizeRichHtml, buildReportHtml };

@@ -16,6 +16,7 @@ Pages.Report = (() => {
     const BRAND_KEY = "fonegle_report_brand";
 
     let report = null;
+    let userTpl = [];
     let openId = null;
     let events = [];
     let days = [];
@@ -148,14 +149,17 @@ Pages.Report = (() => {
 
         [
             "btnNew", "btnDownload", "btnPrint", "srcKind", "srcRecord", "btnSrcBuild", "btnSrcRefill",
-            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl"
+            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl", "btnTplSave", "btnTplDel", "btnTplExport", "btnTplImport", "tplFile"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         dom.addType.innerHTML = TYPE_GROUPS.map(([g, keys]) =>
             `<optgroup label="${g}">${keys.map(k => `<option value="${k}">${TYPES[k].icon} ${TYPES[k].label}</option>`).join("")}</optgroup>`).join("");
-        dom.tplSelect.innerHTML = Object.keys(TEMPLATES).map(k => `<option value="${k}">${TEMPLATES[k].name}</option>`).join("");
+
 
         bind();
+
+        userTpl = (await DraftStore.get("templates")) || [];
+        renderTplOptions();
 
         const saved = await DraftStore.get(draftKey());
         report = saved && Array.isArray(saved.blocks) ? normalize(saved) : await newReport();
@@ -182,6 +186,8 @@ Pages.Report = (() => {
             preset: "brand", primary: R.THEMES.brand.primary, dark: R.THEMES.brand.dark, textColor: "#2b2b2b",
             font: "jhenghei", baseSize: 14, pageSize: "a4",
             layout: "doc", pageBg: "#f4f6f8", cardBg: "#ffffff", cardWidth: 720, cardRadius: 12,
+            logoShow: "cover", logoAlign: "center", logoW: 120, logoDx: 0, logoDy: 0,
+            watermarkType: "text", wmImage: "", wmColor: "#4d341c", wmSize: 88, wmOpacity: 6, wmAngle: -24, wmPos: "center",
             companyName: "瘋菓 Fonegle Dessert", companySub: "", logo: "",
             watermark: false, watermarkText: "瘋菓", title: "報告", numbering: true,
             footerText: "", footerBless: "Thank you."
@@ -254,7 +260,13 @@ Pages.Report = (() => {
             document.getElementById(`blk-${b.id}`)?.scrollIntoView({ block: "nearest" });
         });
 
+        dom.tplSelect.addEventListener("change", () => { dom.btnTplDel.disabled = !dom.tplSelect.value.startsWith("u:"); });
         dom.btnTpl.addEventListener("click", applyTemplate);
+        dom.btnTplSave.addEventListener("click", saveTemplate);
+        dom.btnTplDel.addEventListener("click", deleteTemplate);
+        dom.btnTplExport.addEventListener("click", exportTemplate);
+        dom.btnTplImport.addEventListener("click", () => dom.tplFile.click());
+        dom.tplFile.addEventListener("change", importTemplate);
         dom.srcKind.addEventListener("change", renderSourceOptions);
         dom.btnSrcBuild.addEventListener("click", () => useSource(false));
         dom.btnSrcRefill.addEventListener("click", () => useSource(true));
@@ -336,7 +348,7 @@ Pages.Report = (() => {
         }
 
         if (t.matches("[data-cmd-size]")) {
-            if (e.type === "change" && t.value) { runCmd("size", t.value); t.value = ""; }
+            if (e.type === "change" && t.value) { runCmd("size", t.dataset.cmdSize === "px" ? Number(t.value) + "px" : t.value); t.value = ""; }
             return;
         }
 
@@ -505,6 +517,7 @@ ${s && !multi ? `<button class="btn btn-sm btn-outline-secondary mb-2" data-act=
     <button type="button" class="btn btn-sm btn-outline-secondary" data-cmd="italic"><i>I</i></button>
     <button type="button" class="btn btn-sm btn-outline-secondary" data-cmd="underline"><u>U</u></button>
     <select class="form-select form-select-sm w-auto py-0" data-cmd-size="1"><option value="">字級</option><option value="0.85em">小</option><option value="1em">標準</option><option value="1.25em">大</option><option value="1.6em">特大</option></select>
+    <input type="number" min="6" max="200" class="form-control form-control-sm py-0" style="width:74px" data-cmd-size="px" placeholder="px" title="選取文字後，輸入字級（px）再按 Enter">
     <input type="color" value="#c0392b" data-cmd-color="foreColor" title="文字顏色">
     <input type="color" value="#fff3a0" data-cmd-color="hiliteColor" title="螢光筆">
     <button type="button" class="btn btn-sm btn-outline-secondary" data-cmd="insertUnorderedList">• 清單</button>
@@ -552,8 +565,31 @@ ${x.custom ? `<div class="row g-2">${field(b, "box.bg", "底色", { type: "color
 </div></details>`;
     }
 
+    // 每個區塊：文字大小、上下間距、左右位移，以及各類型專屬的圖片 / 元件大小
+    function sizeEditor(b) {
+
+        const spec = {
+            cover: [["imgW", "封面圖寬度 %", 70, 10, 100], ["imgH", "封面圖高度 px（0 = 自動）", 0, 0, 900]],
+            imageText: [["imgW", "圖片寬度 %", 42, 10, 90]],
+            images: [["imgH", "圖片高度 px（0 = 自動）", 0, 0, 900]],
+            hero: [["minH", "區塊高度 px（0 = 自動）", 0, 0, 900]],
+            cta: [["qrSize", "QR 圖大小 px", 110, 40, 400]]
+        }[b.type] || [];
+
+        spec.forEach(([k, , def]) => { if (b[k] === undefined) b[k] = def; });
+
+        const used = ["fs", "mt", "mb", "dx"].some(k => Number(b[k])) || spec.some(([k, , def]) => Number(b[k]) !== def);
+
+        return `<details class="er-sub mt-2" ${used ? "open" : ""}><summary class="small fw-bold">📐 大小與位置</summary><div class="mt-2">
+<div class="row g-2">${spec.map(([k, label, , min, max]) => field(b, k, label, { type: "number", min, max, col: "col-6" })).join("")}
+${field(b, "fs", "文字大小 px（0 = 依主題）", { type: "number", min: 0, max: 200, col: "col-6" })}
+${field(b, "mt", "上方間距 px", { type: "number", min: -60, max: 300, col: "col-6" })}
+${field(b, "mb", "下方間距 px", { type: "number", min: -60, max: 300, col: "col-6" })}
+${field(b, "dx", "左右位移 px（負數往左）", { type: "number", min: -400, max: 400, col: "col-6" })}</div></div></details>`;
+    }
+
     function editorBody(b) {
-        return typeEditor(b) + (NO_BOX[b.type] ? "" : boxEditor(b));
+        return typeEditor(b) + (b.type === "pagebreak" ? "" : sizeEditor(b)) + (NO_BOX[b.type] ? "" : boxEditor(b));
     }
 
     function typeEditor(b) {
@@ -674,14 +710,32 @@ ${t.layout === "web"
 ${f("theme.preset", "預設配色", { opts: Object.keys(R.THEMES).map(k => [k, R.THEMES[k].name]) })}
 ${f("theme.font", "字型", { opts: Object.keys(R.FONTS).map(k => [k, R.FONTS[k].name]) })}
 ${f("theme.primary", "主色", { type: "color" })}${f("theme.dark", "標題深色", { type: "color" })}
-${f("theme.textColor", "內文顏色", { type: "color" })}${f("theme.baseSize", "內文字級 px", { type: "number", min: 10, max: 22 })}
+${f("theme.textColor", "內文顏色", { type: "color" })}${f("theme.baseSize", "內文字級 px", { type: "number", min: 8, max: 48 })}
 ${f("theme.numbering", "章節自動編號", { check: true, col: "col-12 mb-2" })}
 </div></div>
 <div class="er-sub"><div class="fw-bold small mb-2">🏷️ 品牌</div><div class="row g-0">
 ${f("theme.companyName", "公司名稱")}${f("theme.companySub", "副標（英文標語等）")}
 ${f("theme.footerText", "頁尾聲明", { col: "col-12 mb-2" })}${f("theme.footerBless", "頁尾祝福語", { col: "col-12 mb-2" })}
-${f("theme.watermark", "顯示浮水印", { check: true })}${f("theme.watermarkText", "浮水印文字")}
-</div><div class="small text-muted">Logo（會放在封面）</div>${drop("@", "theme.logo", t.logo)}</div>
+</div></div>
+<div class="er-sub"><div class="fw-bold small mb-2">🖼️ Logo</div>
+${drop("@", "theme.logo", t.logo)}
+<div class="row g-0">
+${f("theme.logoShow", "顯示位置", { opts: [["cover", "封面"], ["top", "每份內容最上方"], ["bottom", "內容最下方（頁尾前）"], ["none", "不顯示"]] })}
+${f("theme.logoAlign", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] })}
+${f("theme.logoW", "寬度 px", { type: "number", min: 20, max: 800 })}
+${f("theme.logoDx", "左右位移 px", { type: "number", min: -400, max: 400 })}
+${f("theme.logoDy", "上下位移 px", { type: "number", min: -200, max: 200 })}
+</div></div>
+<div class="er-sub"><div class="fw-bold small mb-2">💧 浮水印</div><div class="row g-0">
+${f("theme.watermark", "顯示浮水印", { check: true, re: true, col: "col-12 mb-2" })}
+${t.watermark ? `
+${f("theme.watermarkType", "類型", { re: true, opts: [["text", "文字"], ["image", "圖片（例如 Logo）"]] })}
+${f("theme.wmPos", "位置", { opts: [["center", "置中"], ["tile", "整頁平鋪"], ["tl", "左上角"], ["tr", "右上角"], ["bl", "左下角"], ["br", "右下角"]] })}
+${t.watermarkType === "image" ? `<div class="col-12">${drop("@", "theme.wmImage", t.wmImage)}</div>` : `${f("theme.watermarkText", "浮水印文字")}${f("theme.wmColor", "文字顏色", { type: "color" })}`}
+${f("theme.wmSize", t.watermarkType === "image" ? "圖片寬度 px" : "文字大小 px", { type: "number", min: 10, max: 1200 })}
+${f("theme.wmOpacity", "濃度 %（越小越淡）", { type: "number", min: 1, max: 100 })}
+${f("theme.wmAngle", "旋轉角度（度）", { type: "number", min: -180, max: 180 })}` : ""}
+</div></div>
 ${saveBtns}`;
     }
 
@@ -734,7 +788,7 @@ ${saveBtns}`;
 
         const o = objOf(zone.dataset.drop);
         const p = zone.dataset.p;
-        const keepPng = p === "theme.logo" || p === "qr";
+        const keepPng = p === "theme.logo" || p === "theme.wmImage" || p === "qr";
 
         try {
             const urls = [];
@@ -1002,15 +1056,95 @@ ${saveBtns}`;
         }
     };
 
+    function renderTplOptions(selected) {
+
+        const mine = userTpl.map(t => `<option value="u:${E(t.id)}">⭐ ${E(t.name)}</option>`).join("");
+
+        dom.tplSelect.innerHTML = `<optgroup label="內建範本（依品牌對外網頁整理）">${Object.keys(TEMPLATES).map(k => `<option value="b:${k}">${TEMPLATES[k].name}</option>`).join("")}</optgroup>` +
+            (mine ? `<optgroup label="我的範本">${mine}</optgroup>` : "");
+
+        if (selected) dom.tplSelect.value = selected;
+        dom.btnTplDel.disabled = !dom.tplSelect.value.startsWith("u:");
+    }
+
+    function currentTpl() {
+
+        const v = dom.tplSelect.value;
+        if (v.startsWith("b:")) return TEMPLATES[v.slice(2)] && { name: TEMPLATES[v.slice(2)].name, theme: TEMPLATES[v.slice(2)].theme, blocks: TEMPLATES[v.slice(2)].blocks() };
+        const u = userTpl.find(t => "u:" + t.id === v);
+        return u && { name: u.name, theme: u.theme, blocks: JSON.parse(JSON.stringify(u.blocks)) };
+    }
+
+    async function saveTemplate() {
+
+        const name = (prompt("範本名稱？（同名會覆蓋）", "") || "").trim();
+        if (!name) return;
+
+        const item = { id: (userTpl.find(t => t.name === name) || {}).id || uid(), name, theme: JSON.parse(JSON.stringify(report.theme)), blocks: JSON.parse(JSON.stringify(report.blocks)) };
+        item.blocks.forEach(b => delete b.auto);
+        userTpl = userTpl.filter(t => t.id !== item.id).concat(item);
+
+        if (!(await DraftStore.set("templates", userTpl))) { alert("範本無法儲存（瀏覽器空間不足，圖片太多或太大）"); return; }
+        renderTplOptions("u:" + item.id);
+        alert(`✅ 已存成「${name}」，之後可從範本清單的「我的範本」套用`);
+    }
+
+    async function deleteTemplate() {
+
+        const v = dom.tplSelect.value;
+        const t = userTpl.find(x => "u:" + x.id === v);
+        if (!t || !confirm(`刪除我的範本「${t.name}」？`)) return;
+
+        userTpl = userTpl.filter(x => x !== t);
+        await DraftStore.set("templates", userTpl);
+        renderTplOptions();
+    }
+
+    function exportTemplate() {
+
+        const name = (report.blocks.find(b => b.type === "cover")?.title || report.theme.title || "範本").replace(/[\\/:*?"<>|]/g, "_");
+        const data = { fonegleTemplate: 1, name, theme: report.theme, blocks: report.blocks.map(b => { const c = Object.assign({}, b); delete c.auto; return c; }) };
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+        a.download = `${name}.範本.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+
+    async function importTemplate() {
+
+        const file = dom.tplFile.files[0];
+        dom.tplFile.value = "";
+        if (!file) return;
+
+        try {
+            const d = JSON.parse(await file.text());
+            if (!d || d.fonegleTemplate !== 1 || !Array.isArray(d.blocks) || d.blocks.length > 300) throw new Error("不是範本檔");
+            const blocks = d.blocks.filter(b => b && TYPES[b.type]);
+            if (!blocks.length) throw new Error("沒有可用的區塊");
+
+            const item = { id: uid(), name: String(d.name || "匯入的範本").slice(0, 40), theme: Object.assign(defaultTheme(), d.theme || {}), blocks: blocks.map(b => { const c = Object.assign({}, b); delete c.id; return c; }) };
+            userTpl.push(item);
+
+            if (!(await DraftStore.set("templates", userTpl))) throw new Error("空間不足，無法儲存");
+            renderTplOptions("u:" + item.id);
+            alert(`✅ 已匯入「${item.name}」，在「我的範本」`);
+        } catch (err) {
+            alert("匯入失敗：" + (err?.message || err));
+        }
+    }
+
     function applyTemplate() {
 
-        const tpl = TEMPLATES[dom.tplSelect.value];
+        const tpl = currentTpl();
         if (!tpl) return;
         if (!confirm(`套用「${tpl.name}」？目前的區塊會被取代（Logo 與品牌預設保留）。`)) return;
 
         const logo = report.theme.logo;
-        report.theme = Object.assign(defaultTheme(), tpl.theme, logo ? { logo } : {});
-        report.blocks = tpl.blocks().map(b => Object.assign({ id: uid() }, b));
+        report.theme = Object.assign(defaultTheme(), tpl.theme, logo && !tpl.theme.logo ? { logo } : {});
+        report.blocks = tpl.blocks.map(b => Object.assign({}, b, { id: uid() }));
         report.source = null;
         openId = report.blocks[0].id;
 
@@ -1023,7 +1157,8 @@ ${saveBtns}`;
     // =========================
     function saveBrand() {
         const t = report.theme;
-        const keys = ["preset", "primary", "dark", "textColor", "font", "baseSize", "pageSize", "companyName", "companySub", "logo", "watermark", "watermarkText", "footerText", "footerBless", "numbering", "layout", "pageBg", "cardBg", "cardWidth", "cardRadius"];
+        const keys = ["preset", "primary", "dark", "textColor", "font", "baseSize", "pageSize", "companyName", "companySub", "logo", "watermark", "watermarkText", "footerText", "footerBless", "numbering", "layout", "pageBg", "cardBg", "cardWidth", "cardRadius",
+            "logoShow", "logoAlign", "logoW", "logoDx", "logoDy", "watermarkType", "wmImage", "wmColor", "wmSize", "wmOpacity", "wmAngle", "wmPos"];
         const brand = {};
         keys.forEach(k => brand[k] = t[k]);
         try {

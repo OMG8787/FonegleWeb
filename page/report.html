@@ -84,6 +84,13 @@
                                                 <select id="tplSelect" class="form-select form-select-sm"></select>
                                                 <button id="btnTpl" class="btn btn-sm btn-outline-primary text-nowrap">套用範本</button>
                                             </div>
+                                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                                <button id="btnTplSave" class="btn btn-sm btn-outline-secondary" title="把目前的版面與內容存成自己的範本">💾 存成我的範本</button>
+                                                <button id="btnTplDel" class="btn btn-sm btn-outline-danger" title="只能刪除「我的範本」">🗑️ 刪除</button>
+                                                <button id="btnTplExport" class="btn btn-sm btn-outline-secondary" title="把目前內容下載成檔案，可在別台電腦匯入">⬇️ 匯出</button>
+                                                <button id="btnTplImport" class="btn btn-sm btn-outline-secondary">⬆️ 匯入</button>
+                                                <input id="tplFile" type="file" accept=".json,application/json" class="d-none">
+                                            </div>
                                         </div>
 
                                         <div class="er-sub">
