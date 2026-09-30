@@ -18,6 +18,7 @@ window.ReportRender = (() => {
     const FONTS = {
         jhenghei: { name: "微軟正黑體", css: `"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif` },
         noto: { name: "Noto 黑體", css: `"Noto Sans TC","Microsoft JhengHei",sans-serif`, google: "Noto+Sans+TC:wght@400;700" },
+        system: { name: "系統預設（網頁常用）", css: `-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Microsoft JhengHei",Arial,sans-serif` },
         serif: { name: "Noto 明體", css: `"Noto Serif TC","PMingLiU",serif`, google: "Noto+Serif+TC:wght@400;700" }
     };
 
@@ -48,7 +49,11 @@ window.ReportRender = (() => {
         return isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
     };
 
-    const safeImgSrc = s => /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(String(s || "")) ? String(s) : "";
+    // 圖片只接受 data:image base64（上傳 / 貼上的圖）或 https 網址（已放在網路上的圖）
+    const safeImgSrc = s => {
+        s = String(s || "");
+        return /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(s) || /^https:\/\/[^\s"'<>()\\]+$/.test(s) ? s : "";
+    };
 
     const safeUrl = u => /^(https?:\/\/|mailto:)[^\s"'<>]+$/i.test(String(u || "").trim()) ? String(u).trim() : "";
 
@@ -124,7 +129,13 @@ window.ReportRender = (() => {
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @page{size:${o.page.css};margin:12mm 12mm 14mm}
 body{margin:0;background:#eceff3;color:var(--txt);font-family:${o.font.css};font-size:${o.baseSize}px;line-height:1.7}
-.rp-page{position:relative;max-width:${o.page.width}mm;margin:0 auto;background:#fff;padding:14mm 14mm 10mm;min-height:100vh}
+.rp-page{position:relative;max-width:${o.web ? o.cardWidth + "px" : o.page.width + "mm"};margin:0 auto;background:${o.web ? o.cardBg : "#fff"};padding:14mm 14mm 10mm;min-height:100vh}
+${o.web ? `body{background:${o.pageBg};padding:20px}
+.rp-page{padding:0;min-height:0;border-radius:${o.cardRadius}px;border:1px solid #e6e6e6;box-shadow:0 4px 12px rgba(0,0,0,.08);overflow:hidden}
+.rp-content{padding:26px}
+.rp-cover{min-height:0;padding:30px 0;border-bottom:0;break-after:auto;page-break-after:auto}
+.mk-hero{margin:0 -26px}
+@media print{body{padding:0}.rp-page{border:0;box-shadow:none;border-radius:0}}` : ""}
 .rp-watermark{position:fixed;left:0;right:0;top:45%;text-align:center;font-size:88px;font-weight:700;color:var(--d);opacity:.05;transform:rotate(-24deg);pointer-events:none;z-index:0;white-space:nowrap}
 .rp-page>*{position:relative;z-index:1}
 h1,h2,h3{color:var(--d);line-height:1.35}
@@ -176,16 +187,52 @@ h1,h2,h3{color:var(--d);line-height:1.35}
 .mk-gal{display:grid;gap:10px;margin:1em 0}.mk-gal img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px}
 .mk-quote{border-left:5px solid var(--p);background:var(--tint);padding:10px 16px;margin:.8em 0;border-radius:6px;break-inside:avoid}
 .mk-quote .who{text-align:right;color:var(--d);font-weight:700;font-size:.9em}
+.rp-title{font-size:1.85em;margin:.2em 0 .5em;font-weight:800;color:var(--d)}
+.rp-sec{font-size:1.2em;margin:1.3em 0 .6em;font-weight:800;color:var(--d)}
+.rp-claim{margin:.6em 0}.rp-claim .big{font-size:1.35em;font-weight:700;color:var(--d)}.rp-claim .sub{color:#555;margin-top:6px}
+.rp-tags{margin:.6em 0}.rp-tags span{display:inline-block;background:var(--tint);border:1px solid ${hexToRgba(o.primary, .35)};color:var(--d);padding:4px 10px;border-radius:999px;font-size:.87em;margin:0 6px 6px 0}
+.rp-bl ul,.rp-bl ol{margin:.4em 0;padding-left:1.3em}.rp-bl li{margin:.35em 0}
+.rp-bl ul.check,.rp-bl ul.arrow{list-style:none;padding-left:0}
+.rp-bl ul.check li:before{content:"✓";color:var(--p);font-weight:700;margin-right:.6em}
+.rp-bl ul.arrow li:before{content:"➜";color:var(--p);margin-right:.6em}
+.rp-btns{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.rp-btn{display:inline-block;padding:11px 20px;border-radius:12px;background:var(--p);color:#fff!important;font-weight:700;text-decoration:none;box-shadow:0 4px 8px ${hexToRgba(o.primary, .3)}}
+.rp-btn.ghost{background:#fff;color:var(--p)!important;border:1px solid var(--p);box-shadow:0 2px 6px ${hexToRgba(o.primary, .15)}}
+.rp-btn.link{background:none;box-shadow:none;color:var(--p)!important;text-decoration:underline;padding-left:0}
+.mk-card.inl{display:flex;gap:10px;text-align:left;align-items:flex-start}.mk-card.inl .ic{font-size:1.6em;line-height:1;color:var(--p)}.mk-card.inl .bc{flex:1;font-size:.95em}.mk-card.inl strong{color:var(--p)}
+.mk-card.plain{background:none;padding:6px}
+.rp-steps{display:flex;gap:12px;margin:1em 0}.rp-step{flex:1;background:var(--tint);border:1px solid ${hexToRgba(o.primary, .25)};border-radius:12px;padding:14px;text-align:center;font-size:.95em;break-inside:avoid}
+.rp-step .n{display:inline-block;min-width:1.8em;height:1.8em;line-height:1.8em;border-radius:50%;background:var(--p);color:#fff;font-weight:700;margin-bottom:6px}
+.rp-step .ic{font-size:1.6em;line-height:1.3}.rp-step strong{display:block;color:var(--d)}
+.mk-prods{display:grid;gap:14px;margin:1em 0}.mk-prod{break-inside:avoid}.mk-prod img{width:100%;object-fit:cover;border-radius:12px;display:block}
+.mk-prod .pn{font-weight:700;margin-top:6px;color:var(--d)}.mk-prod .pp{color:var(--p);font-weight:700}.mk-prod .pt{font-size:.9em;color:#666}.mk-prod a{color:inherit;text-decoration:none}
+.rp-cols{display:grid;gap:16px;margin:.8em 0}
+.rp-hr{border:0;border-top:1px solid #ddd}.rp-hr.dashed{border-top:2px dashed #ccc}.rp-hr.dotted{border-top:3px dotted #ccc}.rp-hr.space{border-top:0}
+.rp-ft{margin-top:1.6em;padding-top:14px;border-top:1px solid #eee;font-size:.87em;color:#555;line-height:1.6}
+.rp-text a,.rp-ft a,.rp-cols a{color:var(--p)}
+.rp-banner{margin:${o.web ? "-26px -26px 18px" : "0 0 14px"}}.rp-banner img{width:100%;display:block;object-fit:cover;${o.web ? "" : "border-radius:8px"}}
+.bx{margin:1em 0;padding:var(--bxp,14px);border-radius:var(--bxr,12px);overflow:hidden}
+.bx>*:first-child{margin-top:0}.bx>*:last-child{margin-bottom:0}
+.bx-card{background:var(--bxbg,${hexToRgba(o.primary, .08)});border:1px solid var(--bxbd,${hexToRgba(o.primary, .25)})}
+.bx-outline{border:2px solid var(--bxbd,var(--p));background:var(--bxbg,transparent)}
+.bx-shadow{background:var(--bxbg,#fff);border:1px solid #eee;box-shadow:0 4px 14px rgba(0,0,0,.14)}
+.bx-solid{background:var(--bxbg,var(--p));color:#fff}.bx-solid *{color:inherit!important}.bx-solid .rp-btn{background:#fff;color:var(--p)!important}
+.bx-tint{background:var(--bxbg,var(--tint))}
+.bx-dashed{border:2px dashed var(--bxbd,var(--p));background:var(--bxbg,transparent)}
+.bx-bar{border-left:6px solid var(--bxbd,var(--p));background:var(--bxbg,var(--tint));border-radius:0 var(--bxr,12px) var(--bxr,12px) 0}
 .rp-foot{margin-top:2.5em;padding-top:10px;border-top:2px solid var(--p);text-align:center;font-size:.85em;color:#666;break-inside:avoid}
 .rp-foot .co{font-weight:700;color:var(--d)}
 ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
 [data-block-id]:hover{outline:2px dashed var(--p)}
 [data-block-id].rp-active{outline:2px solid var(--p)}` : ""}
 @media print{body{background:#fff}.rp-page{max-width:none;padding:0;min-height:0}.mk-hero{margin:0}}
-@media (max-width:640px){.mk-grid{grid-template-columns:1fr}.rp-it{flex-direction:column!important}.rp-it .im{flex-basis:auto;width:100%}}`;
+@media (max-width:640px){.mk-grid,.rp-cols,.mk-prods{grid-template-columns:1fr!important}.rp-steps{flex-direction:column}.rp-it{flex-direction:column!important}.rp-it .im{flex-basis:auto;width:100%}}`;
     }
 
     // ---------- 區塊 ----------
+    const BOX_STYLES = { none: "無外框", card: "卡片（淡底＋細框）", outline: "外框線", shadow: "陰影卡片", solid: "實心色塊（白字）", tint: "淺色底", dashed: "虛線框", bar: "左側粗線" };
+    const NO_BOX = { cover: 1, pagebreak: 1, banner: 1, hero: 1, divider: 1 };
+
     function buildReportHtml(report, opt = {}) {
 
         const t = report.theme || {};
@@ -197,112 +244,228 @@ ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
         const page = PAGES[t.pageSize] || PAGES.a4;
         const baseSize = safeNum(t.baseSize, 14, 10, 22);
         const logo = safeImgSrc(t.logo);
+        const web = t.layout === "web";
 
-        let chapter = 0, fig = 0;
+        let chapter = 0, fig = 0, boxed = false;
 
-        const attr = b => opt.forEditor ? ` data-block-id="${esc(b.id)}"` : "";
+        const attr = b => (opt.forEditor && !boxed ? ` data-block-id="${esc(b.id)}"` : "");
 
-        const img = (src, alt) => { const s = safeImgSrc(src); return s ? `<img src="${s}" alt="${esc(alt || "")}">` : ""; };
+        const img = (src, alt) => { const s = safeImgSrc(src); return s ? `<img src="${esc(s)}" alt="${esc(alt || "")}">` : ""; };
+
+        const btn = (x, cls) => {
+            const url = safeUrl(x.url);
+            return `<a class="${cls}"${url ? ` href="${esc(url)}" target="_blank" rel="noopener noreferrer"` : ""}>${esc(x.text)}</a>`;
+        };
+
+        const lines = v => String(v || "").split("\n").map(s => s.trim()).filter(Boolean);
+        const bold = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        const RATIOS = { "1/1": "1/1", "4/3": "4/3", "3/4": "3/4", "16/9": "16/9" };
+        const withRatio = (html, r) => html.replace("<img ", `<img style="aspect-ratio:${RATIOS[r] || "1/1"}" `);
+
+        function boxWrap(b, html) {
+            const x = b.box;
+            const st = x && BOX_STYLES[x.style] && x.style !== "none" ? x.style : "";
+            if (!st || NO_BOX[b.type]) return html;
+            const vars = [];
+            if (x.custom) vars.push(`--bxbg:${safeColor(x.bg, "#fffaf2")}`, `--bxbd:${safeColor(x.bd, primary)}`);
+            vars.push(`--bxp:${safeNum(x.pad, 14, 0, 60)}px`, `--bxr:${safeNum(x.radius, 12, 0, 40)}px`);
+            const w = safeNum(x.width, 100, 30, 100);
+            const align = ["center", "right"].includes(x.align) ? `text-align:${x.align};` : "";
+            return `<div class="bx bx-${st}"${opt.forEditor ? ` data-block-id="${esc(b.id)}"` : ""} style="${vars.join(";")};${align}${w < 100 ? `width:${w}%;margin-left:auto;margin-right:auto;` : ""}">${html}</div>`;
+        }
 
         const parts = (report.blocks || []).map(b => {
+
+            boxed = !!(b.box && b.box.style && b.box.style !== "none" && !NO_BOX[b.type]);
+            let html = "";
 
             switch (b.type) {
 
                 case "cover":
-                    return `<section class="rp-cover"${attr(b)}>
-${logo ? `<img class="logo" src="${logo}" alt="">` : ""}
+                    html = `<section class="rp-cover"${attr(b)}>
+${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ""}
 ${b.kicker ? `<div class="kicker">${esc(b.kicker)}</div>` : ""}
 <h1>${esc(b.title || t.title || "")}</h1>
 ${b.subtitle ? `<div class="sub">${esc(b.subtitle)}</div>` : ""}
-${safeImgSrc(b.image) ? `<img class="cv" src="${safeImgSrc(b.image)}" alt="">` : ""}
+${safeImgSrc(b.image) ? `<img class="cv" src="${esc(safeImgSrc(b.image))}" alt="">` : ""}
 ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
 <div class="meta">${[m.reportNo && "編號 " + esc(m.reportNo), m.date && esc(m.date), m.author && esc(m.author), m.version && esc(m.version)].filter(Boolean).join("　|　")}</div>
 </section>`;
+                    break;
 
-                case "heading":
-                    chapter++;
-                    return `<h2 class="rp-h2"${attr(b)}>${t.numbering ? `<span class="no">${String(chapter).padStart(2, "0")}</span>` : ""}${esc(b.text)}</h2>`;
+                case "banner": {
+                    const h = safeNum(b.height, 0, 0, 600);
+                    html = `<div class="rp-banner"${attr(b)}>${safeImgSrc(b.image) ? `<img src="${esc(safeImgSrc(b.image))}" alt="${esc(b.alt || "")}"${h ? ` style="height:${h}px"` : ""}>` : ""}</div>`;
+                    break;
+                }
+
+                case "heading": {
+                    const al = ["center", "right"].includes(b.align) ? ` style="text-align:${b.align}"` : "";
+                    if (b.level === "h1") html = `<h1 class="rp-title"${attr(b)}${al}>${esc(b.text)}</h1>`;
+                    else if (b.level === "h3") html = `<h3 class="rp-sec"${attr(b)}${al}>${esc(b.text)}</h3>`;
+                    else {
+                        chapter++;
+                        html = `<h2 class="rp-h2"${attr(b)}${al}>${t.numbering ? `<span class="no">${String(chapter).padStart(2, "0")}</span>` : ""}${esc(b.text)}</h2>`;
+                    }
+                    break;
+                }
 
                 case "text":
-                    return `<div class="rp-text"${attr(b)}>${sanitizeRichHtml(b.html)}</div>`;
+                    html = `<div class="rp-text"${attr(b)}>${sanitizeRichHtml(b.html)}</div>`;
+                    break;
+
+                case "claim":
+                    html = `<div class="rp-claim"${attr(b)}${["center", "right"].includes(b.align) ? ` style="text-align:${b.align}"` : ""}><div class="big">${esc(b.big)}</div>${b.sub ? `<div class="sub">${esc(b.sub)}</div>` : ""}</div>`;
+                    break;
+
+                case "tags":
+                    html = `<div class="rp-tags"${attr(b)}>${String(b.text || "").split(/[\n,，、]/).map(s => s.trim()).filter(Boolean).map(s => `<span>${esc(s)}</span>`).join("")}</div>`;
+                    break;
+
+                case "bullets": {
+                    const st = ["check", "arrow", "num"].includes(b.style) ? b.style : "disc";
+                    const items = lines(b.items).map(s => `<li>${bold(s)}</li>`).join("");
+                    html = `<div class="rp-bl"${attr(b)}>${b.title ? `<h3 class="rp-sec" style="margin-top:0">${esc(b.title)}</h3>` : ""}${st === "num" ? `<ol>${items}</ol>` : `<ul class="${st}">${items}</ul>`}</div>`;
+                    break;
+                }
 
                 case "images": {
                     const w = safeNum(b.widthPct, 100, 20, 100);
                     const list = (b.images || []).filter(i => safeImgSrc(i.src));
                     const n = Math.max(1, list.length);
-                    return `<div class="rp-figs ${["center", "right"].includes(b.align) ? b.align : ""}"${attr(b)}>${list.map(i => {
+                    html = `<div class="rp-figs ${["center", "right"].includes(b.align) ? b.align : ""}"${attr(b)}>${list.map(i => {
                         fig++;
                         return `<figure class="rp-figure" style="width:calc(${w / n}% - 12px)">${img(i.src, i.caption)}<figcaption>圖 ${fig}${i.caption ? "　" + esc(i.caption) : ""}</figcaption></figure>`;
                     }).join("")}</div>`;
+                    break;
                 }
 
                 case "imageText":
-                    return `<div class="rp-it ${b.imageSide === "right" ? "rev" : ""}"${attr(b)}><div class="im">${img(b.image)}</div><div class="tx">${sanitizeRichHtml(b.html)}</div></div>`;
+                    html = `<div class="rp-it ${b.imageSide === "right" ? "rev" : ""}"${attr(b)}><div class="im">${img(b.image)}</div><div class="tx">${sanitizeRichHtml(b.html)}</div></div>`;
+                    break;
+
+                case "columns": {
+                    const n = safeNum(b.cols, 2, 2, 3);
+                    html = `<div class="rp-cols" style="grid-template-columns:repeat(${n},1fr)"${attr(b)}>${(b.items || []).slice(0, n).map(c => `<div>${sanitizeRichHtml(c.html)}</div>`).join("")}</div>`;
+                    break;
+                }
 
                 case "table": {
                     const rows = (b.rows || []).map(r => (r || []).map(c => esc(c)));
-                    if (b.mode === "grid")
-                        return `<table class="rp-table grid"${attr(b)}>${rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${c}</th>` : `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`;
-                    return `<table class="rp-table"${attr(b)}>${rows.map(r => `<tr><td class="k">${r[0] || ""}</td><td>${r[1] || ""}</td></tr>`).join("")}</table>`;
+                    html = b.mode === "grid"
+                        ? `<table class="rp-table grid"${attr(b)}>${rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${c}</th>` : `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`
+                        : `<table class="rp-table"${attr(b)}>${rows.map(r => `<tr><td class="k">${r[0] || ""}</td><td>${r[1] || ""}</td></tr>`).join("")}</table>`;
+                    break;
                 }
 
                 case "callout": {
                     const v = CALLOUTS[b.variant] || CALLOUTS.note;
-                    return `<div class="rp-callout" style="--c:${v.color};--cb:${hexToRgba(v.color, .08)}"${attr(b)}><div class="t">${v.icon} ${esc(b.title || v.name)}</div>${sanitizeRichHtml(b.html)}</div>`;
+                    html = `<div class="rp-callout" style="--c:${v.color};--cb:${hexToRgba(v.color, .08)}"${attr(b)}><div class="t">${v.icon} ${esc(b.title || v.name)}</div>${sanitizeRichHtml(b.html)}</div>`;
+                    break;
                 }
 
                 case "signature":
-                    return `<div class="rp-sign"${attr(b)}>${(b.roles || []).map(r => `<div>${esc(r)}</div>`).join("")}</div>`;
+                    html = `<div class="rp-sign"${attr(b)}>${(b.roles || []).map(r => `<div>${esc(r)}</div>`).join("")}</div>`;
+                    break;
 
                 case "pagebreak":
-                    return `<div class="rp-pagebreak"${attr(b)}></div>`;
+                    html = `<div class="rp-pagebreak"${attr(b)}></div>`;
+                    break;
+
+                case "divider": {
+                    const st = ["dashed", "dotted", "space"].includes(b.style) ? b.style : "";
+                    html = `<hr class="rp-hr ${st}"${attr(b)} style="margin:${safeNum(b.gap, 16, 0, 80)}px 0">`;
+                    break;
+                }
 
                 case "hero": {
                     const bg = safeImgSrc(b.image);
-                    const url = safeUrl(b.ctaUrl);
-                    return `<section class="mk-hero"${attr(b)} style="${bg ? `background-image:linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url(${bg})` : ""}">
+                    html = `<section class="mk-hero"${attr(b)} style="${bg ? `background-image:linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url(&quot;${esc(bg)}&quot;)` : ""}">
 <h1>${esc(b.headline)}</h1>${b.sub ? `<p>${esc(b.sub)}</p>` : ""}
-${b.ctaText ? `<a class="mk-btn"${url ? ` href="${esc(url)}" target="_blank" rel="noopener noreferrer"` : ""}>${esc(b.ctaText)}</a>` : ""}</section>`;
+${b.ctaText ? btn({ text: b.ctaText, url: b.ctaUrl }, "mk-btn") : ""}</section>`;
+                    break;
                 }
 
-                case "features":
-                    return `<div class="mk-grid"${attr(b)}>${(b.items || []).map(i => `<div class="mk-card"><div class="ic">${esc(i.icon)}</div><h3>${esc(i.title)}</h3><p>${esc(i.text)}</p></div>`).join("")}</div>`;
+                case "features": {
+                    const n = safeNum(b.cols, 3, 1, 4);
+                    const lay = ["inline", "plain"].includes(b.layout) ? b.layout : "stack";
+                    html = `<div class="mk-grid" style="grid-template-columns:repeat(${n},1fr)"${attr(b)}>${(b.items || []).map(i => lay === "inline"
+                        ? `<div class="mk-card inl"><div class="ic">${esc(i.icon)}</div><div class="bc"><strong>${esc(i.title)}</strong><br>${esc(i.text)}</div></div>`
+                        : `<div class="mk-card ${lay === "plain" ? "plain" : ""}"><div class="ic">${esc(i.icon)}</div><h3>${esc(i.title)}</h3><p>${esc(i.text)}</p></div>`).join("")}</div>`;
+                    break;
+                }
+
+                case "steps":
+                    html = `<div class="rp-steps"${attr(b)}>${(b.items || []).map((i, k) => `<div class="rp-step">${i.icon ? `<div class="ic">${esc(i.icon)}</div>` : `<div class="n">${k + 1}</div>`}<strong>${esc(i.title)}</strong>${esc(i.text)}</div>`).join("")}</div>`;
+                    break;
+
+                case "products": {
+                    const n = safeNum(b.cols, 3, 1, 4);
+                    html = `<div class="mk-prods" style="grid-template-columns:repeat(${n},1fr)"${attr(b)}>${(b.items || []).map(i => {
+                        const url = safeUrl(i.url);
+                        const nm = esc(i.name);
+                        return `<div class="mk-prod">${withRatio(img(i.image, i.name), b.ratio)}
+${nm ? `<div class="pn">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${nm}</a>` : nm}</div>` : ""}${i.price ? `<div class="pp">${esc(i.price)}</div>` : ""}${i.text ? `<div class="pt">${esc(i.text)}</div>` : ""}</div>`;
+                    }).join("")}</div>`;
+                    break;
+                }
 
                 case "pricing":
-                    return `<div class="mk-plans"${attr(b)}>${(b.plans || []).map(p => `<div class="mk-plan ${p.highlight ? "hl" : ""}"><div class="pn">${esc(p.name)}</div><div class="pr">${esc(p.price)}</div><div>${esc(p.unit)}</div>
-<ul>${String(p.features || "").split("\n").map(s => s.trim()).filter(Boolean).map(s => `<li>${esc(s)}</li>`).join("")}</ul></div>`).join("")}</div>`;
+                    html = `<div class="mk-plans"${attr(b)}>${(b.plans || []).map(p => `<div class="mk-plan ${p.highlight ? "hl" : ""}"><div class="pn">${esc(p.name)}</div><div class="pr">${esc(p.price)}</div><div>${esc(p.unit)}</div>
+<ul>${lines(p.features).map(s => `<li>${esc(s)}</li>`).join("")}</ul></div>`).join("")}</div>`;
+                    break;
 
-                case "cta": {
-                    const url = safeUrl(b.url);
-                    return `<div class="mk-cta"${attr(b)}><h2>${esc(b.title)}</h2><div>${esc(b.text)}</div>
-${b.buttonText ? `<p><a class="mk-btn"${url ? ` href="${esc(url)}" target="_blank" rel="noopener noreferrer"` : ""}>${esc(b.buttonText)}</a></p>` : ""}
-${safeImgSrc(b.qr) ? `<img src="${safeImgSrc(b.qr)}" alt="QR Code">` : ""}</div>`;
+                case "buttons": {
+                    const al = { center: "center", right: "flex-end" }[b.align] || "flex-start";
+                    html = `<div class="rp-btns" style="justify-content:${al}"${attr(b)}>${(b.items || []).map(x => btn(x, "rp-btn " + (["ghost", "link"].includes(x.style) ? x.style : ""))).join("")}</div>`;
+                    break;
                 }
+
+                case "cta":
+                    html = `<div class="mk-cta"${attr(b)}><h2>${esc(b.title)}</h2><div>${esc(b.text)}</div>
+${b.buttonText ? `<p>${btn({ text: b.buttonText, url: b.url }, "mk-btn")}</p>` : ""}
+${safeImgSrc(b.qr) ? `<img src="${esc(safeImgSrc(b.qr))}" alt="QR Code">` : ""}</div>`;
+                    break;
 
                 case "gallery": {
                     const cols = safeNum(b.cols, 3, 2, 4);
-                    return `<div class="mk-gal" style="grid-template-columns:repeat(${cols},1fr)"${attr(b)}>${(b.images || []).map(i => img(i.src, i.caption)).join("")}</div>`;
+                    html = `<div class="mk-gal" style="grid-template-columns:repeat(${cols},1fr)"${attr(b)}>${(b.images || []).map(i => withRatio(img(i.src, i.caption), b.ratio)).join("")}</div>`;
+                    break;
                 }
 
                 case "testimonial":
-                    return `<div${attr(b)}>${(b.items || []).map(i => `<div class="mk-quote">「${esc(i.quote)}」<div class="who">— ${esc(i.name)}</div></div>`).join("")}</div>`;
+                    html = `<div${attr(b)}>${(b.items || []).map(i => `<div class="mk-quote">「${esc(i.quote)}」<div class="who">— ${esc(i.name)}</div></div>`).join("")}</div>`;
+                    break;
+
+                case "footer":
+                    html = `<div class="rp-ft"${attr(b)}>${sanitizeRichHtml(b.html)}</div>`;
+                    break;
 
                 default:
-                    return "";
+                    html = "";
             }
+
+            return boxWrap(b, html);
         });
 
         const gfont = font.google ? `<link href="https://fonts.googleapis.com/css2?family=${font.google}&display=swap" rel="stylesheet">` : "";
         const title = (report.blocks || []).find(b => b.type === "cover")?.title || t.title || "報告";
 
-        const footer = `<div class="rp-foot">${t.companyName ? `<div class="co">${esc(t.companyName)}${t.companySub ? "　" + esc(t.companySub) : ""}</div>` : ""}
-${t.footerText ? `<div>${esc(t.footerText)}</div>` : ""}${t.footerBless ? `<div>${esc(t.footerBless)}</div>` : ""}</div>`;
+        const hasFoot = t.companyName || t.footerText || t.footerBless;
+        const footer = hasFoot ? `<div class="rp-foot">${t.companyName ? `<div class="co">${esc(t.companyName)}${t.companySub ? "　" + esc(t.companySub) : ""}</div>` : ""}
+${t.footerText ? `<div>${esc(t.footerText)}</div>` : ""}${t.footerBless ? `<div>${esc(t.footerBless)}</div>` : ""}</div>` : "";
+
+        const css = buildCss({
+            primary, dark, text, font, page, baseSize, forEditor: !!opt.forEditor, web,
+            cardWidth: safeNum(t.cardWidth, 720, 320, 1200), cardRadius: safeNum(t.cardRadius, 12, 0, 40),
+            pageBg: safeColor(t.pageBg, "#f4f6f8"), cardBg: safeColor(t.cardBg, "#ffffff")
+        });
 
         return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)}</title>${gfont}<style>${buildCss({ primary, dark, text, font, page, baseSize, forEditor: !!opt.forEditor })}</style></head>
-<body>${t.watermark && t.watermarkText ? `<div class="rp-watermark">${esc(t.watermarkText)}</div>` : ""}<div class="rp-page">${parts.join("")}${footer}</div></body></html>`;
+<title>${esc(title)}</title>${gfont}<style>${css}</style></head>
+<body>${t.watermark && t.watermarkText ? `<div class="rp-watermark">${esc(t.watermarkText)}</div>` : ""}<div class="rp-page"><div class="rp-content">${parts.join("")}${footer}</div></div></body></html>`;
     }
 
-    return { THEMES, FONTS, PAGES, CALLOUTS, esc, safeColor, safeImgSrc, safeUrl, sanitizeRichHtml, buildReportHtml };
+    return { THEMES, FONTS, PAGES, CALLOUTS, BOX_STYLES, esc, safeColor, safeImgSrc, safeUrl, sanitizeRichHtml, buildReportHtml };
 
 })();

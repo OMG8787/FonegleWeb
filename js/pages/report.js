@@ -32,7 +32,7 @@ Pages.Report = (() => {
 
     const TYPES = {
         cover: { label: "封面", icon: "📕", make: () => ({ kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }), sum: b => b.title },
-        heading: { label: "章節標題", icon: "🔖", make: () => ({ text: "新章節" }), sum: b => b.text },
+        heading: { label: "標題", icon: "🔖", make: () => ({ text: "新章節", level: "h2", align: "left" }), sum: b => b.text },
         text: { label: "文字段落", icon: "📝", make: () => ({ html: "<p>在這裡輸入內容…</p>" }), sum: b => plain(b.html) },
         images: { label: "圖片（1～3 張）", icon: "🖼️", make: () => ({ images: [], widthPct: 100, align: "center" }), sum: b => `${(b.images || []).length} 張` },
         imageText: { label: "圖文並排", icon: "🧩", make: () => ({ image: "", html: "<p>說明文字…</p>", imageSide: "left" }), sum: b => plain(b.html) },
@@ -41,12 +41,30 @@ Pages.Report = (() => {
         signature: { label: "簽核欄", icon: "✍️", make: () => ({ roles: ["製表", "審核", "核准"] }), sum: b => (b.roles || []).join("／") },
         pagebreak: { label: "強制分頁", icon: "✂️", make: () => ({}), sum: () => "" },
         hero: { label: "主視覺（大標語）", icon: "🌟", make: () => ({ headline: "一句吸引人的標語", sub: "副標題", image: "", ctaText: "", ctaUrl: "" }), sum: b => b.headline },
-        features: { label: "賣點卡片", icon: "✨", make: () => ({ items: [{ icon: "🍦", title: "賣點一", text: "說明" }, { icon: "🌿", title: "賣點二", text: "說明" }, { icon: "❤️", title: "賣點三", text: "說明" }] }), sum: b => `${(b.items || []).length} 張` },
+        features: { label: "賣點卡片", icon: "✨", make: () => ({ cols: 3, layout: "stack", items: [{ icon: "🍦", title: "賣點一", text: "說明" }, { icon: "🌿", title: "賣點二", text: "說明" }, { icon: "❤️", title: "賣點三", text: "說明" }] }), sum: b => `${(b.items || []).length} 張` },
         pricing: { label: "價格方案", icon: "💰", make: () => ({ plans: [{ name: "方案 A", price: "$100", unit: "／份", features: "特色一\n特色二", highlight: false }] }), sum: b => `${(b.plans || []).length} 個方案` },
         cta: { label: "行動呼籲", icon: "📣", make: () => ({ title: "立即聯繫我們", text: "", buttonText: "", url: "", qr: "" }), sum: b => b.title },
-        gallery: { label: "圖片牆", icon: "🖼️", make: () => ({ images: [], cols: 3 }), sum: b => `${(b.images || []).length} 張` },
-        testimonial: { label: "客戶見證", icon: "💬", make: () => ({ items: [{ quote: "很好吃！", name: "客人" }] }), sum: b => `${(b.items || []).length} 則` }
+        gallery: { label: "圖片牆", icon: "🖼️", make: () => ({ images: [], cols: 3, ratio: "1/1" }), sum: b => `${(b.images || []).length} 張` },
+        testimonial: { label: "客戶見證", icon: "💬", make: () => ({ items: [{ quote: "很好吃！", name: "客人" }] }), sum: b => `${(b.items || []).length} 則` },
+        banner: { label: "頁首橫幅圖", icon: "🏞️", make: () => ({ image: "", height: 0, alt: "" }), sum: b => (b.image ? "已放圖" : "尚未放圖") },
+        claim: { label: "大標語 + 副標語", icon: "📢", make: () => ({ big: "一句話說出價值", sub: "副標語", align: "left" }), sum: b => b.big },
+        tags: { label: "膠囊標籤", icon: "🏷️", make: () => ({ text: "標籤一\n標籤二\n標籤三" }), sum: b => String(b.text || "").replace(/\s+/g, "、") },
+        bullets: { label: "項目清單", icon: "☑️", make: () => ({ title: "", style: "disc", items: "第一項\n第二項\n**重點**：可用粗體" }), sum: b => b.title || String(b.items || "").split("\n")[0] },
+        columns: { label: "多欄文字", icon: "▥", make: () => ({ cols: 2, items: [{ html: "<p>左欄</p>" }, { html: "<p>右欄</p>" }, { html: "<p>第三欄</p>" }] }), sum: b => `${b.cols} 欄` },
+        steps: { label: "流程步驟", icon: "🪜", make: () => ({ items: [{ icon: "", title: "步驟一", text: "說明" }, { icon: "", title: "步驟二", text: "說明" }, { icon: "", title: "步驟三", text: "說明" }] }), sum: b => `${(b.items || []).length} 步` },
+        products: { label: "產品牆（圖 + 名稱 + 價格）", icon: "🍨", make: () => ({ cols: 3, ratio: "1/1", items: [{ image: "", name: "產品名稱", price: "$100", text: "", url: "" }] }), sum: b => `${(b.items || []).length} 項` },
+        buttons: { label: "按鈕列", icon: "🔘", make: () => ({ align: "left", items: [{ text: "📩 立即洽詢", url: "mailto:", style: "solid" }] }), sum: b => (b.items || []).map(x => x.text).join("／") },
+        divider: { label: "分隔線 / 空白", icon: "➖", make: () => ({ style: "line", gap: 16 }), sum: b => b.style },
+        footer: { label: "頁尾聯絡資訊", icon: "📇", make: () => ({ html: "<p><strong>公司名稱</strong><br>聯絡人：<br>電話：<br>Email：</p>" }), sum: b => plain(b.html) }
     };
+
+    const TYPE_GROUPS = [
+        ["📄 文件 / 報告", ["cover", "heading", "text", "images", "imageText", "columns", "table", "callout", "signature", "pagebreak", "divider"]],
+        ["📣 行銷 / 宣傳頁", ["banner", "hero", "claim", "tags", "bullets", "features", "steps", "products", "gallery", "pricing", "buttons", "cta", "testimonial", "footer"]]
+    ];
+
+    // 這些區塊不能套外框
+    const NO_BOX = { cover: 1, pagebreak: 1, banner: 1, hero: 1, divider: 1 };
 
     const ITEM_TPL = {
         images: () => ({ src: "", caption: "" }),
@@ -54,7 +72,11 @@ Pages.Report = (() => {
         items_testimonial: () => ({ quote: "", name: "" }),
         plans: () => ({ name: "", price: "", unit: "", features: "", highlight: false }),
         roles: () => "",
-        rows: () => ["", ""]
+        rows: () => ["", ""],
+        items_steps: () => ({ icon: "", title: "", text: "" }),
+        items_buttons: () => ({ text: "按鈕", url: "", style: "solid" }),
+        items_products: () => ({ image: "", name: "", price: "", text: "", url: "" }),
+        items_columns: () => ({ html: "<p></p>" })
     };
 
     const plain = html => {
@@ -126,10 +148,12 @@ Pages.Report = (() => {
 
         [
             "btnNew", "btnDownload", "btnPrint", "srcKind", "srcRecord", "btnSrcBuild", "btnSrcRefill",
-            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState"
+            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl"
         ].forEach(id => dom[id] = document.getElementById(id));
 
-        dom.addType.innerHTML = Object.keys(TYPES).map(k => `<option value="${k}">${TYPES[k].icon} ${TYPES[k].label}</option>`).join("");
+        dom.addType.innerHTML = TYPE_GROUPS.map(([g, keys]) =>
+            `<optgroup label="${g}">${keys.map(k => `<option value="${k}">${TYPES[k].icon} ${TYPES[k].label}</option>`).join("")}</optgroup>`).join("");
+        dom.tplSelect.innerHTML = Object.keys(TEMPLATES).map(k => `<option value="${k}">${TEMPLATES[k].name}</option>`).join("");
 
         bind();
 
@@ -144,7 +168,12 @@ Pages.Report = (() => {
     function normalize(r) {
         r.theme = Object.assign(defaultTheme(), r.theme || {});
         r.meta = Object.assign({ reportNo: "", date: todayText(), author: "", version: "V1.0" }, r.meta || {});
-        r.blocks.forEach(b => { if (!b.id) b.id = uid(); });
+        r.blocks.forEach(b => {
+            if (!b.id) b.id = uid();
+            if (b.type === "heading") { b.level = b.level || "h2"; b.align = b.align || "left"; }
+            if (b.type === "features") { b.cols = b.cols || 3; b.layout = b.layout || "stack"; }
+            if (b.type === "gallery") b.ratio = b.ratio || "1/1";
+        });
         return r;
     }
 
@@ -152,6 +181,7 @@ Pages.Report = (() => {
         const base = {
             preset: "brand", primary: R.THEMES.brand.primary, dark: R.THEMES.brand.dark, textColor: "#2b2b2b",
             font: "jhenghei", baseSize: 14, pageSize: "a4",
+            layout: "doc", pageBg: "#f4f6f8", cardBg: "#ffffff", cardWidth: 720, cardRadius: 12,
             companyName: "瘋菓 Fonegle Dessert", companySub: "", logo: "",
             watermark: false, watermarkText: "瘋菓", title: "報告", numbering: true,
             footerText: "", footerBless: "Thank you."
@@ -224,6 +254,7 @@ Pages.Report = (() => {
             document.getElementById(`blk-${b.id}`)?.scrollIntoView({ block: "nearest" });
         });
 
+        dom.btnTpl.addEventListener("click", applyTemplate);
         dom.srcKind.addEventListener("change", renderSourceOptions);
         dom.btnSrcBuild.addEventListener("click", () => useSource(false));
         dom.btnSrcRefill.addEventListener("click", () => useSource(true));
@@ -290,6 +321,14 @@ Pages.Report = (() => {
     function onInput(e) {
 
         const t = e.target;
+
+        if (t.dataset.url) {
+            if (e.type !== "change" || !t.value.trim()) return;
+            const u = R.safeImgSrc(t.value.trim());
+            if (!u || u.startsWith("data:")) { alert("請貼上 https:// 開頭的圖片網址"); return; }
+            putImages(objOf(t.dataset.drop), t.dataset.p, t.dataset.multi === "1", [u]);
+            return;
+        }
 
         if (t.matches("[data-cmd-color]")) {
             if (e.type === "input") runCmd(t.dataset.cmdColor, t.value);
@@ -453,7 +492,8 @@ Pages.Report = (() => {
     function drop(id, path, src, multi) {
         const s = R.safeImgSrc(src);
         return `<div class="er-drop mb-2" tabindex="0" data-drop="${id}" data-p="${path}" ${multi ? 'data-multi="1"' : ""}>
-${s ? `<img src="${s}" alt="">` : ""}📷 點擊選圖、拖曳進來，或按 Ctrl+V 貼上截圖</div>
+${s ? `<img src="${E(s)}" alt="">` : ""}📷 點擊選圖、拖曳進來，或按 Ctrl+V 貼上截圖</div>
+<input class="form-control form-control-sm mb-2" data-url="1" data-drop="${id}" data-p="${path}" ${multi ? 'data-multi="1"' : ""} placeholder="或貼上圖片網址（https://…）後按 Enter">
 ${s && !multi ? `<button class="btn btn-sm btn-outline-secondary mb-2" data-act="img-clear" data-b="${id}" data-p="${path}">移除圖片</button>` : ""}`;
     }
 
@@ -490,21 +530,80 @@ ${s && !multi ? `<button class="btn btn-sm btn-outline-secondary mb-2" data-act=
     function thumbs(b, max) {
         const list = b.images || [];
         return `<div class="er-thumbs">${list.map((im, i) => `
-<div class="er-thumb">${R.safeImgSrc(im.src) ? `<img src="${im.src}" alt="">` : ""}
+<div class="er-thumb">${R.safeImgSrc(im.src) ? `<img src="${E(im.src)}" alt="">` : ""}
     <input class="form-control form-control-sm mt-1" data-b="${b.id}" data-p="images.${i}.caption" value="${E(im.caption)}" placeholder="圖說">
     ${delBtn(b, "images", i)}</div>`).join("")}</div>
 ${list.length < max ? drop(b.id, "images", "", true) : `<div class="small text-muted">最多 ${max} 張</div>`}`;
     }
 
+    // 每個區塊底部的「外框樣式」：卡片、外框線、陰影、實心色塊…，可自訂顏色、內距、圓角、寬度
+    function boxEditor(b) {
+
+        b.box = Object.assign({ style: "none", pad: 14, radius: 12, width: 100, align: "left", custom: false, bg: "#fffaf2", bd: report.theme.primary }, b.box || {});
+
+        const x = b.box;
+        const al = [["left", "靠左"], ["center", "置中"], ["right", "靠右"]];
+
+        return `<details class="er-sub mt-2" ${x.style !== "none" ? "open" : ""}><summary class="small fw-bold">🔲 外框樣式${x.style !== "none" ? "（" + E(R.BOX_STYLES[x.style]) + "）" : ""}</summary><div class="mt-2">
+${field(b, "box.style", "外框", { opts: Object.entries(R.BOX_STYLES) })}
+<div class="row g-2">${field(b, "box.pad", "內距 px", { type: "number", min: 0, max: 60, col: "col-4" })}${field(b, "box.radius", "圓角 px", { type: "number", min: 0, max: 40, col: "col-4" })}${field(b, "box.width", "寬度 %", { type: "number", min: 30, max: 100, col: "col-4" })}</div>
+<div class="row g-2">${field(b, "box.align", "框內文字對齊", { col: "col-6", opts: al })}${field(b, "box.custom", "自訂顏色", { check: true, re: true, col: "col-6 pt-4" })}</div>
+${x.custom ? `<div class="row g-2">${field(b, "box.bg", "底色", { type: "color", col: "col-6" })}${field(b, "box.bd", "邊框 / 線條色", { type: "color", col: "col-6" })}</div>` : ""}
+</div></details>`;
+    }
+
     function editorBody(b) {
+        return typeEditor(b) + (NO_BOX[b.type] ? "" : boxEditor(b));
+    }
+
+    function typeEditor(b) {
 
         switch (b.type) {
+
+            case "banner":
+                return drop(b.id, "image", b.image) + field(b, "height", "高度 px（0 = 依圖片比例）", { type: "number", min: 0, max: 600 }) + field(b, "alt", "圖片說明（替代文字）");
+
+            case "claim":
+                return field(b, "big", "大標語") + field(b, "sub", "副標語") + field(b, "align", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] });
+
+            case "tags":
+                return field(b, "text", "標籤（用換行或逗號分隔）", { area: 3 });
+
+            case "bullets":
+                return field(b, "title", "小標題（可留空）") + field(b, "style", "符號", { opts: [["disc", "● 圓點"], ["check", "✓ 勾選"], ["arrow", "➜ 箭頭"], ["num", "1. 數字"]] }) +
+                    field(b, "items", "項目（一行一項，可用 **粗體**）", { area: 5 });
+
+            case "columns": {
+                const n = Number(b.cols) || 2;
+                while (b.items.length < n) b.items.push({ html: "<p></p>" });
+                return field(b, "cols", "欄數", { re: true, opts: [["2", "2 欄"], ["3", "3 欄"]] }) +
+                    b.items.slice(0, n).map((it, i) => `<div class="small text-muted">第 ${i + 1} 欄</div>${rich(b, `items.${i}.html`)}`).join("");
+            }
+
+            case "divider":
+                return field(b, "style", "樣式", { opts: [["line", "實線"], ["dashed", "虛線"], ["dotted", "點線"], ["space", "只留空白"]] }) + field(b, "gap", "上下間距 px", { type: "number", min: 0, max: 80 });
+
+            case "steps":
+                return b.items.map((it, i) => `<div class="er-sub"><div class="row g-2">${field(b, `items.${i}.icon`, "圖示（留空 = 自動編號）", { col: "col-4" })}${field(b, `items.${i}.title`, "標題", { col: "col-8" })}</div>${field(b, `items.${i}.text`, "說明")}${delBtn(b, "items", i)}</div>`).join("") + addBtn(b, "items", "items_steps", "新增步驟", 6);
+
+            case "products":
+                return `<div class="row g-2">${field(b, "cols", "每列張數", { col: "col-6", opts: [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]] })}${field(b, "ratio", "圖片比例", { col: "col-6", opts: [["1/1", "方形 1:1"], ["4/3", "橫式 4:3"], ["3/4", "直式 3:4"], ["16/9", "寬 16:9"]] })}</div>` +
+                    b.items.map((it, i) => `<div class="er-sub">${drop(b.id, `items.${i}.image`, it.image)}<div class="row g-2">${field(b, `items.${i}.name`, "名稱", { col: "col-7" })}${field(b, `items.${i}.price`, "價格", { col: "col-5" })}</div>${field(b, `items.${i}.text`, "說明")}${field(b, `items.${i}.url`, "連結（選填）")}${delBtn(b, "items", i)}</div>`).join("") + addBtn(b, "items", "items_products", "新增產品", 12);
+
+            case "buttons":
+                return field(b, "align", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] }) +
+                    b.items.map((it, i) => `<div class="er-sub"><div class="row g-2">${field(b, `items.${i}.text`, "按鈕文字", { col: "col-7" })}${field(b, `items.${i}.style`, "樣式", { col: "col-5", opts: [["solid", "實心"], ["ghost", "外框"], ["link", "文字連結"]] })}</div>${field(b, `items.${i}.url`, "連結（http / https / mailto）")}${delBtn(b, "items", i)}</div>`).join("") + addBtn(b, "items", "items_buttons", "新增按鈕", 6);
+
+            case "footer":
+                return rich(b, "html");
+
 
             case "cover":
                 return field(b, "kicker", "上方小字（例如：專案提案）") + field(b, "title", "標題") + field(b, "subtitle", "副標題") + field(b, "customer", "對象 / 客戶") + drop(b.id, "image", b.image);
 
             case "heading":
-                return field(b, "text", "標題文字");
+                return field(b, "level", "層級", { opts: [["h1", "頁面大標題"], ["h2", "章節標題（可自動編號）"], ["h3", "小標題"]] }) + field(b, "text", "標題文字") +
+                    field(b, "align", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] });
 
             case "text":
                 return rich(b, "html");
@@ -535,7 +634,7 @@ ${list.length < max ? drop(b.id, "images", "", true) : `<div class="small text-m
                     `<button class="btn btn-sm btn-outline-primary" data-act="ai" data-b="${b.id}" data-p="hero">🤖 AI 幫我寫標語</button>`;
 
             case "features":
-                return b.items.map((it, i) => `<div class="er-sub"><div class="row g-2">${field(b, `items.${i}.icon`, "圖示", { col: "col-3" })}${field(b, `items.${i}.title`, "標題", { col: "col-9" })}</div>${field(b, `items.${i}.text`, "說明", { area: 2 })}${delBtn(b, "items", i)}</div>`).join("") + addBtn(b, "items", "items_features", "新增賣點", 6);
+                return `<div class="row g-2">${field(b, "cols", "每列欄數", { col: "col-6", opts: [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]] })}${field(b, "layout", "卡片樣式", { col: "col-6", opts: [["stack", "圖示在上（置中）"], ["inline", "圖示在左"], ["plain", "無底色"]] })}</div>` + b.items.map((it, i) => `<div class="er-sub"><div class="row g-2">${field(b, `items.${i}.icon`, "圖示", { col: "col-3" })}${field(b, `items.${i}.title`, "標題", { col: "col-9" })}</div>${field(b, `items.${i}.text`, "說明", { area: 2 })}${delBtn(b, "items", i)}</div>`).join("") + addBtn(b, "items", "items_features", "新增賣點", 6);
 
             case "pricing":
                 return b.plans.map((p, i) => `<div class="er-sub"><div class="row g-2">${field(b, `plans.${i}.name`, "方案名稱", { col: "col-6" })}${field(b, `plans.${i}.price`, "價格", { col: "col-3" })}${field(b, `plans.${i}.unit`, "單位", { col: "col-3" })}</div>${field(b, `plans.${i}.features`, "特色（一行一項）", { area: 3 })}${field(b, `plans.${i}.highlight`, "主打推薦", { check: true })}${delBtn(b, "plans", i)}</div>`).join("") + addBtn(b, "plans", "plans", "新增方案", 4);
@@ -546,7 +645,7 @@ ${list.length < max ? drop(b.id, "images", "", true) : `<div class="small text-m
                     `<div class="small text-muted">QR Code 圖片（自行用 QR 產生器做好後上傳）</div>` + drop(b.id, "qr", b.qr);
 
             case "gallery":
-                return field(b, "cols", "每列張數", { opts: [["2", "2"], ["3", "3"], ["4", "4"]] }) + thumbs(b, 12);
+                return `<div class="row g-2">${field(b, "cols", "每列張數", { col: "col-6", opts: [["2", "2"], ["3", "3"], ["4", "4"]] })}${field(b, "ratio", "圖片比例", { col: "col-6", opts: [["1/1", "方形 1:1"], ["4/3", "橫式 4:3"], ["3/4", "直式 3:4"], ["16/9", "寬 16:9"]] })}</div>` + thumbs(b, 12);
 
             case "testimonial":
                 return b.items.map((it, i) => `<div class="er-sub">${field(b, `items.${i}.quote`, "見證內容", { area: 2 })}${field(b, `items.${i}.name`, "署名")}${delBtn(b, "items", i)}</div>`).join("") + addBtn(b, "items", "items_testimonial", "新增見證", 6);
@@ -566,7 +665,10 @@ ${list.length < max ? drop(b.id, "images", "", true) : `<div class="small text-m
         dom.themeForm.innerHTML = `
 <div class="er-sub"><div class="fw-bold small mb-2">📄 文件資訊</div><div class="row g-0">
 ${f("theme.title", "文件名稱")}${f("meta.reportNo", "編號")}${f("meta.date", "日期")}${f("meta.author", "製作人")}${f("meta.version", "版本")}
-${f("theme.pageSize", "紙張 / 尺寸", { opts: Object.keys(R.PAGES).map(k => [k, R.PAGES[k].name]) })}
+${f("theme.layout", "版面模式", { re: true, col: "col-12 mb-2", opts: [["doc", "文件 / 報告（A4 等紙張，適合列印）"], ["web", "宣傳網頁（底色 + 置中卡片，適合貼到網站）"]] })}
+${t.layout === "web"
+            ? `${f("theme.pageBg", "網頁底色", { type: "color" })}${f("theme.cardBg", "卡片底色", { type: "color" })}${f("theme.cardWidth", "卡片寬度 px", { type: "number", min: 320, max: 1200 })}${f("theme.cardRadius", "卡片圓角 px", { type: "number", min: 0, max: 40 })}`
+            : f("theme.pageSize", "紙張 / 尺寸", { opts: Object.keys(R.PAGES).map(k => [k, R.PAGES[k].name]) })}
 </div></div>
 <div class="er-sub"><div class="fw-bold small mb-2">🎨 配色與字型</div><div class="row g-0">
 ${f("theme.preset", "預設配色", { opts: Object.keys(R.THEMES).map(k => [k, R.THEMES[k].name]) })}
@@ -614,6 +716,17 @@ ${saveBtns}`;
         return c.toDataURL("image/jpeg", 0.85);
     }
 
+    function putImages(o, p, multi, urls) {
+
+        if (multi) {
+            const max = o.type === "gallery" ? 12 : 3;
+            const arr = getPath(o, p);
+            urls.forEach(u => { if (arr.length < max) arr.push({ src: u, caption: "" }); });
+        } else setPath(o, p, urls[0]);
+
+        changed(true);
+    }
+
     async function addImages(zone, files) {
 
         files = files.filter(f => f.type.startsWith("image/"));
@@ -627,13 +740,7 @@ ${saveBtns}`;
             const urls = [];
             for (const f of files) urls.push(await compress(f, keepPng));
 
-            if (zone.dataset.multi === "1") {
-                const max = o.type === "gallery" ? 12 : 3;
-                const arr = getPath(o, p);
-                urls.forEach(u => { if (arr.length < max) arr.push({ src: u, caption: "" }); });
-            } else setPath(o, p, urls[0]);
-
-            changed(true);
+            putImages(o, p, zone.dataset.multi === "1", urls);
         } catch (err) {
             alert("圖片讀取失敗：" + (err?.message || "格式不支援"));
         }
@@ -779,11 +886,144 @@ ${saveBtns}`;
     }
 
     // =========================
+    // 範本（依「品牌對外網頁」資料夾裡的頁面整理）
+    // =========================
+    const BANNER = "https://img.cloudimg.in/uploads/shops/39971/theme/31/3121fab139bb6a962ea668a4cfab9cd0.png?v=202601270250";
+    const IMG = "https://img.cloudimg.in/uploads/shops/39971/products/";
+    const MAIL = "mailto:austin.fonegle@gmail.com";
+    const LINE = "https://line.me/R/ti/p/@764zeuav?ts=07251231&oat_content=url";
+    const IG = "https://www.instagram.com/fonegle_dessert/";
+
+    const WEB_THEME = {
+        layout: "web", pageBg: "#f4f6f8", cardBg: "#ffffff", cardWidth: 720, cardRadius: 12, preset: "brand",
+        primary: "#b56b00", dark: "#7a4a00", textColor: "#333333", font: "system", baseSize: 15, numbering: false,
+        companyName: "", companySub: "", footerText: "", footerBless: "", watermark: false
+    };
+
+    const P = t => `<p>${t}</p>`;
+    const banner = () => ({ type: "banner", image: BANNER, height: 0, alt: "瘋菓冰品研究室" });
+    const h1 = text => ({ type: "heading", level: "h1", text, align: "left" });
+    const h3 = text => ({ type: "heading", level: "h3", text, align: "left" });
+    const text = html => ({ type: "text", html });
+    const btns = (items, align) => ({ type: "buttons", align: align || "left", items });
+    const feat = (items, cols, layout) => ({ type: "features", cols: cols || 2, layout: layout || "inline", items: items.map(([icon, title, t]) => ({ icon, title, text: t })) });
+    const contact = extra => ({
+        type: "footer",
+        html: `<p><strong>瘋菓貿易社</strong>（統編：60005166）<br>品牌：瘋菓冰品研究室</p><p>聯絡人：董峻宏<br>電話：0923-212-212<br>Email：<a href="${MAIL}">austin.fonegle@gmail.com</a><br>官方 LINE：<strong>@764zeuav</strong>${extra === false ? "" : `<br>Instagram：<a href="${IG}">fonegle_dessert</a>`}</p>`
+    });
+    const gal = (urls, ratio) => ({ type: "gallery", cols: 3, ratio: ratio || "1/1", images: urls.map(u => ({ src: IMG + u, caption: "" })) });
+    const cta = () => btns([{ text: "📩 合作洽詢", url: MAIL, style: "solid" }, { text: "💬 官方 LINE", url: LINE, style: "ghost" }]);
+
+    const LEAD_BRAND = [
+        P("🍨 當甜點不只是甜，而是一口奢華的極致體驗。<br>奢華高端為核心，專注創造高端冰淇淋品牌，結合膳食纖維、高蛋白等機能成分，打造低負擔高享受的極致味覺盛宴。"),
+        P("🎁 <strong>專屬訂製，點亮每一場美好時刻</strong><br>專業研發團隊，提供客製化甜品服務，無論是私密餐會、企業活動，或星級餐廳聯名合作，都能量身打造專屬風味。"),
+        P("✨ <strong>重新定義冰品，讓品味成為態度</strong><br>瘋菓不只是提供冰品，而是傳遞風格與態度。每一次品嚐，都像穿上一件精心挑選的禮服，用冰涼詮釋高雅生活。")
+    ].join("");
+
+    const MODES = ["🛒 **產品販售**（經銷／通路供應）：提供高蛋白冰品、膳食纖維冰淇淋、造型甜點等現成品。", "🔧 **OEM／ODM 客製化開發**：OEM 協助製作貴司配方；ODM 依需求調整風味、營養配方、口感、造型。", "🤩 **聯名／活動合作**：品牌行銷專案、限定甜點、主題活動出攤等。"].join("\n");
+
+    const TEMPLATES = {
+        blank: {
+            name: "空白報告（A4 文件）",
+            theme: { layout: "doc" },
+            blocks: () => [{ type: "cover", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }, { type: "heading", level: "h2", text: "新章節", align: "left" }, text("<p>在這裡輸入內容…</p>")]
+        },
+        brand: {
+            name: "品牌介紹頁（瘋菓冰品研究室）",
+            theme: WEB_THEME,
+            blocks: () => [banner(), h1("瘋菓冰品研究室"), text(LEAD_BRAND), h3("🤝 合作邀約"),
+                text(P("主要專營 <strong>客製化冰品開發（OEM・ODM）</strong>、高蛋白冰品、膳食纖維冰淇淋與創意造型甜點，並希望與更多品牌夥伴建立長期穩定的 <strong>B2B 合作關係</strong>。")),
+                { type: "bullets", title: "🧊 合作模式", style: "disc", items: MODES },
+                text(P("⭐ <strong>品牌特色與優勢</strong><br>高蛋白與機能型冰品研發能力，風味穩定、外觀吸睛、辨識度高，適用健身、親子、文創、餐飲、品牌推廣等多元領域。")),
+                cta(), h3("🍨 主要特色"),
+                feat([["🍦", "高端義式冰淇淋", "嚴選素材，低負擔高享受，兼顧美味與健康。"], ["💪", "機能系甜點", "結合膳食纖維、高蛋白等機能配方。"], ["🎨", "客製化風味", "活動、餐會、品牌聯名皆可量身打造。"], ["🏛️", "生活美學", "每一款甜點都是視覺 + 味覺的儀式感呈現。"]]),
+                contact()]
+        },
+        b2b: {
+            name: "B2B 合作頁（OEM／ODM）",
+            theme: WEB_THEME,
+            blocks: () => [banner(), h1("瘋菓冰品研究室"),
+                text(P("專注 <strong>B2B 客製化開發</strong>，提供高端各式冰淇淋、客製化甜點之 <strong>OEM／ODM</strong> 與品牌聯名合作。") +
+                    P("<strong>🍨 每一口都是奢華的極致體驗。</strong><br>我們相信冰品不只是甜點，而是品牌價值的延伸。透過專業研發與客製化配方，無論是私密餐會、企業活動，或星級餐廳聯名合作，都能量身打造具市場辨識度專屬風味。")),
+                { type: "tags", text: "OEM／ODM\n各式冰品甜點\n品牌聯名" },
+                h3("🤝 B2B 合作項目"),
+                { type: "bullets", title: "", style: "disc", items: "**OEM 代工**：可依貴司配方製作冰品／甜點，穩定量產。\n**ODM 開發**：風味、營養配方、口感、造型全方位客製。\n**通路／經銷供應**：高蛋白冰品、機能型冰淇淋、造型甜點。\n**品牌聯名／活動**：限定商品、行銷專案、市集活動出攤。" },
+                h3("🍨 冰品核心優勢"),
+                feat([["🍦", "冰淇淋工法", "質地綿密、融化穩定，適合商用與活動場景。"], ["💪", "機能型配方", "高蛋白、膳食纖維可依需求調整，兼顧美味與訴求。"], ["🎨", "客製化美學", "口味、色彩、造型、包裝皆可配合品牌視覺。"]], 2),
+                h3("⭐ B2B 合作優勢"),
+                feat([["🔬", "研發能力", "機能配方（高蛋白／膳食纖維/膠原蛋白）與風味穩定度高。"], ["🔧", "客製彈性", "少量試產到量產，快速調整。"], ["✨", "品牌辨識", "外觀吸睛，適合行銷與聯名。"], ["🏃", "多元場景", "餐飲、健身、親子、文創、企業活動。"]], 2),
+                h3("📄 聊聊／品牌資料"),
+                btns([{ text: "📩 合作洽詢", url: MAIL, style: "solid" }, { text: "💬 LINE 諮詢", url: LINE, style: "solid" }]),
+                btns([{ text: "🌳 連結樹", url: "https://linktr.ee/fonegle_dessert", style: "ghost" }, { text: "📸 官方網站", url: "https://fonegle.waca.store/", style: "ghost" }]),
+                { type: "footer", html: `<p><strong>瘋菓貿易社</strong>（統編：60005166）｜品牌：瘋菓冰品研究室<br>聯絡人：董峻宏｜電話：0923-212-212｜Email：<a href="${MAIL}">austin.fonegle@gmail.com</a></p>` }]
+        },
+        market: {
+            name: "市集活動合作頁（主辦單位邀請）",
+            theme: Object.assign({}, WEB_THEME, { pageBg: "#6e4a21", cardBg: "#ece6ca" }),
+            blocks: () => [banner(), h1("瘋菓冰品市集活動合作"),
+                { type: "claim", big: "🍨 為活動創造話題，為品牌留下記憶", sub: "高端義式冰淇淋 × 創意甜點 × 市集活動合作", align: "left" },
+                text(LEAD_BRAND),
+                h3("📸 人氣商品展示"),
+                text(P("從經典義式冰淇淋到特色創意甜點，每款商品皆以風味、視覺與品質為核心設計，適合作為市集熱銷商品、活動甜點與品牌聯名企劃。")),
+                gal(["9c/9c534a910645edd6c253b461f8e51aba.png", "49/496b78e7e0eb4c44bacf05a8653ed338.png", "28/2882d6e5b0460d544947e1dff471aa42.png", "b2/b237f14dfdbe0cfab20ecfac2b0870e7.png", "6f/6f683680ed397c71743a93a84ef05792.png", "23/2332ff54bd117ac7943d3016c7b47cae.png"]),
+                { type: "bullets", title: "🧊 合作模式", style: "disc", items: MODES },
+                text(P("⭐ <strong>品牌特色與優勢</strong><br>高蛋白與機能型冰品研發能力，風味穩定、外觀吸睛、辨識度高，適用健身、親子、文創、餐飲、品牌推廣等多元領域。")),
+                h3("🤝 主辦單位合作邀請"),
+                Object.assign(text(P("我們持續尋找優質市集與活動合作機會，希望透過高辨識度冰品與創意甜點，為活動帶來更多人潮與話題。")), { box: { style: "card" } }),
+                feat([["🎪", "大型文創市集", "文創品牌聚集與假日活動。"], ["🏬", "節慶市集", "檔期活動與主題展售。"], ["👨‍👩‍👧", "企業家庭日", "員工與親子互動活動。"], ["🎵", "音樂祭活動", "戶外大型活動與市集。"]]),
+                text(P("歡迎各類型活動邀約合作，可配合活動主題進行商品規劃與現場展售。")),
+                h3("📷 攤位與活動展示"),
+                gal(["ca/ca9866ca6120a9bd04e227a5f2f87864.png", "90/909ffb93189ee5469b7c66075b116de7.jpg", "0d/0d8058921cea9d3e3753e36b31df92df.jpg"], "4/3"),
+                cta(), h3("🍨 主要特色"),
+                feat([["🍦", "高端義式冰淇淋", "嚴選食材，高享受，兼顧美味與滑順口感。"], ["💪", "機能系甜點", "結合膳食纖維、高蛋白等機能配方。"], ["🎨", "客製化風味", "活動、餐會、品牌聯名皆可量身打造。"], ["🏛️", "生活美學", "每一款甜點都是視覺 + 味覺的儀式感呈現。"]]),
+                h3("⭐ 為什麼適合市集活動"),
+                feat([["📸", "高拍照率商品", "提升社群曝光與打卡分享。"], ["🔥", "高話題性", "創新口味吸引消費者關注。"], ["🎨", "主題客製化", "可配合活動打造限定商品。"], ["🤝", "配合度高", "支援快閃、市集與品牌活動。"]]),
+                contact()]
+        },
+        dm: {
+            name: "品牌聯名與活動合作（DM 單頁）",
+            theme: WEB_THEME,
+            blocks: () => [banner(), h1("品牌聯名與活動合作｜瘋菓冰品研究室"),
+                text(P("瘋菓提供 <strong>創意客製化甜點與冰品研發</strong>，專業團隊可依品牌需求打造專屬產品，適合品牌聯名、活動甜點與限定商品企劃。")),
+                { type: "bullets", title: "合作模式", style: "disc", items: "產品販售（經銷／通路供應）\nOEM／ODM 客製化開發\n聯名／活動合作（品牌行銷專案、限定甜點、主題活動出攤）" },
+                { type: "bullets", title: "品牌特色與優勢", style: "disc", items: "高蛋白與機能型冰品研發能力\n風味穩定、造型吸睛，提升辨識度\n適用健身、親子、文創、餐飲、品牌推廣等多元領域\n小量至中量生產彈性，兼顧創意與營養\n提供試吃樣品與專業諮詢" },
+                btns([{ text: "立即洽詢合作", url: MAIL, style: "solid" }, { text: "加入官方 LINE", url: LINE, style: "solid" }]),
+                contact()]
+        },
+        b2c: {
+            name: "消費者品牌頁（甜點的極致體驗）",
+            theme: WEB_THEME,
+            blocks: () => [banner(), h1("瘋菓冰品研究室｜甜點的極致體驗"),
+                text(P("瘋菓不只是冰品，更是一種風格與態度。每一次品嚐，都像穿上一件精心挑選的禮服，用冰涼詮釋高雅生活。甜點是心靈的避風港，也是日常的小確幸。")),
+                { type: "bullets", title: "主要商品", style: "disc", items: "義式冰淇淋與高蛋白冰品\n膳食纖維冰淇淋，低負擔高享受\n創意造型甜點與燒製小品\n客製化甜點訂製，私密聚會、活動皆適用" },
+                { type: "bullets", title: "參與活動", style: "disc", items: "市集、音樂祭、運動賽事、文創活動\n品牌特色甜點現場體驗\n試吃與產品諮詢" },
+                btns([{ text: "加入官方 LINE 追蹤", url: LINE, style: "solid" }, { text: "追蹤 Instagram", url: IG, style: "solid" }]),
+                contact()]
+        }
+    };
+
+    function applyTemplate() {
+
+        const tpl = TEMPLATES[dom.tplSelect.value];
+        if (!tpl) return;
+        if (!confirm(`套用「${tpl.name}」？目前的區塊會被取代（Logo 與品牌預設保留）。`)) return;
+
+        const logo = report.theme.logo;
+        report.theme = Object.assign(defaultTheme(), tpl.theme, logo ? { logo } : {});
+        report.blocks = tpl.blocks().map(b => Object.assign({ id: uid() }, b));
+        report.source = null;
+        openId = report.blocks[0].id;
+
+        renderAll();
+        scheduleSave();
+    }
+
+    // =========================
     // 品牌預設
     // =========================
     function saveBrand() {
         const t = report.theme;
-        const keys = ["preset", "primary", "dark", "textColor", "font", "baseSize", "pageSize", "companyName", "companySub", "logo", "watermark", "watermarkText", "footerText", "footerBless", "numbering"];
+        const keys = ["preset", "primary", "dark", "textColor", "font", "baseSize", "pageSize", "companyName", "companySub", "logo", "watermark", "watermarkText", "footerText", "footerBless", "numbering", "layout", "pageBg", "cardBg", "cardWidth", "cardRadius"];
         const brand = {};
         keys.forEach(k => brand[k] = t[k]);
         try {
