@@ -3,7 +3,7 @@
 //   Permission：擁有其中任一權限代碼即可使用；空陣列 = 登入即可
 //   13 最高系統管理員不受限制（見 auth.js）
 //   權限代碼：3 系統管理、20 行事曆、21 市集營運、22 商品與生產、
-//            23 銷售與客戶、24 財務、25 AI 行銷、26 財務總覽（唯讀損益）；10、11 為舊版相容
+//            23 銷售與客戶、24 財務、25 行銷、26 財務總覽（唯讀損益）；10、11 為舊版相容
 //   id 用於「我的最愛」，請勿更改既有 id
 // =========================================================
 const Config = {
@@ -72,10 +72,11 @@ const Config = {
             ]
         },
         {
-            group: "AI 行銷",
+            group: "行銷",
             icon: "✨",
             items: [
-                { id: 37, Permission: [25], name: "✨ AI 文案發想", page: "page/ai-writer.html" }
+                { id: 37, Permission: [25], name: "✨ AI 文案發想", page: "page/ai-writer.html" },
+                { id: 65, Permission: [25], name: "📄 製作報告", page: "page/report.html" }
             ]
         },
         {
