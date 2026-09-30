@@ -137,6 +137,53 @@
                     </div>
                 </div>
 
+                <!-- 收支分類彙總 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <h5 class="mb-0">📊 收支分類彙總</h5>
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <select id="sumPeriodType" class="form-select form-select-sm w-auto">
+                                    <option value="y">依年度</option>
+                                    <option value="q">依季</option>
+                                    <option value="m">依月</option>
+                                </select>
+                                <select id="sumYear" class="form-select form-select-sm w-auto"></select>
+                                <select id="sumQuarter" class="form-select form-select-sm w-auto d-none">
+                                    <option value="0">第1季（1-3月）</option>
+                                    <option value="1">第2季（4-6月）</option>
+                                    <option value="2">第3季（7-9月）</option>
+                                    <option value="3">第4季（10-12月）</option>
+                                </select>
+                                <select id="sumMonth" class="form-select form-select-sm w-auto d-none"></select>
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <span class="small text-muted me-2">顯示欄位：</span>
+                            <span id="sumFieldChecks"></span>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-lg-5">
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead><tr><th>項目</th><th class="text-end">金額</th></tr></thead>
+                                        <tbody id="sumFieldTable"></tbody>
+                                        <tfoot id="sumFieldFoot"></tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-lg-7">
+                                <div id="sumTrendBox" class="d-none">
+                                    <div class="small text-muted mb-1">年度業績起伏（依月）</div>
+                                    <canvas id="sumTrendChart" height="140"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row g-3">
 
                     <!-- 列表 -->
@@ -324,6 +371,7 @@
     <div id="footerArea"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="../js/settings.js"></script>
     <script src="../js/auth.js"></script>
     <script>

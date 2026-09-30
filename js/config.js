@@ -3,7 +3,7 @@
 //   Permission：擁有其中任一權限代碼即可使用；空陣列 = 登入即可
 //   13 最高系統管理員不受限制（見 auth.js）
 //   權限代碼：3 系統管理、20 行事曆、21 市集營運、22 商品與生產、
-//            23 銷售與客戶、24 財務、25 AI 行銷；10、11 為舊版相容
+//            23 銷售與客戶、24 財務、25 AI 行銷、26 財務總覽（唯讀損益）；10、11 為舊版相容
 //   id 用於「我的最愛」，請勿更改既有 id
 // =========================================================
 const Config = {
@@ -67,7 +67,8 @@ const Config = {
                 { id: 41, Permission: [24], name: "🔔 提醒中心（發票 / 收帳 / 保證金）", page: "page/reminders.html" },
                 { id: 14, Permission: [24], name: "💰 帳務管理（應收）", page: "page/receivable.html" },
                 { id: 36, Permission: [24], name: "💸 支出表", page: "page/expense.html" },
-                { id: 35, Permission: [24], name: "📒 品牌攤提表", page: "page/amortization.html" }
+                { id: 35, Permission: [24], name: "📒 品牌攤提表", page: "page/amortization.html" },
+                { id: 64, Permission: [24], name: "📊 財務總表", page: "page/finance-report.html" }
             ]
         },
         {

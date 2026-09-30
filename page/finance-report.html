@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>瘋菓內部管理系統｜財務總表</title>
+    <link rel="icon" type="image/png" href="../img/logoicon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/layout.css" rel="stylesheet">
+
+    <style>
+        .pl-total {
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+        }
+
+        .pl-ch {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+
+        .pl-big {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.2;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .fr-table td, .fr-table th {
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .profit { color: #198754; }
+        .loss { color: #dc3545; }
+
+        .section-title {
+            font-weight: bold;
+            margin: 18px 0 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #eee;
+        }
+
+        @media (max-width: 480px) {
+            .pl-big { font-size: 1.5rem; }
+            #frChannels .fs-5 { font-size: 1rem !important; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="headerArea"></div>
+
+    <div id="erp-layout">
+
+        <div id="sidebarArea"></div>
+
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <!-- 標題 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="mb-1">📊 財務總表</h2>
+                            <p class="text-muted mb-0">整合帳款收款、出攤紀錄、支出表、品牌攤提表的損益總覽</p>
+                        </div>
+                        <a href="../home.html" class="btn btn-outline-secondary">← 回首頁品牌損益</a>
+                    </div>
+                </div>
+
+                <!-- 期間選擇 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="small text-muted">檢視期間：</span>
+                            <select id="periodType" class="form-select form-select-sm w-auto">
+                                <option value="a">累計（成立至今）</option>
+                                <option value="y">指定年度</option>
+                                <option value="q">指定季度</option>
+                                <option value="m">指定月份</option>
+                            </select>
+                            <select id="year" class="form-select form-select-sm w-auto d-none"></select>
+                            <select id="quarter" class="form-select form-select-sm w-auto d-none">
+                                <option value="0">第1季（1-3月）</option>
+                                <option value="1">第2季（4-6月）</option>
+                                <option value="2">第3季（7-9月）</option>
+                                <option value="3">第4季（10-12月）</option>
+                            </select>
+                            <select id="month" class="form-select form-select-sm w-auto d-none"></select>
+
+                            <div class="form-check form-switch small mb-0 ms-auto">
+                                <input class="form-check-input" type="checkbox" id="includeBrand" checked>
+                                <label class="form-check-label text-muted" for="includeBrand">含品牌攤提表</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 總損益 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="pl-total rounded-3 p-3 mb-3">
+                            <div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+                                <div>
+                                    <div class="small text-muted" id="frSince">總損益</div>
+                                    <div id="frTotal" class="pl-big">$0</div>
+                                </div>
+                                <div class="text-end small">
+                                    <div>總營收 <b id="frIncome" class="text-success">$0</b></div>
+                                    <div>總支出 <b id="frExpense" class="text-danger">$0</b></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="section-title">💡 收支來源明細</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm fr-table mb-0">
+                                <thead><tr><th>項目</th><th class="text-end">金額</th></tr></thead>
+                                <tbody id="frDetailTable"></tbody>
+                            </table>
+                        </div>
+                        <div id="frDupNote" class="small text-muted mt-1"></div>
+                    </div>
+                </div>
+
+                <!-- 各通路損益（不計入上方總損益，避免與帳款收款重複計算） -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="section-title mt-0">🎪 各通路損益（獨立統計，不併入上方總損益）</div>
+                        <div class="row g-2 text-center" id="frChannels">
+                            <div class="col-4">
+                                <div class="pl-ch rounded-3 p-2 h-100">
+                                    <div class="small text-muted">🎪 活動出攤總損益</div>
+                                    <div id="chStall" class="fw-bold fs-5">$0</div>
+                                    <div id="chStallSub" class="small text-muted"></div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="pl-ch rounded-3 p-2 h-100">
+                                    <div class="small text-muted">🛒 線上訂單總損益</div>
+                                    <div id="chOnline" class="fw-bold fs-5">$0</div>
+                                    <div id="chOnlineSub" class="small text-muted"></div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="pl-ch rounded-3 p-2 h-100">
+                                    <div class="small text-muted">🏢 B2B 總損益</div>
+                                    <div id="chB2b" class="fw-bold fs-5">$0</div>
+                                    <div id="chB2bSub" class="small text-muted"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 業績起伏趨勢圖（累計＝依年；指定年度＝依月） -->
+                <div id="frTrendBox" class="card border-0 shadow-sm mb-3 d-none">
+                    <div class="card-body">
+                        <div class="section-title mt-0" id="frTrendTitle">📈 業績起伏</div>
+                        <canvas id="frTrendChart" height="90"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="footerArea"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="../js/settings.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/ai-chat.js"></script>
+    <script src="../js/favorite.js"></script>
+    <script src="../js/order-stats.js"></script>
+    <script src="../js/pages/finance-report.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("FinanceReport");
+        });
+    </script>
+
+</body>
+
+</html>

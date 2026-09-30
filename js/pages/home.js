@@ -18,7 +18,7 @@ Pages.Home = (() => {
         [
             "greeting", "todayText", "reminderList", "reminderCount", "memoTitle", "memoDue", "memoPriority",
             "memoShared", "btnMemoAdd", "memoList", "memoShowDone", "financeRow", "arList", "mDetail", "plSince", "todoCol",
-            "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense",
+            "plIncludeBrand", "plTotal", "plTotalIncome", "plTotalExpense", "btnGotoFinanceReport",
             "chStall", "chStallSub", "chOnline", "chOnlineSub", "chB2b", "chB2bSub", "remindBadges", "approvalBanner", "approvalCount", "approvalNames", "btnOpenCalendar"
         ].forEach(id => dom[id] = document.getElementById(id));
 
@@ -37,6 +37,7 @@ Pages.Home = (() => {
         // 財務總覽（26）：只顯示品牌損益，不讀取任何財務資料表
         const plOnly = !finance && Auth.hasPermission(26);
         if (plOnly) loadFinanceSummary();
+        dom.btnGotoFinanceReport.classList.toggle("d-none", !finance);
 
         API.me({ silent: true })
             .then(me => { if (me?.user?.Name) dom.greeting.textContent = `${me.user.Name}，歡迎回來 👋`; })
