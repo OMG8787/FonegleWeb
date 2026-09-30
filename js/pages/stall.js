@@ -78,7 +78,7 @@ Pages.Stall = (() => {
             "resultProfit", "resultMargin", "resultCost", "resultPerStaff", "resultLowText",
             "resultLowBar", "resultTargetText", "resultTargetBar", "formCard",
             "sumPeriodType", "sumYear", "sumQuarter", "sumMonth", "sumFieldChecks",
-            "sumFieldTable", "sumFieldFoot", "sumTrendBox", "sumTrendChart"
+            "sumFieldTable", "sumFieldFoot", "sumTrendBox", "sumTrendTitle", "sumTrendChart"
         ]).forEach(id => dom[id] = document.getElementById(id));
     }
 
@@ -376,7 +376,6 @@ Pages.Stall = (() => {
         const mode = dom.sumPeriodType.value;
         dom.sumQuarter.classList.toggle("d-none", mode !== "q");
         dom.sumMonth.classList.toggle("d-none", mode !== "m");
-        dom.sumTrendBox.classList.toggle("d-none", mode !== "y");
         renderSummaryReport();
     }
 
@@ -437,24 +436,54 @@ Pages.Stall = (() => {
 <tr><td><b>淨額</b></td><td class="text-end fw-bold ${net >= 0 ? "profit" : "loss"}">${money(net)}</td></tr>
 <tr><td colspan="2" class="text-muted small">共 ${list.length} 場出攤</td></tr>`;
 
-        if (dom.sumPeriodType.value === "y") renderTrend(dom.sumYear.value, checkedKeys);
+        renderTrend(checkedKeys);
     }
 
-    // 年度業績起伏：依月畫出收入 / 支出 / 淨額趨勢
-    function renderTrend(year, checkedKeys) {
+    // 業績起伏：依目前選取的期間畫出收入 / 支出 / 淨額趨勢
+    //   依年度 → 12 個月；依季 → 該季 3 個月；依月 → 該月每一天
+    function renderTrend(checkedKeys) {
 
         const inKeys = checkedKeys.filter(k => SUMMARY_FIELDS.find(f => f.key === k)?.type === "in");
         const outKeys = checkedKeys.filter(k => SUMMARY_FIELDS.find(f => f.key === k)?.type === "out");
+        const year = dom.sumYear.value;
+        const mode = dom.sumPeriodType.value;
 
-        const perMonth = Array.from({ length: 12 }, (_, i) => {
-            const mm = String(i + 1).padStart(2, "0");
-            const rows = records.filter(r => String(r.StallDate || "").startsWith(year + "-" + mm));
+        const totalsOf = rows => {
             const income = inKeys.reduce((s, k) => s + rows.reduce((s2, r) => s2 + App.num(r[k]), 0), 0);
             const cost = outKeys.reduce((s, k) => s + rows.reduce((s2, r) => s2 + App.num(r[k]), 0), 0);
             return { income, cost, net: income - cost };
-        });
+        };
 
-        drawTrendChart(perMonth.map((_, i) => (i + 1) + "月"), perMonth);
+        let labels, data;
+
+        if (mode === "m") {
+            const month = Number(dom.sumMonth.value);
+            const daysInMonth = new Date(Number(year), month, 0).getDate();
+            labels = []; data = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dd = String(d).padStart(2, "0");
+                const mm = String(month).padStart(2, "0");
+                const rows = records.filter(r => r.StallDate === `${year}-${mm}-${dd}`);
+                labels.push(d + "日");
+                data.push(totalsOf(rows));
+            }
+            dom.sumTrendTitle.textContent = `📈 ${year} 年 ${month} 月業績起伏（依日）`;
+        } else {
+            const months = mode === "q"
+                ? [0, 1, 2].map(i => Number(dom.sumQuarter.value) * 3 + i + 1)
+                : Array.from({ length: 12 }, (_, i) => i + 1);
+            labels = months.map(m => m + "月");
+            data = months.map(m => {
+                const mm = String(m).padStart(2, "0");
+                const rows = records.filter(r => String(r.StallDate || "").startsWith(year + "-" + mm));
+                return totalsOf(rows);
+            });
+            dom.sumTrendTitle.textContent = mode === "q"
+                ? `📈 ${year} 年第 ${Number(dom.sumQuarter.value) + 1} 季業績起伏（依月）`
+                : `📈 ${year} 年業績起伏（依月）`;
+        }
+
+        drawTrendChart(labels, data);
     }
 
     function drawTrendChart(labels, data) {
