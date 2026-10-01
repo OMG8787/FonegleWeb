@@ -581,6 +581,12 @@ const Auth = {
             });
         });
 
+        // 被系統管理員在「公司與功能設定」關閉的功能：一般使用者擋下，系統管理員仍可進入（方便重新開啟）
+        if (currentItem && window.Site && Site.isDisabled(currentItem.id) && !this.hasPermission(3)) {
+            this.showPermissionMask("🚫 此功能目前已關閉，請洽系統管理員");
+            return false;
+        }
+
         if (!currentItem?.Permission?.length)
             return true;
 
@@ -596,7 +602,7 @@ const Auth = {
     // =========================
     // 顯示無權限遮罩
     // =========================
-    showPermissionMask() {
+    showPermissionMask(message) {
 
         if (document.getElementById("permissionMask"))
             return;
@@ -607,7 +613,7 @@ const Auth = {
 
         mask.innerHTML = `
         <div class="permission-box">
-            🔐 無權限使用此功能
+            ${message || "🔐 無權限使用此功能"}
         </div>
         <button onclick="location.href='${this.root}home.html'">
             回首頁

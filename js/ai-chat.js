@@ -1,6 +1,9 @@
 // AI視窗專用(ai-chat.js)：經由 Google Apps Script 呼叫 AI（使用者在帳號設定選的服務，或系統共用 Gemini）
 
 (function () {
+    // 系統管理員可以在「公司與功能設定」關閉 AI 助理
+    if (window.Site && Site.features.aiChat === false) return
+
     let typingDiv = null
     // 對話紀錄存在 Google 試算表 AiChats（個人），手機電腦同步
     let history = []          // [{ id, role: "user" | "model", text }]
@@ -8,6 +11,7 @@
 
     /* ===== 建立浮動按鈕 ===== */
     const btn = document.createElement("div")
+    btn.id = "aiChatBtn"
     btn.innerHTML = "🤖"
     btn.style = `
 position:fixed;
@@ -31,6 +35,7 @@ transition:0.2s;
 
     /* ===== 聊天視窗 ===== */
     const chat = document.createElement("div")
+    chat.id = "aiChatBox"
     chat.style = `
 position:fixed;
 right:25px;

@@ -375,6 +375,17 @@
 
     </div>
     <script src="js/settings.js"></script>
+    <script src="js/site.js"></script>
+    <script>
+        // 公司資料（名稱、Logo）：先用本機快取，再向伺服器取得公開的名稱與 Logo
+        (function () {
+            const apply = () => {
+                document.title = (Site.company.companyName || Site.appName) + "｜登入";
+                if (Site.logo) document.getElementById("logoImg").src = Site.logo;
+            };
+            document.addEventListener("DOMContentLoaded", () => { apply(); Site.onChange(apply); Site.refresh(true); });
+        })();
+    </script>
     <script src="js/auth.js"></script>
 
     <script>

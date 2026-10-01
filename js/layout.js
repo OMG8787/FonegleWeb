@@ -5,15 +5,41 @@ const Layout = {
         this.renderHeader();
         this.renderSidebar();
         this.renderFooter();
-
+        this.applySite();
 
         this.startClock();
+
+        // 公司資料與功能開關：先用本機快取，背景更新後有變化再重畫
+        if (window.Site) {
+            Site.onChange(() => this.refreshSite());
+            Site.refresh();
+        }
 
         if (window.Favorite) {
             await Favorite.init();
         }
 
     },
+    // 套用公司資料（標題、品牌資訊頁的文字）
+    applySite() {
+        if (!window.Site) return;
+        Site.applyTitle();
+        if (document.body.hasAttribute("data-site-text")) Site.applyToDom(document.getElementById("erp-main"));
+    },
+
+    // 公司資料 / 功能開關有變：重畫標題、選單、頁尾，並重新檢查這個頁面是否被關閉
+    refreshSite() {
+        this.renderHeader();
+        this.renderSidebar();
+        this.renderFooter();
+        this.applySite();
+        if (window.Favorite) Favorite.init();
+        document.getElementById("permissionMask")?.remove();
+        Auth.checkPagePermission();
+        const off = Site.features.aiChat === false;
+        ["aiChatBtn", "aiChatBox"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = off ? "none" : (id === "aiChatBtn" ? "flex" : e.style.display); });
+    },
+
     // 權限判斷工具
     hasMenuPermission(item) {
 
@@ -28,7 +54,7 @@ const Layout = {
         document.getElementById("headerArea").innerHTML = `
         <div id="erp-header">
             <button type="button" id="btnMenu" class="hdr-btn" onclick="Layout.toggleSidebar()" aria-label="功能選單" title="功能選單">☰</button>
-            <a class="hdr-title" href="${Auth.root}home.html">🍦 <span class="hdr-title-full">瘋菓內部管理系統</span><span class="hdr-title-short">瘋菓管理</span></a>
+            <a class="hdr-title" href="${Auth.root}home.html">${window.Site && Site.logo ? `<img src="${Site.logo}" alt="" style="height:26px;width:auto;vertical-align:middle;margin-right:6px">` : "🍦 "}<span class="hdr-title-full">${App.esc(window.Site ? Site.appName : "內部管理系統")}</span><span class="hdr-title-short">${App.esc(window.Site ? Site.brandShort + "管理" : "管理")}</span></a>
             <div class="hdr-right">
                 <button type="button" class="hdr-btn hdr-logout" onclick="Auth.logout()">登出</button>
             </div>
@@ -36,7 +62,12 @@ const Layout = {
     },
     renderSidebar() {
 
-        const html = Config.menuData.map((group, index) => {
+        // 被「功能開關」關掉的功能不顯示；整組都關掉就整組隱藏
+        const groups = Config.menuData
+            .map(g => Object.assign({}, g, { items: g.items.filter(i => !(window.Site && Site.isDisabled(i.id))) }))
+            .filter(g => g.items.length);
+
+        const html = groups.map((group, index) => {
 
             const itemsHtml = group.items.map(item => {
 
@@ -129,10 +160,16 @@ const Layout = {
         if (el) el.classList.toggle("open");
     },
 
+    footerText() {
+        if (!window.Site) return "";
+        const c = Site.company;
+        return `© ${new Date().getFullYear()} ${c.companyName || Site.appName}${c.taxId ? `（統編 ${c.taxId}）` : ""}V1.0.0`;
+    },
+
     renderFooter() {
         document.getElementById("footerArea").innerHTML = `
         <div id="erp-footer">
-            <span>© 2026 瘋菓貿易社（統編 60005166）V1.0.0</span>
+            <span>${App.esc(this.footerText())}</span>
             <span class="footer-clock">｜現在時間：<span id="clock"></span></span>
         </div>`;
     },

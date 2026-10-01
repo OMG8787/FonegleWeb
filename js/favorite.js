@@ -92,7 +92,7 @@ window.Favorite = (() => {
         if (!grid)
             return;
 
-        const allItems = Config.menuData.flatMap(g => g.items);
+        const allItems = Config.menuData.flatMap(g => g.items).filter(i => !(window.Site && Site.isDisabled(i.id)));
 
         const favorites = allItems.filter(x => favoriteIds.includes(x.id));
 

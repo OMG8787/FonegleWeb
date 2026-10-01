@@ -58,6 +58,11 @@ const SCHEMA = {
         key: 'ID', seq: 'ID',
         cols: 'ID:n RoleName Permissions Description SortOrder:n CreatedBy CreatedAt UpdatedBy UpdatedAt'
     },
+    // 公司資料與功能開關（key / value）：company = 公司資料 JSON、features = 功能開關 JSON、logo = Logo 圖片（data URL）
+    Settings: {
+        key: 'Key',
+        cols: 'Key Value UpdatedAt UpdatedBy'
+    },
     // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
     Sessions: {
         key: 'Token', internal: true,
@@ -250,6 +255,7 @@ const TABLE_INFO = {
     Users: ['system', '員工與會員帳號（密碼為雜湊，不可手動修改）'],
     ID_UserRoles: ['system', '角色代碼（舊版）'],
     Roles: ['system', '角色（權限範本，可自訂名稱與權限）'],
+    Settings: ['system', '公司資料與功能開關（設定名稱 + 內容 JSON；由「公司與功能設定」頁面修改）'],
     ID_Permission: ['system', '權限代碼'],
     Memos: ['system', '備忘錄（個人，可共享；系統通知例如新帳號申請也會出現在這裡）'],
     Sessions: ['system', '目前登入中的裝置（刪除一列 = 強制該裝置登出，其他欄位請勿修改）'],
@@ -286,6 +292,7 @@ const TABLE_INFO = {
 };
 
 const COLUMN_LABELS = {
+    Key: '設定名稱', Value: '設定內容',
     ID: '編號', Id: '編號', Name: '姓名', Note: '備註', Remark: '備註', Description: '說明', Status: '狀態',
     CreatedAt: '建立時間', CreatedBy: '建立人（使用者ID）', UpdatedAt: '修改時間', UpdateAt: '修改時間',
     UpdatedBy: '修改人（使用者ID）', UpdateLineUserId: '修改人（使用者ID）', CreateLineID: '建立人',
@@ -416,6 +423,7 @@ const TABLE_PERMS = {
     CrawlerSources: { read: MARKET, write: MARKET },
     Deposits: { read: MARKET.concat(FINANCE), write: MARKET.concat(FINANCE) },
     Roles: { read: 'all', write: [3] },
+    Settings: { read: 'all', write: [3] },
     ID_Category: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },
     Products: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },
     Material: { read: PRODUCT, write: PRODUCT },
@@ -476,6 +484,7 @@ function doPost(e) {
 
 const PUBLIC_ACTIONS = {
     ping: () => 'pong',
+    publicConfig: publicConfig_,
     importData: importData_,
     login: login_,
     register: register_,
@@ -517,7 +526,7 @@ const PRIVATE_ACTIONS = {
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
-const READ_ACTIONS = ['ping', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary'];
+const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary'];
 // loginLogConfig 不帶 keep 時只是讀取；帶 keep 會修改（由 reqId 防重複）
 
 function handle_(req) {
@@ -2218,7 +2227,7 @@ function sendMail_(req, ctx) {
         to: to.join(','),
         subject,
         body,
-        name: CONFIG.APP_NAME,
+        name: appName_(),
         attachments
     });
 
@@ -2343,7 +2352,7 @@ function aiChat_(req, ctx) {
 
     if (!messages.length) fail_('請輸入訊息');
 
-    return callAI_(ctx, '你是「' + CONFIG.APP_NAME + '」的智能助理，使用繁體中文回答，回答要簡潔實用。', messages);
+    return callAI_(ctx, '你是「' + appName_() + '」的智能助理，使用繁體中文回答，回答要簡潔實用。', messages);
 }
 
 // AI 文案：前端組好需求，伺服器加上品牌設定後呼叫 Gemini
@@ -2353,12 +2362,17 @@ function aiGenerate_(req, ctx) {
     const prompt = String(req.prompt || '').trim().slice(0, 8000);
     if (!prompt) fail_('請輸入文案需求');
 
+    // 品牌名稱與簡介可在「公司與功能設定」修改；沒設定時沿用瘋菓的預設
+    const site = siteConfig_();
+    const brand = String(site.brandShort || site.brandName || '').trim() || '瘋菓';
+    const intro = String(site.aiBrandIntro || '').trim() || (brand === '瘋菓' ? '瘋菓主打手作冰淇淋、機能冰品與鯛魚燒，常在各地市集擺攤。' : '');
+
     const system = [
-        '你是台灣甜點品牌「瘋菓」的社群小編與文案企劃，使用繁體中文（台灣用語）。',
-        '瘋菓主打手作冰淇淋、機能冰品與鯛魚燒，常在各地市集擺攤。',
+        '你是台灣品牌「' + brand + '」的社群小編與文案企劃，使用繁體中文（台灣用語）。',
+        intro,
         '寫作要自然、有溫度、具體，不要空泛形容詞堆疊；不要捏造未提供的價格、日期或優惠。',
         String(req.system || '').slice(0, 2000)
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     return callAI_(ctx, system, [{ role: 'user', text: prompt }]);
 }
@@ -2854,6 +2868,43 @@ function parseTime_(text) {
 
 function clip_(v, n) {
     return String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+}
+
+// ============================================================
+// 公司資料（Settings 表）：登入頁、寄件人名稱、AI 提示詞會用到
+// ============================================================
+function settingValue_(key) {
+    try {
+        const row = cachedObjs_(tbl_('Settings')).find(o => o.Key === key);
+        return row ? String(row.Value || '') : '';
+    } catch (e) {
+        return '';
+    }
+}
+
+function siteConfig_() {
+    try {
+        const v = JSON.parse(settingValue_('company') || '{}');
+        return v && typeof v === 'object' ? v : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function appName_() {
+    return String(siteConfig_().appName || '').trim() || CONFIG.APP_NAME;
+}
+
+// 未登入就能呼叫：只回傳登入頁需要的名稱與 Logo，不含聯絡資料
+function publicConfig_() {
+    const c = siteConfig_();
+    return {
+        appName: String(c.appName || ''),
+        brandName: String(c.brandName || ''),
+        brandShort: String(c.brandShort || ''),
+        companyName: String(c.companyName || ''),
+        logo: settingValue_('logo').slice(0, 60000)
+    };
 }
 
 function now_() {

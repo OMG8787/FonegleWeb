@@ -8,6 +8,29 @@ window.APP_SETTINGS = {
     // 對自己的瀏覽器暫時改用其他網址（例如測試新版部署）
     GAS_URL: "https://script.google.com/macros/s/AKfycbx2p0uqxtTvViYa7sSbdgc4Upo4RQvdxeSBa1orwd80FTlBjDoqUqa__Y2lV1d3l5ZHgg/exec",
 
+    // 公司資料的預設值：還沒到「系統 → 公司與功能設定」填寫時使用。
+    // 把這套系統給其他公司使用時，可以直接改這裡，或登入後到設定頁線上修改（設定頁的內容優先）。
+    COMPANY_DEFAULTS: {
+        appName: "瘋菓內部管理系統",
+        brandShort: "瘋菓",
+        brandName: "瘋菓冰品研究室",
+        brandSub: "Fonegle Dessert Lab",
+        companyName: "瘋菓貿易社",
+        taxId: "60005166",
+        contactName: "董峻宏",
+        phone: "0923-212-212",
+        email: "austin.fonegle@gmail.com",
+        address: "",
+        lineId: "@764zeuav",
+        lineUrl: "https://line.me/R/ti/p/@764zeuav?ts=07251231&oat_content=url",
+        instagramUrl: "https://www.instagram.com/fonegle_dessert/",
+        website: "https://fonegle.waca.store/",
+        linkTreeUrl: "https://linktr.ee/fonegle_dessert",
+        bannerUrl: "https://img.cloudimg.in/uploads/shops/39971/theme/31/3121fab139bb6a962ea668a4cfab9cd0.png?v=202601270250",
+        reportFooter: "",
+        aiBrandIntro: ""
+    },
+
     // 登入不會自動過期（登出或管理員強制登出才結束）；登入 cookie 每次使用時延長
     SESSION_DAYS: 400
 };

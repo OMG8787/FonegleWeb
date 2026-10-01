@@ -10,6 +10,9 @@ const Config = {
     // 網站根目錄（由 settings.js 自動推算）
     root: Auth.root,
     userId: Auth.getUserId(),
+    // 不能被「功能開關」關掉的功能（首頁、帳號設定、帳號與權限管理、公司與功能設定本身）
+    lockedIds: [1, 2, 60, 63, 66],
+
     menuData: [
         {
             group: "首頁",
@@ -85,6 +88,7 @@ const Config = {
             items: [
                 { id: 2, Permission: [], name: "⚙️ 帳號設定", page: "page/account.html" },
                 { id: 63, Permission: [3], name: "👥 帳號審核與權限", page: "page/access.html" },
+                { id: 66, Permission: [3], name: "🏢 公司與功能設定", page: "page/site-settings.html" },
                 { id: 20, Permission: [3], name: "👨‍👩‍👧‍👦 員工及會員", page: "page/member.html" },
                 { id: 60, Permission: [3], name: "🔐 權限管理", page: "page/permission.html" },
                 { id: 61, Permission: [3], name: "✉️ 郵件寄送", page: "page/mail.html" },

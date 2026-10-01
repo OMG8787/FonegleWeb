@@ -38,7 +38,7 @@ Pages.Report = (() => {
         text: { label: "文字段落", icon: "📝", make: () => ({ html: "<p>在這裡輸入內容…</p>" }), sum: b => plain(b.html) },
         images: { label: "圖片（可多張）", icon: "🖼️", make: () => ({ title: "", columns: 2, width: 80, images: [], align: "center" }), sum: b => `${(b.images || []).length} 張` },
         imageText: { label: "圖文並排", icon: "🧩", make: () => ({ title: "", image: "", caption: "", html: "<p>說明文字…</p>", imageSide: "left" }), sum: b => plain(b.html) },
-        table: { label: "表格", icon: "📊", make: () => ({ title: "", badge: "", mode: "kv", rows: [["項目", "內容"]] }), sum: b => `${(b.rows || []).length} 列` },
+        table: { label: "表格", icon: "📊", make: () => ({ title: "", badge: "", mode: "kv", rows: [["欄位 1", "值 1"], ["欄位 2", "值 2"]] }), sum: b => `${(b.rows || []).length} 列` },
         callout: { label: "重點框", icon: "💡", make: () => ({ variant: "suggest", title: "", html: "<p>重點說明…</p>" }), sum: b => plain(b.html) },
         signature: { label: "簽核欄", icon: "✍️", make: () => ({ slots: [{ label: "製表", name: "", date: "" }, { label: "審核", name: "", date: "" }, { label: "核准", name: "", date: "" }] }), sum: b => (b.slots || (b.roles || []).map(label => ({ label }))).map(x => x.label).join("／") },
         pagebreak: { label: "強制分頁", icon: "✂️", make: () => ({}), sum: () => "" },
@@ -185,7 +185,7 @@ Pages.Report = (() => {
 
         [
             "btnNew", "btnDownload", "btnPrint", "srcKind", "srcRecord", "btnSrcBuild", "btnSrcRefill",
-            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl", "btnTplSave", "btnTplDel", "btnTplExport", "btnTplImport", "tplFile", "btnCollapseAll", "btnExpandAll", "zoom"
+            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl", "btnTplSave", "btnTplDel", "btnTplExport", "btnTplImport", "tplFile", "btnCollapseAll", "btnExpandAll", "zoom", "btnClearDraft"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         dom.addType.innerHTML = TYPE_GROUPS.map(([g, keys]) =>
@@ -193,6 +193,7 @@ Pages.Report = (() => {
 
 
         bind();
+        if (window.Site) Site.onChange(() => renderTplOptions(dom.tplSelect.value));
 
         userTpl = (await DraftStore.get("templates")) || [];
         renderTplOptions();
@@ -230,6 +231,7 @@ Pages.Report = (() => {
     }
 
     function defaultTheme() {
+        const co = window.Site ? Site.company : {};
         const base = {
             preset: "brand", primary: R.THEMES.brand.primary, dark: R.THEMES.brand.dark, textColor: "#2b2b2b",
             font: "jhenghei", baseSize: 14, pageSize: "a4",
@@ -237,9 +239,9 @@ Pages.Report = (() => {
             logoShow: "cover", logoAlign: "center", logoW: 120, logoDx: 0, logoDy: 0, docHeader: false, coverNote: "",
             headStyle: "bar", figLabel: "圖", runHead: false, runHeadLeft: "", runHeadRight: "", runFootLeft: "", pageNo: false, pageFmt: "第 {p} 頁 / 共 {n} 頁",
             watermarkType: "text", wmImage: "", wmColor: "#4d341c", wmSize: 88, wmOpacity: 6, wmAngle: -24, wmPos: "center",
-            companyName: "瘋菓 Fonegle Dessert", companySub: "", logo: "",
-            watermark: false, watermarkText: "瘋菓", title: "報告", numbering: true,
-            footerText: "", footerBless: "Thank you."
+            companyName: co.brandName || co.companyName || "", companySub: co.brandSub || "", logo: "",
+            watermark: false, watermarkText: co.brandShort || co.companyName || "", title: "報告", numbering: true,
+            footerText: co.reportFooter || "", footerBless: "Thank you."
         };
         try { return Object.assign(base, JSON.parse(localStorage.getItem(BRAND_KEY) || "{}")); } catch { return base; }
     }
@@ -313,6 +315,17 @@ Pages.Report = (() => {
             activate(b.id);
             changed(true);
             document.getElementById(`blk-${b.id}`)?.scrollIntoView({ block: "nearest" });
+        });
+
+        dom.btnClearDraft.addEventListener("click", async () => {
+            if (!confirm("清除這一頁的草稿，回到預設的空白報告？\n\n目前編輯中的內容會消失；「我的範本」、品牌預設與公司資料不受影響。")) return;
+            clearTimeout(saveTimer);
+            await DraftStore.set(draftKey(), null);
+            report = await newReport();
+            openIds.clear();
+            activate(report.blocks[0].id);
+            renderAll();
+            dom.saveState.textContent = "🧹 已清除草稿，回到預設";
         });
 
         dom.btnCollapseAll.addEventListener("click", () => { openIds.clear(); renderBlocks(); });
@@ -532,7 +545,10 @@ Pages.Report = (() => {
             const arr = getPath(b, btn.dataset.arr);
             const max = Number(btn.dataset.max || 99);
             if (arr.length >= max) { alert(`最多 ${max} 個`); return; }
-            arr.push(btn.dataset.tpl === "rows" ? Array.from({ length: arr[0]?.length || (b.mode === "kv4" ? 3 : 2) }, (_, k) => (b.mode === "kv4" && k === 2 ? false : "")) : ITEM_TPL[btn.dataset.tpl]());
+            if (btn.dataset.tpl === "rows") {
+                const n = arr.length + 1;
+                arr.push(b.mode === "grid" ? Array.from({ length: arr[0]?.length || 2 }, () => "") : b.mode === "kv4" ? [`欄位 ${n}`, `值 ${n}`, false] : [`欄位 ${n}`, `值 ${n}`]);
+            } else arr.push(ITEM_TPL[btn.dataset.tpl]());
         }
         else if (act === "arr-del") getPath(b, btn.dataset.arr).splice(Number(btn.dataset.i), 1);
         else if (act === "arr-up" || act === "arr-down") {
@@ -957,6 +973,7 @@ ${saveBtns}`;
 
     // 系統內建的瘋菓 Logo（img/logo.png）
     async function fetchDefaultLogo() {
+        if (window.Site && Site.logo) return Site.logo;     // 公司設定裡上傳的 Logo 優先
         const res = await fetch("../img/logo.png");
         if (!res.ok) throw new Error("找不到預設 Logo");
         return compress(await res.blob(), true);
@@ -1189,6 +1206,9 @@ ${saveBtns}`;
     const grid = rows => ({ type: "table", mode: "grid", rows });
     const note = (variant, title, html) => ({ type: "callout", variant, title, html });
     const compactDate = () => todayText().replace(/-/g, "");
+    // 中性的預設資訊表：欄位 1、2、3…／值 1、2、3…（最後一列可設為整列）
+    const genRows = (n, wideLast) => Array.from({ length: n }, (_, i) => [`欄位 ${i + 1}`, `值 ${i + 1}`, !!wideLast && i === n - 1]);
+    const SAMPLE_TPLS = ["brand", "b2b", "market", "dm", "b2c"];     // 瘋菓的範例宣傳頁，可在「公司與功能設定」關閉
 
     const TEMPLATES = {
         blank: {
@@ -1197,30 +1217,33 @@ ${saveBtns}`;
             blocks: () => [{ type: "cover", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }, { type: "heading", level: "h2", text: "新章節", align: "left" }, text("<p>在這裡輸入內容…</p>")]
         },
         report: {
-            name: "評估報告（資訊表版型，A4）",
+            name: "資訊表報告（四欄資訊表版型，A4）",
             defaultLogo: true,
-            theme: {
-                layout: "doc", pageSize: "a4", preset: "cetus", primary: "#E60012", dark: "#1f2937", textColor: "#2b2b2b", font: "jhenghei", baseSize: 14,
-                title: "評估報告", numbering: true, headStyle: "badge", docHeader: true, figLabel: "圖", companyName: "公司名稱", companySub: "Company Tagline",
-                logoShow: "cover", logoW: 140, watermark: true, watermarkType: "text", watermarkText: "公司名稱", wmSize: 72, wmOpacity: 5, wmAngle: -30,
-                footerText: "本文件為 公司名稱 評估報告\n文件內容涉及技術與商業資訊，禁止未經授權轉載、散佈或商業使用", footerBless: "Thank you for your trust and support.",
-                coverNote: "本報告內容僅供評估參考，實際效果以現場驗證為準"
+            theme: () => {
+                const c = window.Site ? Site.company : {};
+                const nm = c.brandName || c.companyName || "";
+                return {
+                    layout: "doc", pageSize: "a4", preset: "cetus", primary: "#E60012", dark: "#1f2937", textColor: "#2b2b2b", font: "jhenghei", baseSize: 14,
+                    title: "報告", numbering: true, headStyle: "badge", docHeader: true, figLabel: "圖", companyName: nm, companySub: c.brandSub || "",
+                    logoShow: "cover", logoW: 140, watermark: !!nm, watermarkType: "text", watermarkText: nm, wmSize: 72, wmOpacity: 5, wmAngle: -30,
+                    footerText: c.reportFooter || (nm ? `本文件為 ${nm} 內部文件，未經授權請勿轉載、散佈。` : ""), footerBless: "", coverNote: ""
+                };
             },
-            meta: () => ({ rows: [{ label: "報告編號", value: "ER-" + compactDate() + "-01" }, { label: "報告日期", value: todayText() }, { label: "撰寫人", value: "" }, { label: "版次", value: "V1.0" }] }),
+            meta: () => ({ rows: [{ label: "報告編號", value: "R-" + compactDate() + "-01" }, { label: "報告日期", value: todayText() }, { label: "撰寫人", value: "" }, { label: "版次", value: "V1.0" }] }),
             blocks: () => [
-                { type: "cover", style: "formal", kicker: "EVALUATION REPORT", title: "評估報告", subtitle: "（專案名稱）", customer: "", image: "",
-                    children: [{ type: "table", mode: "kv4", title: "", badge: "", rows: [["客戶名稱", "", false], ["終端客戶", "", false]] }] },
+                { type: "cover", style: "formal", kicker: "REPORT", title: "報告標題", subtitle: "副標題", customer: "", image: "",
+                    children: [{ type: "table", mode: "kv4", title: "", badge: "", rows: genRows(2) }] },
                 h2("基本資訊"),
-                { type: "table", mode: "kv4", title: "", badge: "", rows: [["客戶名稱", "", false], ["終端客戶", "", false], ["聯絡人", "", false], ["業務", "", false], ["負責人", "", false], ["產品應用", "", false], ["待測物件", "", false], ["使用軟體", "", false], ["需求描述", "", true]] },
-                h2("原始需求分析"),
-                { type: "table", mode: "kv4", title: "檢測需求", badge: "需求 1", rows: [["檢測需求", "", true], ["FOV (mm)", "", false], ["WD (mm)", "", false], ["精度", "", false], ["光源限制", "", false], ["飛拍速度 (mm/s)", "", false], ["檢測速度 (pcs/s)", "", false]] },
-                h2("評估方案"),
-                { type: "table", mode: "kv4", title: "方案規格", badge: "方案 1", rows: [["相機型號", "", false], ["鏡頭型號", "", false], ["延伸環", "", false], ["WD (mm)", "", false], ["FOV (mm)", "", false], ["空間解析度", "", false], ["光源", "", false], ["光源控制器", "", false], ["測試結論", "", true]] },
-                h2("測試影像"),
+                { type: "table", mode: "kv4", title: "", badge: "", rows: genRows(9, true) },
+                h2("需求說明"),
+                { type: "table", mode: "kv4", title: "表格標題 1", badge: "標籤 1", rows: genRows(7, true) },
+                h2("規格與方案"),
+                { type: "table", mode: "kv4", title: "表格標題 2", badge: "標籤 2", rows: genRows(9, true) },
+                h2("圖片紀錄"),
                 { type: "images", title: "", columns: 2, width: 80, align: "center", images: [] },
-                h2("評估結論"),
-                note("conclusion", "評估結論", "<p>請填寫整體評估結論。</p>"),
-                { type: "signature", slots: [{ label: "撰寫", name: "", date: "" }, { label: "審核", name: "", date: "" }, { label: "客戶確認", name: "", date: "" }] }]
+                h2("結論"),
+                note("conclusion", "結論", "<p>請填寫內容。</p>"),
+                { type: "signature", slots: [{ label: "製表", name: "", date: "" }, { label: "審核", name: "", date: "" }, { label: "核准", name: "", date: "" }] }]
         },
         production: {
             name: "生產報告（正式版面，A4）",
@@ -1327,7 +1350,9 @@ ${saveBtns}`;
 
         const mine = userTpl.map(t => `<option value="u:${E(t.id)}">⭐ ${E(t.name)}</option>`).join("");
 
-        dom.tplSelect.innerHTML = `<optgroup label="內建範本（依品牌對外網頁整理）">${Object.keys(TEMPLATES).map(k => `<option value="b:${k}">${TEMPLATES[k].name}</option>`).join("")}</optgroup>` +
+        const shown = Object.keys(TEMPLATES).filter(k => !SAMPLE_TPLS.includes(k) || !window.Site || Site.features.brandTemplates !== false);
+
+        dom.tplSelect.innerHTML = `<optgroup label="內建範本">${shown.map(k => `<option value="b:${k}">${TEMPLATES[k].name}</option>`).join("")}</optgroup>` +
             (mine ? `<optgroup label="我的範本">${mine}</optgroup>` : "");
 
         if (selected) dom.tplSelect.value = selected;
@@ -1339,7 +1364,10 @@ ${saveBtns}`;
         const v = dom.tplSelect.value;
         if (v.startsWith("b:")) {
             const t = TEMPLATES[v.slice(2)];
-            return t && { name: t.name, theme: t.theme, blocks: t.blocks(), meta: t.meta && t.meta(), defaultLogo: !!t.defaultLogo };
+            if (!t) return null;
+            // 內建範本裡的公司名稱、統編、聯絡方式、連結，換成「公司與功能設定」填的資料
+            const fix = x => (window.Site ? Site.replaceBrand(x) : x);
+            return { name: t.name, theme: fix(typeof t.theme === "function" ? t.theme() : t.theme), blocks: fix(t.blocks()), meta: t.meta && fix(t.meta()), defaultLogo: !!t.defaultLogo };
         }
         const u = userTpl.find(t => "u:" + t.id === v);
         return u && { name: u.name, theme: u.theme, blocks: JSON.parse(JSON.stringify(u.blocks)), meta: u.meta && JSON.parse(JSON.stringify(u.meta)) };
