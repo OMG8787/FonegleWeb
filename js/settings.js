@@ -27,10 +27,8 @@ window.APP_SETTINGS = {
         website: "",
         linkTreeUrl: "",
         bannerUrl: "",
-        foodRegNo: "",
         reportFooter: "",
-        aiBrandIntro: "",
-        brandNotes: ""
+        aiBrandIntro: ""
     },
 
     // 登入不會自動過期（登出或管理員強制登出才結束）；登入 cookie 每次使用時延長

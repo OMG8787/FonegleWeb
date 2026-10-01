@@ -63,6 +63,11 @@ const SCHEMA = {
         key: 'Key',
         cols: 'Key Value UpdatedAt UpdatedBy'
     },
+    // 品牌資訊頁的內容區塊（一列一個區塊）：Type = 區塊類型、Data = 內容 JSON、SortOrder = 排序
+    BrandBlocks: {
+        key: 'ID', seq: 'ID', freeDelete: true,
+        cols: 'ID:n SortOrder:n Type Data CreatedBy CreatedAt UpdatedBy UpdatedAt'
+    },
     // 目前登入中的裝置：刪除一列 = 讓該裝置立即登出
     Sessions: {
         key: 'Token', internal: true,
@@ -265,6 +270,7 @@ const TABLE_INFO = {
     CalendarDays: ['calendar', '活動每一天的營業時段'],
     MarketOrders: ['market', '市集現場點餐（每筆一張單，Items 為品項明細 JSON）'],
     StallRecords: ['market', '出攤紀錄（費用、收款、盈虧）'],
+    BrandBlocks: ['market', '品牌資訊頁的內容區塊（類型、內容 JSON、排序；由「品牌資訊」頁編輯）'],
     CrawlerSources: ['market', '市集報名連結'],
     Deposits: ['market', '保證金追蹤（付出 / 預計退還 / 已退還）'],
     Products: ['product', '產品'],
@@ -292,7 +298,7 @@ const TABLE_INFO = {
 };
 
 const COLUMN_LABELS = {
-    Key: '設定名稱', Value: '設定內容',
+    Key: '設定名稱', Value: '設定內容', Data: '內容（JSON）',
     ID: '編號', Id: '編號', Name: '姓名', Note: '備註', Remark: '備註', Description: '說明', Status: '狀態',
     CreatedAt: '建立時間', CreatedBy: '建立人（使用者ID）', UpdatedAt: '修改時間', UpdateAt: '修改時間',
     UpdatedBy: '修改人（使用者ID）', UpdateLineUserId: '修改人（使用者ID）', CreateLineID: '建立人',
@@ -419,6 +425,8 @@ const TABLE_PERMS = {
     AiDrafts: { read: [25], write: [25] },
     AiChats: { read: 'all', write: 'all' },
     StallRecords: { read: MARKET.concat(FINANCE), write: MARKET },
+    // 品牌資訊：登入的人都能看；市集營運與系統管理可以編輯
+    BrandBlocks: { read: 'all', write: MARKET.concat([3]) },
     MarketOrders: { read: MARKET.concat(FINANCE), write: MARKET },
     CrawlerSources: { read: MARKET, write: MARKET },
     Deposits: { read: MARKET.concat(FINANCE), write: MARKET.concat(FINANCE) },

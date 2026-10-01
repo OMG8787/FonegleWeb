@@ -29,10 +29,8 @@ Pages.SiteSettings = (() => {
         ["website", "官方網站", "https://…", "col-md-6"],
         ["linkTreeUrl", "連結樹網址", "https://…", "col-md-6"],
         ["bannerUrl", "宣傳頁橫幅圖網址", "https://…（製作報告的宣傳頁範本使用）", "col-md-6"],
-        ["foodRegNo", "食品登陸字號 / 登記證號", "品牌資訊頁顯示（選填）", "col-md-6"],
         ["reportFooter", "報告預設頁尾聲明", "可多行；留空就用「本文件為 公司名稱 內部文件…」", "col-12", "area"],
-        ["aiBrandIntro", "AI 文案的品牌簡介", "一兩句話說明你的品牌，AI 寫文案時會參考", "col-12", "area"],
-        ["brandNotes", "品牌介紹與備註", "顯示在「品牌資訊」頁，空一行分一段，每段都有複製按鈕（可放介紹文字、報名資料、圖片連結等）", "col-12", "area8"]
+        ["aiBrandIntro", "AI 文案的品牌簡介", "一兩句話說明你的品牌，AI 寫文案時會參考", "col-12", "area"]
     ];
 
     async function init() {
@@ -91,7 +89,6 @@ Pages.SiteSettings = (() => {
 
         if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { alert("Email 格式不正確"); return; }
         if (!data.appName) { alert("系統名稱不能空白"); return; }
-        if (data.brandNotes.length > 20000) { alert("「品牌介紹與備註」太長（上限 20000 字）"); return; }
         if (Object.values(data).some(v => /[<>]/.test(v))) { alert("欄位內容不能包含 < 或 > 符號"); return; }
 
         try {
