@@ -24,7 +24,6 @@ const Layout = {
     applySite() {
         if (!window.Site) return;
         Site.applyTitle();
-        if (document.body.hasAttribute("data-site-text")) Site.applyToDom(document.getElementById("erp-main"));
     },
 
     // 公司資料 / 功能開關有變：重畫標題、選單、頁尾，並重新檢查這個頁面是否被關閉
@@ -54,7 +53,7 @@ const Layout = {
         document.getElementById("headerArea").innerHTML = `
         <div id="erp-header">
             <button type="button" id="btnMenu" class="hdr-btn" onclick="Layout.toggleSidebar()" aria-label="功能選單" title="功能選單">☰</button>
-            <a class="hdr-title" href="${Auth.root}home.html">${window.Site && Site.logo ? `<img src="${Site.logo}" alt="" style="height:26px;width:auto;vertical-align:middle;margin-right:6px">` : "🍦 "}<span class="hdr-title-full">${App.esc(window.Site ? Site.appName : "內部管理系統")}</span><span class="hdr-title-short">${App.esc(window.Site ? Site.brandShort + "管理" : "管理")}</span></a>
+            <a class="hdr-title" href="${Auth.root}home.html">${window.Site && Site.logo ? `<img src="${Site.logo}" alt="" style="height:26px;width:auto;vertical-align:middle;margin-right:6px">` : "🍦 "}<span class="hdr-title-full">${App.esc(window.Site ? Site.appName : "內部管理系統")}</span><span class="hdr-title-short">${App.esc(window.Site ? Site.shortTitle : "管理")}</span></a>
             <div class="hdr-right">
                 <button type="button" class="hdr-btn hdr-logout" onclick="Auth.logout()">登出</button>
             </div>

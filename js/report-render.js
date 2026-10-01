@@ -8,7 +8,7 @@ window.ReportRender = (() => {
     "use strict";
 
     const THEMES = {
-        brand: { name: "瘋菓棕", primary: "#b9805f", dark: "#4d341c" },
+        brand: { name: "暖棕色", primary: "#b9805f", dark: "#4d341c" },
         blue: { name: "海洋藍", primary: "#0d6efd", dark: "#0d3b66" },
         green: { name: "森林綠", primary: "#198754", dark: "#14532d" },
         pink: { name: "莓果粉", primary: "#d63384", dark: "#6f1a45" },

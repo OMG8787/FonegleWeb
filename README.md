@@ -1,9 +1,9 @@
-# 瘋菓內部管理系統：Google 試算表版
+# 內部管理系統：Google 試算表版
 
 純靜態網頁，可以直接放在 **GitHub Pages**。不需要自己架後端，資料全部存在一份 Google 試算表。
 
 ```
-瀏覽器（瘋菓管理系統 靜態網頁）
+瀏覽器（靜態網頁）
    │  POST（text/plain JSON）
    ▼
 Google Apps Script（gas/Code.gs，綁在試算表上）
@@ -21,7 +21,7 @@ Google 試算表（每張資料表 = 一個工作表）
 
 ### 1. 建立試算表與 Apps Script
 
-1. 到 Google 雲端硬碟，新增一份空白的 **Google 試算表**，例如命名為「瘋菓資料庫」。
+1. 到 Google 雲端硬碟，新增一份空白的 **Google 試算表**，例如命名為「公司資料庫」。
 2. 在試算表上方選單點「**擴充功能 → Apps Script**」。
 3. 刪掉編輯器裡預設的程式碼，把 `gas/Code.gs` 的內容整份貼上，然後按儲存。
 4. 左側點「**專案設定（齒輪）**」，勾選「在編輯器中顯示 appsscript.json 資訊清單檔案」。回到編輯器，把 `gas/appsscript.json` 的內容貼到 `appsscript.json`，這樣時區會是 Asia/Taipei。
@@ -42,16 +42,16 @@ Google 試算表（每張資料表 = 一個工作表）
 
 ### 4. 放上 GitHub Pages
 
-1. 在 GitHub 建立一個新的 repository，例如 `fonegle-erp`。
+1. 在 GitHub 建立一個新的 repository，例如 `my-erp`。
 2. 把本資料夾的所有檔案推上去（`index.html` 要在 repository 最外層）：
 
    ```bash
-   git remote add origin https://github.com/你的帳號/fonegle-erp.git
+   git remote add origin https://github.com/你的帳號/my-erp.git
    git push -u origin main
    ```
 
 3. 到 repository 的「**Settings → Pages**」，Source 選「**Deploy from a branch**」，Branch 選 `main`、資料夾選 `/ (root)`，按 Save。
-4. 等一到兩分鐘，網站會出現在 `https://你的帳號.github.io/fonegle-erp/`。
+4. 等一到兩分鐘，網站會出現在 `https://你的帳號.github.io/my-erp/`。
 
 > 也可以放在任何靜態主機（原本的 IIS、Netlify、Cloudflare Pages），網站會自動判斷所在路徑。
 
@@ -93,8 +93,9 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
    - 這些資料會用在左上角與頁尾、登入頁、品牌資訊頁、製作報告（抬頭、頁尾、內建範本的聯絡方式）、寄信寄件人與 AI 文案的品牌名稱。
    - 資料存在試算表的 `Settings` 分頁，所有登入的人讀得到、只有系統管理能修改；登入頁只會拿到名稱與 Logo。
 3. 同一頁的「**功能開關**」可以關掉暫時用不到的功能（行事曆、市集、配方、財務…、AI 助理）。關閉的功能不出現在選單與我的最愛，一般使用者也無法開啟，資料不會被刪除；系統管理員仍可直接進入，隨時可以重新開啟。首頁、帳號設定、帳號與權限管理、公司設定本身不能關閉。
-4. 尚未填寫時使用 `js/settings.js` 裡的 `COMPANY_DEFAULTS`（目前是瘋菓的資料）；要發布成公開模板，可以把那裡改成中性的內容，或不改、直接到設定頁修改。
-5. 製作報告的「瘋菓範例」宣傳頁範本可在設定頁關閉；「資訊表報告」「生產報告」範本使用中性的「欄位 N／值 N」。
+4. 程式碼裡**不放任何公司資料**：尚未填寫時用 `js/settings.js` 的 `COMPANY_DEFAULTS`（中性的空白預設），填寫後的資料只存在你自己的試算表。設定頁可「匯出設定」備份，也可「匯入設定」把備份檔填回畫面。
+   - 唯一要自己改的是 `js/settings.js` 的 `GAS_URL`（你部署的 Apps Script 網址）；網站的 Logo 與圖示在 `img/`，換成你自己的檔案即可。
+5. 製作報告的內建範本都是中性的示範內容（「欄位 N／值 N」），公司名稱、聯絡方式等會自動帶入設定頁填的資料。
 
 > 第一次使用這個功能前，請先更新 Apps Script（新增了 `Settings` 資料表與 `publicConfig`），見下一節。
 
@@ -202,7 +203,7 @@ GAS_URL: "https://script.google.com/macros/s/AKfycb.../exec",
 
 ## 六、從舊 SQL Server 匯入資料
 
-專案外的 `資料匯入工具` 資料夾有轉換工具，會唯讀讀取本機 SQL Server（FonegleData）。有兩種匯入方式，擇一即可：
+專案外的 `資料匯入工具` 資料夾有轉換工具，會唯讀讀取本機舊系統的 SQL Server。有兩種匯入方式，擇一即可：
 
 **方式 A：在 Apps Script 執行（不需部署）**
 1. 執行 `python build_xlsx.py` 產生 `ImportData.gs`。

@@ -984,7 +984,7 @@ ${s.note ? `<div class="note"><b>備註：</b>${esc(s.note)}</div>` : ""}
             .sort((a, b) => String(a.FormulaName).localeCompare(String(b.FormulaName), "zh-Hant"))
             .map(savedSnapshot);
         if (!list.length) return alert("沒有配方可以匯出");
-        exportExcel(list, `瘋菓配方表_全部_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        exportExcel(list, `配方表_全部_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
     return { init };

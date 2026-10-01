@@ -1,8 +1,8 @@
 /**
  * ============================================================
- * 瘋菓內部管理系統 — Google 試算表資料庫（Google Apps Script）
+ * 內部管理系統 — Google 試算表資料庫（Google Apps Script）
  * ============================================================
- * 部署步驟請見 瘋菓管理系統/README.md
+ * 部署步驟請見 README.md
  *
  * 前端以 POST（Content-Type: text/plain，內容為 JSON）呼叫：
  *   { "action": "list", "token": "...", "table": "Products" }
@@ -31,7 +31,7 @@ const CONFIG = {
     MAIL_PERMISSIONS: [3],
     AI_PERMISSIONS: [25],
     AI_MODEL_DEFAULT: 'gemini-2.5-flash',
-    APP_NAME: '瘋菓內部管理系統'
+    APP_NAME: '內部管理系統'
 };
 
 // ============================================================
@@ -565,7 +565,7 @@ function setup() {
         rows.forEach(r => appendRow_(t, r));
     };
 
-    // 預設資料與原 SQL Server（FonegleData）相同
+    // 預設資料與舊系統（SQL Server）相同
     seed('ID_UserRoles', [
         { ID: 1, RoleName: '一般客戶' },
         { ID: 2, RoleName: '會員' },
@@ -2362,13 +2362,13 @@ function aiGenerate_(req, ctx) {
     const prompt = String(req.prompt || '').trim().slice(0, 8000);
     if (!prompt) fail_('請輸入文案需求');
 
-    // 品牌名稱與簡介可在「公司與功能設定」修改；沒設定時沿用瘋菓的預設
+    // 品牌名稱與簡介可在「公司與功能設定」修改；沒設定就不帶品牌
     const site = siteConfig_();
-    const brand = String(site.brandShort || site.brandName || '').trim() || '瘋菓';
-    const intro = String(site.aiBrandIntro || '').trim() || (brand === '瘋菓' ? '瘋菓主打手作冰淇淋、機能冰品與鯛魚燒，常在各地市集擺攤。' : '');
+    const brand = String(site.brandShort || site.brandName || site.companyName || '').trim();
+    const intro = String(site.aiBrandIntro || '').trim();
 
     const system = [
-        '你是台灣品牌「' + brand + '」的社群小編與文案企劃，使用繁體中文（台灣用語）。',
+        brand ? '你是台灣品牌「' + brand + '」的社群小編與文案企劃，使用繁體中文（台灣用語）。' : '你是台灣企業的社群小編與文案企劃，使用繁體中文（台灣用語）。',
         intro,
         '寫作要自然、有溫度、具體，不要空泛形容詞堆疊；不要捏造未提供的價格、日期或優惠。',
         String(req.system || '').slice(0, 2000)

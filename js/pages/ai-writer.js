@@ -214,7 +214,10 @@ Pages.AiWriter = (() => {
                 : "以條列整理給工作人員：集合時間與地點、每日營業時段、需攜帶的設備與物品、注意事項。資料沒有的寫「待確認」。");
         } else {
             if (dom.optEmoji.checked) parts.push("適度使用 emoji。");
-            if (dom.optHashtag.checked) parts.push("文末加上 5～8 個相關 hashtag（含 #瘋菓）。");
+            if (dom.optHashtag.checked) {
+                const b = window.Site ? (Site.company.brandShort || Site.company.brandName) : "";
+                parts.push(`文末加上 5～8 個相關 hashtag${b ? `（含 #${b}）` : ""}。`);
+            }
             parts.push("開頭要能吸引目光，結尾要有行動呼籲（例如來攤位找我們、私訊預訂）。");
         }
 

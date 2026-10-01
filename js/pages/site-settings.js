@@ -29,15 +29,17 @@ Pages.SiteSettings = (() => {
         ["website", "官方網站", "https://…", "col-md-6"],
         ["linkTreeUrl", "連結樹網址", "https://…", "col-md-6"],
         ["bannerUrl", "宣傳頁橫幅圖網址", "https://…（製作報告的宣傳頁範本使用）", "col-md-6"],
+        ["foodRegNo", "食品登陸字號 / 登記證號", "品牌資訊頁顯示（選填）", "col-md-6"],
         ["reportFooter", "報告預設頁尾聲明", "可多行；留空就用「本文件為 公司名稱 內部文件…」", "col-12", "area"],
-        ["aiBrandIntro", "AI 文案的品牌簡介", "一兩句話說明你的品牌，AI 寫文案時會參考", "col-12", "area"]
+        ["aiBrandIntro", "AI 文案的品牌簡介", "一兩句話說明你的品牌，AI 寫文案時會參考", "col-12", "area"],
+        ["brandNotes", "品牌介紹與備註", "顯示在「品牌資訊」頁，空一行分一段，每段都有複製按鈕（可放介紹文字、報名資料、圖片連結等）", "col-12", "area8"]
     ];
 
     async function init() {
 
         [
-            "companyForm", "btnSaveCompany", "btnResetCompany", "logoPreview", "logoEmpty", "logoFile", "btnClearLogo",
-            "featureList", "optAiChat", "optBrandTpl", "btnSaveFeatures"
+            "companyForm", "btnSaveCompany", "btnResetCompany", "btnExportCompany", "btnImportCompany", "settingsFile", "logoPreview", "logoEmpty", "logoFile", "btnClearLogo",
+            "featureList", "optAiChat", "btnSaveFeatures"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         // 先向伺服器取最新設定再畫畫面
@@ -49,6 +51,9 @@ Pages.SiteSettings = (() => {
 
         dom.btnSaveCompany.addEventListener("click", saveCompany);
         dom.btnResetCompany.addEventListener("click", resetCompany);
+        dom.btnExportCompany.addEventListener("click", exportSettings);
+        dom.btnImportCompany.addEventListener("click", () => dom.settingsFile.click());
+        dom.settingsFile.addEventListener("change", importSettings);
         dom.logoFile.addEventListener("change", onLogoFile);
         dom.btnClearLogo.addEventListener("click", clearLogo);
         dom.btnSaveFeatures.addEventListener("click", saveFeatures);
@@ -69,8 +74,8 @@ Pages.SiteSettings = (() => {
         dom.companyForm.innerHTML = FIELDS.map(([k, label, hint, col, type]) => `
 <div class="${col}">
     <label class="form-label small mb-0">${E(label)}</label>
-    ${type === "area"
-        ? `<textarea id="f_${k}" class="form-control form-control-sm" rows="3">${E(c[k] ?? "")}</textarea>`
+    ${type === "area" || type === "area8"
+        ? `<textarea id="f_${k}" class="form-control form-control-sm" rows="${type === "area8" ? 8 : 3}">${E(c[k] ?? "")}</textarea>`
         : `<input id="f_${k}" class="form-control form-control-sm" value="${E(c[k] ?? "")}">`}
     ${hint ? `<div class="form-text mt-0">${E(hint)}</div>` : ""}
 </div>`).join("");
@@ -86,6 +91,7 @@ Pages.SiteSettings = (() => {
 
         if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { alert("Email 格式不正確"); return; }
         if (!data.appName) { alert("系統名稱不能空白"); return; }
+        if (data.brandNotes.length > 20000) { alert("「品牌介紹與備註」太長（上限 20000 字）"); return; }
         if (Object.values(data).some(v => /[<>]/.test(v))) { alert("欄位內容不能包含 < 或 > 符號"); return; }
 
         try {
@@ -109,6 +115,53 @@ Pages.SiteSettings = (() => {
             alert("已還原為預設");
         } catch (err) {
             App.error(err, "還原失敗");
+        }
+    }
+
+    // =========================
+    // 匯出 / 匯入（備份或換系統用；匯入只填進畫面，確認後再按儲存）
+    // =========================
+    function exportSettings() {
+
+        const company = {};
+        FIELDS.forEach(([k]) => { company[k] = document.getElementById("f_" + k).value.trim(); });
+
+        const disabled = [...dom.featureList.querySelectorAll("[data-id]:not(:disabled)")].filter(c => !c.checked).map(c => Number(c.dataset.id));
+        const data = { fonegleSettings: 1, company, features: { disabled, aiChat: dom.optAiChat.checked } };
+
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+        a.download = "公司設定.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+
+    async function importSettings() {
+
+        const f = dom.settingsFile.files[0];
+        dom.settingsFile.value = "";
+        if (!f) return;
+
+        try {
+            const d = JSON.parse(await f.text());
+            if (!d || d.fonegleSettings !== 1 || typeof d.company !== "object") throw new Error("不是公司設定檔");
+
+            FIELDS.forEach(([k]) => {
+                if (typeof d.company[k] === "string") document.getElementById("f_" + k).value = d.company[k];
+            });
+
+            if (d.features && typeof d.features === "object") {
+                const off = new Set((d.features.disabled || []).map(Number));
+                dom.featureList.querySelectorAll("[data-id]:not(:disabled)").forEach(c => { c.checked = !off.has(Number(c.dataset.id)); });
+                if (typeof d.features.aiChat === "boolean") dom.optAiChat.checked = d.features.aiChat;
+            }
+
+            alert("已把檔案內容填入畫面。請確認後，分別按「儲存公司資料」與「儲存功能開關」才會真正儲存。");
+
+        } catch (err) {
+            alert("匯入失敗：" + (err?.message || err));
         }
     }
 
@@ -186,7 +239,6 @@ Pages.SiteSettings = (() => {
 </div>`).join("");
 
         dom.optAiChat.checked = f.aiChat !== false;
-        dom.optBrandTpl.checked = f.brandTemplates !== false;
     }
 
     async function saveFeatures() {
@@ -196,7 +248,7 @@ Pages.SiteSettings = (() => {
 
         try {
             dom.btnSaveFeatures.disabled = true;
-            await Site.save("features", { disabled, aiChat: dom.optAiChat.checked, brandTemplates: dom.optBrandTpl.checked });
+            await Site.save("features", { disabled, aiChat: dom.optAiChat.checked });
             alert(`✅ 已儲存（關閉 ${disabled.length} 個功能）。其他人重新整理頁面後生效`);
         } catch (err) {
             App.error(err, "儲存失敗");

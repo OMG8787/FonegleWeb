@@ -912,7 +912,7 @@ ${f("theme.footerText", "頁尾聲明（可多行）", { col: "col-12 mb-2", are
 </div></div>
 <div class="er-sub"><div class="fw-bold small mb-2">🖼️ Logo</div>
 ${drop("@", "theme.logo", t.logo)}
-<button class="btn btn-sm btn-outline-secondary mb-2" data-act="default-logo" data-b="@">用預設 Logo（瘋菓）</button>
+<button class="btn btn-sm btn-outline-secondary mb-2" data-act="default-logo" data-b="@">用公司 Logo</button>
 <button class="btn btn-sm btn-outline-secondary mb-2" data-act="clear-logo" data-b="@">移除 Logo</button>
 <div class="row g-0">
 ${f("theme.logoShow", "顯示位置", { opts: [["cover", "封面"], ["top", "每份內容最上方"], ["bottom", "內容最下方（頁尾前）"], ["none", "不顯示"]] })}
@@ -971,7 +971,7 @@ ${saveBtns}`;
         return !keepPng && out.length >= src.length ? src : out;
     }
 
-    // 系統內建的瘋菓 Logo（img/logo.png）
+    // 公司 Logo（優先用「公司與功能設定」上傳的，沒有就用 img/logo.png）
     async function fetchDefaultLogo() {
         if (window.Site && Site.logo) return Site.logo;     // 公司設定裡上傳的 Logo 優先
         const res = await fetch("../img/logo.png");
@@ -1064,7 +1064,7 @@ ${saveBtns}`;
 
             const kind = b.type === "hero" ? "行銷主視覺標語（第一行是 15 字內大標語，第二行是一句副標題，只要兩行）" : "文件段落（不要標題、不要使用 Markdown 符號）";
             const ctx = report.blocks.find(x => x.type === "cover")?.title || "";
-            const text = String(await API.call("aiGenerate", { prompt: `請為瘋菓撰寫${kind}。文件主題：${ctx}\n需求：${brief.trim()}` })).trim();
+            const text = String(await API.call("aiGenerate", { prompt: `請為${(window.Site && (Site.company.brandShort || Site.company.brandName || Site.company.companyName)) || "公司"}撰寫${kind}。文件主題：${ctx}\n需求：${brief.trim()}` })).trim();
 
             if (b.type === "hero") {
                 const lines = text.split("\n").map(s => s.replace(/^[#*\-\s]+/, "").trim()).filter(Boolean);
@@ -1165,13 +1165,9 @@ ${saveBtns}`;
     }
 
     // =========================
-    // 範本（依「品牌對外網頁」資料夾裡的頁面整理）
+    // 內建範本：內容都是中性的示範文字；公司名稱、聯絡方式等讀「公司與功能設定」的資料（程式裡不放任何公司資料）
     // =========================
-    const BANNER = "https://img.cloudimg.in/uploads/shops/39971/theme/31/3121fab139bb6a962ea668a4cfab9cd0.png?v=202601270250";
-    const IMG = "https://img.cloudimg.in/uploads/shops/39971/products/";
-    const MAIL = "mailto:austin.fonegle@gmail.com";
-    const LINE = "https://line.me/R/ti/p/@764zeuav?ts=07251231&oat_content=url";
-    const IG = "https://www.instagram.com/fonegle_dessert/";
+    const co = () => (window.Site ? Site.company : {});
 
     const WEB_THEME = {
         layout: "web", pageBg: "#f4f6f8", cardBg: "#ffffff", cardWidth: 720, cardRadius: 12, preset: "brand",
@@ -1180,26 +1176,35 @@ ${saveBtns}`;
     };
 
     const P = t => `<p>${t}</p>`;
-    const banner = () => ({ type: "banner", image: BANNER, height: 0, alt: "瘋菓冰品研究室" });
+    const banner = () => ({ type: "banner", image: co().bannerUrl || "", height: 0, alt: co().brandName || co().companyName || "" });
     const h1 = text => ({ type: "heading", level: "h1", text, align: "left" });
     const h3 = text => ({ type: "heading", level: "h3", text, align: "left" });
     const text = html => ({ type: "text", html });
     const btns = (items, align) => ({ type: "buttons", align: align || "left", items });
     const feat = (items, cols, layout) => ({ type: "features", cols: cols || 2, layout: layout || "inline", items: items.map(([icon, title, t]) => ({ icon, title, text: t })) });
-    const contact = extra => ({
-        type: "footer",
-        html: `<p><strong>瘋菓貿易社</strong>（統編：60005166）<br>品牌：瘋菓冰品研究室</p><p>聯絡人：董峻宏<br>電話：0923-212-212<br>Email：<a href="${MAIL}">austin.fonegle@gmail.com</a><br>官方 LINE：<strong>@764zeuav</strong>${extra === false ? "" : `<br>Instagram：<a href="${IG}">fonegle_dessert</a>`}</p>`
-    });
-    const gal = (urls, ratio) => ({ type: "gallery", cols: 3, ratio: ratio || "1/1", images: urls.map(u => ({ src: IMG + u, caption: "" })) });
-    const cta = () => btns([{ text: "📩 合作洽詢", url: MAIL, style: "solid" }, { text: "💬 官方 LINE", url: LINE, style: "ghost" }]);
 
-    const LEAD_BRAND = [
-        P("🍨 當甜點不只是甜，而是一口奢華的極致體驗。<br>奢華高端為核心，專注創造高端冰淇淋品牌，結合膳食纖維、高蛋白等機能成分，打造低負擔高享受的極致味覺盛宴。"),
-        P("🎁 <strong>專屬訂製，點亮每一場美好時刻</strong><br>專業研發團隊，提供客製化甜品服務，無論是私密餐會、企業活動，或星級餐廳聯名合作，都能量身打造專屬風味。"),
-        P("✨ <strong>重新定義冰品，讓品味成為態度</strong><br>瘋菓不只是提供冰品，而是傳遞風格與態度。每一次品嚐，都像穿上一件精心挑選的禮服，用冰涼詮釋高雅生活。")
-    ].join("");
+    // 頁尾聯絡資訊：只放「公司與功能設定」裡有填的欄位
+    const contact = () => {
+        const c = co();
+        const head = [c.companyName ? `<strong>${E(c.companyName)}</strong>${c.taxId ? `（統編：${E(c.taxId)}）` : ""}` : "", c.brandName ? `品牌：${E(c.brandName)}` : ""].filter(Boolean).join("<br>");
+        const lines = [
+            c.contactName && `聯絡人：${E(c.contactName)}`, c.phone && `電話：${E(c.phone)}`,
+            c.email && `Email：<a href="mailto:${E(c.email)}">${E(c.email)}</a>`, c.address && `地址：${E(c.address)}`,
+            c.lineId && `官方 LINE：<strong>${E(c.lineId)}</strong>`,
+            c.instagramUrl && `Instagram：<a href="${E(c.instagramUrl)}">${E(c.instagramUrl)}</a>`,
+            c.website && `官方網站：<a href="${E(c.website)}">${E(c.website)}</a>`
+        ].filter(Boolean).join("<br>");
+        return { type: "footer", html: (head ? `<p>${head}</p>` : "") + (lines ? `<p>${lines}</p>` : "") || "<p>請到「系統 → 公司與功能設定」填寫公司資料</p>" };
+    };
 
-    const MODES = ["🛒 **產品販售**（經銷／通路供應）：提供高蛋白冰品、膳食纖維冰淇淋、造型甜點等現成品。", "🔧 **OEM／ODM 客製化開發**：OEM 協助製作貴司配方；ODM 依需求調整風味、營養配方、口感、造型。", "🤩 **聯名／活動合作**：品牌行銷專案、限定甜點、主題活動出攤等。"].join("\n");
+    const cta = () => {
+        const c = co();
+        const items = [];
+        if (c.email) items.push({ text: "📩 聯絡我們", url: "mailto:" + c.email, style: "solid" });
+        if (c.lineUrl) items.push({ text: "💬 官方 LINE", url: c.lineUrl, style: "ghost" });
+        if (!items.length) items.push({ text: "📩 聯絡我們", url: "mailto:", style: "solid" });
+        return btns(items);
+    };
 
     const h2 = t => ({ type: "heading", level: "h2", text: t, align: "left" });
     const kv = rows => ({ type: "table", mode: "kv", rows });
@@ -1208,7 +1213,6 @@ ${saveBtns}`;
     const compactDate = () => todayText().replace(/-/g, "");
     // 中性的預設資訊表：欄位 1、2、3…／值 1、2、3…（最後一列可設為整列）
     const genRows = (n, wideLast) => Array.from({ length: n }, (_, i) => [`欄位 ${i + 1}`, `值 ${i + 1}`, !!wideLast && i === n - 1]);
-    const SAMPLE_TPLS = ["brand", "b2b", "market", "dm", "b2c"];     // 瘋菓的範例宣傳頁，可在「公司與功能設定」關閉
 
     const TEMPLATES = {
         blank: {
@@ -1248,12 +1252,16 @@ ${saveBtns}`;
         production: {
             name: "生產報告（正式版面，A4）",
             defaultLogo: true,
-            theme: {
-                layout: "doc", pageSize: "a4", preset: "brand", primary: "#8b4a2b", dark: "#2f2a26", textColor: "#2b2b2b",
-                font: "jhenghei", baseSize: 13, numbering: true, headStyle: "line", figLabel: "圖",
-                companyName: "瘋菓貿易社", companySub: "Fonegle Dessert Lab", logoShow: "cover", logoW: 150,
-                footerText: "本文件為瘋菓貿易社內部生產紀錄，未經授權請勿轉載、散佈。", footerBless: "", watermark: false,
-                runHead: true, runHeadLeft: "瘋菓貿易社", runHeadRight: "生產報告", runFootLeft: "機密文件・僅供內部使用", pageNo: true, pageFmt: "第 {p} 頁 / 共 {n} 頁"
+            theme: () => {
+                const c = co();
+                const nm = c.companyName || c.brandName || "";
+                return {
+                    layout: "doc", pageSize: "a4", preset: "brand", primary: "#8b4a2b", dark: "#2f2a26", textColor: "#2b2b2b",
+                    font: "jhenghei", baseSize: 13, numbering: true, headStyle: "line", figLabel: "圖",
+                    companyName: nm, companySub: c.brandSub || "", logoShow: "cover", logoW: 150,
+                    footerText: nm ? `本文件為${nm}內部生產紀錄，未經授權請勿轉載、散佈。` : "", footerBless: "", watermark: false,
+                    runHead: true, runHeadLeft: nm, runHeadRight: "生產報告", runFootLeft: "機密文件・僅供內部使用", pageNo: true, pageFmt: "第 {p} 頁 / 共 {n} 頁"
+                };
             },
             meta: () => ({ rows: [{ label: "報告編號", value: "PR-" + compactDate() + "-01" }, { label: "生產日期", value: todayText() }, { label: "製表人", value: "" }, { label: "版次", value: "V1.0" }] }),
             blocks: () => [
@@ -1272,77 +1280,22 @@ ${saveBtns}`;
                 note("conclusion", "結論", "<p>請填寫本批生產的整體結論。</p>"),
                 { type: "signature", roles: ["製表", "審核", "核准"] }]
         },
-        brand: {
-            name: "品牌介紹頁（瘋菓冰品研究室）",
-            theme: WEB_THEME,
-            blocks: () => [banner(), h1("瘋菓冰品研究室"), text(LEAD_BRAND), h3("🤝 合作邀約"),
-                text(P("主要專營 <strong>客製化冰品開發（OEM・ODM）</strong>、高蛋白冰品、膳食纖維冰淇淋與創意造型甜點，並希望與更多品牌夥伴建立長期穩定的 <strong>B2B 合作關係</strong>。")),
-                { type: "bullets", title: "🧊 合作模式", style: "disc", items: MODES },
-                text(P("⭐ <strong>品牌特色與優勢</strong><br>高蛋白與機能型冰品研發能力，風味穩定、外觀吸睛、辨識度高，適用健身、親子、文創、餐飲、品牌推廣等多元領域。")),
-                cta(), h3("🍨 主要特色"),
-                feat([["🍦", "高端義式冰淇淋", "嚴選素材，低負擔高享受，兼顧美味與健康。"], ["💪", "機能系甜點", "結合膳食纖維、高蛋白等機能配方。"], ["🎨", "客製化風味", "活動、餐會、品牌聯名皆可量身打造。"], ["🏛️", "生活美學", "每一款甜點都是視覺 + 味覺的儀式感呈現。"]]),
-                contact()]
-        },
-        b2b: {
-            name: "B2B 合作頁（OEM／ODM）",
-            theme: WEB_THEME,
-            blocks: () => [banner(), h1("瘋菓冰品研究室"),
-                text(P("專注 <strong>B2B 客製化開發</strong>，提供高端各式冰淇淋、客製化甜點之 <strong>OEM／ODM</strong> 與品牌聯名合作。") +
-                    P("<strong>🍨 每一口都是奢華的極致體驗。</strong><br>我們相信冰品不只是甜點，而是品牌價值的延伸。透過專業研發與客製化配方，無論是私密餐會、企業活動，或星級餐廳聯名合作，都能量身打造具市場辨識度專屬風味。")),
-                { type: "tags", text: "OEM／ODM\n各式冰品甜點\n品牌聯名" },
-                h3("🤝 B2B 合作項目"),
-                { type: "bullets", title: "", style: "disc", items: "**OEM 代工**：可依貴司配方製作冰品／甜點，穩定量產。\n**ODM 開發**：風味、營養配方、口感、造型全方位客製。\n**通路／經銷供應**：高蛋白冰品、機能型冰淇淋、造型甜點。\n**品牌聯名／活動**：限定商品、行銷專案、市集活動出攤。" },
-                h3("🍨 冰品核心優勢"),
-                feat([["🍦", "冰淇淋工法", "質地綿密、融化穩定，適合商用與活動場景。"], ["💪", "機能型配方", "高蛋白、膳食纖維可依需求調整，兼顧美味與訴求。"], ["🎨", "客製化美學", "口味、色彩、造型、包裝皆可配合品牌視覺。"]], 2),
-                h3("⭐ B2B 合作優勢"),
-                feat([["🔬", "研發能力", "機能配方（高蛋白／膳食纖維/膠原蛋白）與風味穩定度高。"], ["🔧", "客製彈性", "少量試產到量產，快速調整。"], ["✨", "品牌辨識", "外觀吸睛，適合行銷與聯名。"], ["🏃", "多元場景", "餐飲、健身、親子、文創、企業活動。"]], 2),
-                h3("📄 聊聊／品牌資料"),
-                btns([{ text: "📩 合作洽詢", url: MAIL, style: "solid" }, { text: "💬 LINE 諮詢", url: LINE, style: "solid" }]),
-                btns([{ text: "🌳 連結樹", url: "https://linktr.ee/fonegle_dessert", style: "ghost" }, { text: "📸 官方網站", url: "https://fonegle.waca.store/", style: "ghost" }]),
-                { type: "footer", html: `<p><strong>瘋菓貿易社</strong>（統編：60005166）｜品牌：瘋菓冰品研究室<br>聯絡人：董峻宏｜電話：0923-212-212｜Email：<a href="${MAIL}">austin.fonegle@gmail.com</a></p>` }]
-        },
-        market: {
-            name: "市集活動合作頁（主辦單位邀請）",
-            theme: Object.assign({}, WEB_THEME, { pageBg: "#6e4a21", cardBg: "#ece6ca" }),
-            blocks: () => [banner(), h1("瘋菓冰品市集活動合作"),
-                { type: "claim", big: "🍨 為活動創造話題，為品牌留下記憶", sub: "高端義式冰淇淋 × 創意甜點 × 市集活動合作", align: "left" },
-                text(LEAD_BRAND),
-                h3("📸 人氣商品展示"),
-                text(P("從經典義式冰淇淋到特色創意甜點，每款商品皆以風味、視覺與品質為核心設計，適合作為市集熱銷商品、活動甜點與品牌聯名企劃。")),
-                gal(["9c/9c534a910645edd6c253b461f8e51aba.png", "49/496b78e7e0eb4c44bacf05a8653ed338.png", "28/2882d6e5b0460d544947e1dff471aa42.png", "b2/b237f14dfdbe0cfab20ecfac2b0870e7.png", "6f/6f683680ed397c71743a93a84ef05792.png", "23/2332ff54bd117ac7943d3016c7b47cae.png"]),
-                { type: "bullets", title: "🧊 合作模式", style: "disc", items: MODES },
-                text(P("⭐ <strong>品牌特色與優勢</strong><br>高蛋白與機能型冰品研發能力，風味穩定、外觀吸睛、辨識度高，適用健身、親子、文創、餐飲、品牌推廣等多元領域。")),
-                h3("🤝 主辦單位合作邀請"),
-                Object.assign(text(P("我們持續尋找優質市集與活動合作機會，希望透過高辨識度冰品與創意甜點，為活動帶來更多人潮與話題。")), { box: { style: "card" } }),
-                feat([["🎪", "大型文創市集", "文創品牌聚集與假日活動。"], ["🏬", "節慶市集", "檔期活動與主題展售。"], ["👨‍👩‍👧", "企業家庭日", "員工與親子互動活動。"], ["🎵", "音樂祭活動", "戶外大型活動與市集。"]]),
-                text(P("歡迎各類型活動邀約合作，可配合活動主題進行商品規劃與現場展售。")),
-                h3("📷 攤位與活動展示"),
-                gal(["ca/ca9866ca6120a9bd04e227a5f2f87864.png", "90/909ffb93189ee5469b7c66075b116de7.jpg", "0d/0d8058921cea9d3e3753e36b31df92df.jpg"], "4/3"),
-                cta(), h3("🍨 主要特色"),
-                feat([["🍦", "高端義式冰淇淋", "嚴選食材，高享受，兼顧美味與滑順口感。"], ["💪", "機能系甜點", "結合膳食纖維、高蛋白等機能配方。"], ["🎨", "客製化風味", "活動、餐會、品牌聯名皆可量身打造。"], ["🏛️", "生活美學", "每一款甜點都是視覺 + 味覺的儀式感呈現。"]]),
-                h3("⭐ 為什麼適合市集活動"),
-                feat([["📸", "高拍照率商品", "提升社群曝光與打卡分享。"], ["🔥", "高話題性", "創新口味吸引消費者關注。"], ["🎨", "主題客製化", "可配合活動打造限定商品。"], ["🤝", "配合度高", "支援快閃、市集與品牌活動。"]]),
-                contact()]
-        },
-        dm: {
-            name: "品牌聯名與活動合作（DM 單頁）",
-            theme: WEB_THEME,
-            blocks: () => [banner(), h1("品牌聯名與活動合作｜瘋菓冰品研究室"),
-                text(P("瘋菓提供 <strong>創意客製化甜點與冰品研發</strong>，專業團隊可依品牌需求打造專屬產品，適合品牌聯名、活動甜點與限定商品企劃。")),
-                { type: "bullets", title: "合作模式", style: "disc", items: "產品販售（經銷／通路供應）\nOEM／ODM 客製化開發\n聯名／活動合作（品牌行銷專案、限定甜點、主題活動出攤）" },
-                { type: "bullets", title: "品牌特色與優勢", style: "disc", items: "高蛋白與機能型冰品研發能力\n風味穩定、造型吸睛，提升辨識度\n適用健身、親子、文創、餐飲、品牌推廣等多元領域\n小量至中量生產彈性，兼顧創意與營養\n提供試吃樣品與專業諮詢" },
-                btns([{ text: "立即洽詢合作", url: MAIL, style: "solid" }, { text: "加入官方 LINE", url: LINE, style: "solid" }]),
-                contact()]
-        },
-        b2c: {
-            name: "消費者品牌頁（甜點的極致體驗）",
-            theme: WEB_THEME,
-            blocks: () => [banner(), h1("瘋菓冰品研究室｜甜點的極致體驗"),
-                text(P("瘋菓不只是冰品，更是一種風格與態度。每一次品嚐，都像穿上一件精心挑選的禮服，用冰涼詮釋高雅生活。甜點是心靈的避風港，也是日常的小確幸。")),
-                { type: "bullets", title: "主要商品", style: "disc", items: "義式冰淇淋與高蛋白冰品\n膳食纖維冰淇淋，低負擔高享受\n創意造型甜點與燒製小品\n客製化甜點訂製，私密聚會、活動皆適用" },
-                { type: "bullets", title: "參與活動", style: "disc", items: "市集、音樂祭、運動賽事、文創活動\n品牌特色甜點現場體驗\n試吃與產品諮詢" },
-                btns([{ text: "加入官方 LINE 追蹤", url: LINE, style: "solid" }, { text: "追蹤 Instagram", url: IG, style: "solid" }]),
-                contact()]
+        web: {
+            name: "宣傳單頁（網頁版型，可貼到網站）",
+            theme: () => Object.assign({}, WEB_THEME),
+            blocks: () => {
+                const c = co();
+                return [
+                    banner(), h1(c.brandName || c.companyName || "品牌或公司名稱"),
+                    { type: "claim", big: "一句話說出你的價值", sub: "副標語：補充說明你的特色", align: "left" },
+                    text(P("在這裡介紹你的品牌、產品或活動。可以分成幾段，也可以用工具列調整字級、顏色。")),
+                    { type: "tags", text: "標籤一\n標籤二\n標籤三" },
+                    h3("我們的特色"),
+                    feat([["⭐", "特色一", "說明文字"], ["🎯", "特色二", "說明文字"], ["🤝", "特色三", "說明文字"], ["💡", "特色四", "說明文字"]]),
+                    h3("合作方式"),
+                    { type: "bullets", title: "", style: "check", items: "**項目一**：說明\n**項目二**：說明\n**項目三**：說明" },
+                    h3("聯絡我們"), cta(), contact()];
+            }
         }
     };
 
@@ -1350,7 +1303,7 @@ ${saveBtns}`;
 
         const mine = userTpl.map(t => `<option value="u:${E(t.id)}">⭐ ${E(t.name)}</option>`).join("");
 
-        const shown = Object.keys(TEMPLATES).filter(k => !SAMPLE_TPLS.includes(k) || !window.Site || Site.features.brandTemplates !== false);
+        const shown = Object.keys(TEMPLATES);
 
         dom.tplSelect.innerHTML = `<optgroup label="內建範本">${shown.map(k => `<option value="b:${k}">${TEMPLATES[k].name}</option>`).join("")}</optgroup>` +
             (mine ? `<optgroup label="我的範本">${mine}</optgroup>` : "");
@@ -1365,9 +1318,7 @@ ${saveBtns}`;
         if (v.startsWith("b:")) {
             const t = TEMPLATES[v.slice(2)];
             if (!t) return null;
-            // 內建範本裡的公司名稱、統編、聯絡方式、連結，換成「公司與功能設定」填的資料
-            const fix = x => (window.Site ? Site.replaceBrand(x) : x);
-            return { name: t.name, theme: fix(typeof t.theme === "function" ? t.theme() : t.theme), blocks: fix(t.blocks()), meta: t.meta && fix(t.meta()), defaultLogo: !!t.defaultLogo };
+            return { name: t.name, theme: typeof t.theme === "function" ? t.theme() : t.theme, blocks: t.blocks(), meta: t.meta && t.meta(), defaultLogo: !!t.defaultLogo };
         }
         const u = userTpl.find(t => "u:" + t.id === v);
         return u && { name: u.name, theme: u.theme, blocks: JSON.parse(JSON.stringify(u.blocks)), meta: u.meta && JSON.parse(JSON.stringify(u.meta)) };
