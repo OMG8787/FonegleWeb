@@ -32,7 +32,7 @@ Pages.Report = (() => {
     const uid = () => "b" + Date.now().toString(36) + (seq++);
 
     const TYPES = {
-        cover: { label: "封面", icon: "📕", make: () => ({ kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }), sum: b => b.title },
+        cover: { label: "封面", icon: "📕", make: () => ({ style: "center", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }), sum: b => b.title },
         heading: { label: "標題", icon: "🔖", make: () => ({ text: "新章節", level: "h2", align: "left" }), sum: b => b.text },
         text: { label: "文字段落", icon: "📝", make: () => ({ html: "<p>在這裡輸入內容…</p>" }), sum: b => plain(b.html) },
         images: { label: "圖片（1～3 張）", icon: "🖼️", make: () => ({ images: [], widthPct: 100, align: "center" }), sum: b => `${(b.images || []).length} 張` },
@@ -77,7 +77,8 @@ Pages.Report = (() => {
         items_steps: () => ({ icon: "", title: "", text: "" }),
         items_buttons: () => ({ text: "按鈕", url: "", style: "solid" }),
         items_products: () => ({ image: "", name: "", price: "", text: "", url: "" }),
-        items_columns: () => ({ html: "<p></p>" })
+        items_columns: () => ({ html: "<p></p>" }),
+        meta: () => ({ label: "", value: "" })
     };
 
     const plain = html => {
@@ -171,14 +172,23 @@ Pages.Report = (() => {
 
     function normalize(r) {
         r.theme = Object.assign(defaultTheme(), r.theme || {});
-        r.meta = Object.assign({ reportNo: "", date: todayText(), author: "", version: "V1.0" }, r.meta || {});
+        r.meta = r.meta || {};
+        if (!Array.isArray(r.meta.rows)) r.meta.rows = defaultMetaRows(r.meta.author || "", r.meta);
         r.blocks.forEach(b => {
             if (!b.id) b.id = uid();
+            if (b.type === "cover") b.style = b.style || "center";
             if (b.type === "heading") { b.level = b.level || "h2"; b.align = b.align || "left"; }
             if (b.type === "features") { b.cols = b.cols || 3; b.layout = b.layout || "stack"; }
             if (b.type === "gallery") b.ratio = b.ratio || "1/1";
         });
         return r;
+    }
+
+    function defaultMetaRows(author, old = {}) {
+        return [
+            { label: "報告編號", value: old.reportNo || "" }, { label: "報告日期", value: old.date || todayText() },
+            { label: "撰寫人", value: author || "" }, { label: "版次", value: old.version || "V1.0" }
+        ];
     }
 
     function defaultTheme() {
@@ -187,6 +197,7 @@ Pages.Report = (() => {
             font: "jhenghei", baseSize: 14, pageSize: "a4",
             layout: "doc", pageBg: "#f4f6f8", cardBg: "#ffffff", cardWidth: 720, cardRadius: 12,
             logoShow: "cover", logoAlign: "center", logoW: 120, logoDx: 0, logoDy: 0,
+            headStyle: "bar", figLabel: "圖", runHead: false, runHeadLeft: "", runHeadRight: "", runFootLeft: "", pageNo: false, pageFmt: "第 {p} 頁 / 共 {n} 頁",
             watermarkType: "text", wmImage: "", wmColor: "#4d341c", wmSize: 88, wmOpacity: 6, wmAngle: -24, wmPos: "center",
             companyName: "瘋菓 Fonegle Dessert", companySub: "", logo: "",
             watermark: false, watermarkText: "瘋菓", title: "報告", numbering: true,
@@ -202,7 +213,7 @@ Pages.Report = (() => {
 
         return {
             theme: defaultTheme(),
-            meta: { reportNo: "", date: todayText(), author, version: "V1.0" },
+            meta: { rows: defaultMetaRows(author) },
             blocks: [
                 Object.assign({ id: uid(), type: "cover" }, TYPES.cover.make()),
                 Object.assign({ id: uid(), type: "heading" }, TYPES.heading.make()),
@@ -435,6 +446,7 @@ Pages.Report = (() => {
         else if (act === "img-clear") setPath(b, btn.dataset.p, "");
         else if (act === "ai") { aiWrite(b, btn); return; }
         else if (act === "save-brand") { saveBrand(); return; }
+        else if (act === "default-logo") { loadDefaultLogo(); return; }
         else if (act === "load-brand") {
             try { Object.assign(report.theme, JSON.parse(localStorage.getItem(BRAND_KEY) || "{}")); } catch { }
         }
@@ -635,7 +647,7 @@ ${field(b, "dx", "左右位移 px（負數往左）", { type: "number", min: -40
 
 
             case "cover":
-                return field(b, "kicker", "上方小字（例如：專案提案）") + field(b, "title", "標題") + field(b, "subtitle", "副標題") + field(b, "customer", "對象 / 客戶") + drop(b.id, "image", b.image);
+                return field(b, "style", "封面樣式", { opts: [["center", "置中（標題在中間）"], ["formal", "正式（左上 Logo、右上公司名、下方資訊表）"]] }) + field(b, "kicker", "上方小字（例如：專案提案）") + field(b, "title", "標題") + field(b, "subtitle", "副標題") + field(b, "customer", "對象 / 客戶") + drop(b.id, "image", b.image);
 
             case "heading":
                 return field(b, "level", "層級", { opts: [["h1", "頁面大標題"], ["h2", "章節標題（可自動編號）"], ["h3", "小標題"]] }) + field(b, "text", "標題文字") +
@@ -698,9 +710,15 @@ ${field(b, "dx", "左右位移 px（負數往左）", { type: "number", min: -40
 
         const saveBtns = `<div class="d-flex gap-2 mb-3"><button class="btn btn-sm btn-outline-primary" data-act="save-brand" data-b="@">💾 存成我的品牌預設</button><button class="btn btn-sm btn-outline-secondary" data-act="load-brand" data-b="@">套用我的預設</button></div>`;
 
+        const metaEditor = `<div class="col-12"><div class="small text-muted mb-1">封面資訊列（名稱與內容都可以修改）</div>${report.meta.rows.map((r, i) => `
+<div class="d-flex gap-1 mb-1"><input class="form-control form-control-sm" style="max-width:38%" data-b="@" data-p="meta.rows.${i}.label" value="${E(r.label)}" placeholder="名稱">
+<input class="form-control form-control-sm" data-b="@" data-p="meta.rows.${i}.value" value="${E(r.value)}" placeholder="內容">
+<button class="btn btn-sm btn-link text-danger p-0" data-act="arr-del" data-b="@" data-arr="meta.rows" data-i="${i}" title="刪除這一列">✕</button></div>`).join("")}
+<button class="btn btn-sm btn-outline-primary mb-2" data-act="arr-add" data-b="@" data-arr="meta.rows" data-tpl="meta" data-max="10">＋ 新增一列</button></div>`;
+
         dom.themeForm.innerHTML = `
 <div class="er-sub"><div class="fw-bold small mb-2">📄 文件資訊</div><div class="row g-0">
-${f("theme.title", "文件名稱")}${f("meta.reportNo", "編號")}${f("meta.date", "日期")}${f("meta.author", "製作人")}${f("meta.version", "版本")}
+${f("theme.title", "文件名稱", { col: "col-12 mb-2" })}${metaEditor}
 ${f("theme.layout", "版面模式", { re: true, col: "col-12 mb-2", opts: [["doc", "文件 / 報告（A4 等紙張，適合列印）"], ["web", "宣傳網頁（底色 + 置中卡片，適合貼到網站）"]] })}
 ${t.layout === "web"
             ? `${f("theme.pageBg", "網頁底色", { type: "color" })}${f("theme.cardBg", "卡片底色", { type: "color" })}${f("theme.cardWidth", "卡片寬度 px", { type: "number", min: 320, max: 1200 })}${f("theme.cardRadius", "卡片圓角 px", { type: "number", min: 0, max: 40 })}`
@@ -713,12 +731,21 @@ ${f("theme.primary", "主色", { type: "color" })}${f("theme.dark", "標題深�
 ${f("theme.textColor", "內文顏色", { type: "color" })}${f("theme.baseSize", "內文字級 px", { type: "number", min: 8, max: 48 })}
 ${f("theme.numbering", "章節自動編號", { check: true, col: "col-12 mb-2" })}
 </div></div>
+${t.layout === "web" ? "" : `<div class="er-sub"><div class="fw-bold small mb-2">📑 正式文件設定</div><div class="row g-0">
+${f("theme.headStyle", "章節標題樣式", { opts: [["bar", "左側粗線"], ["line", "底線（正式）"], ["plain", "純文字"]] })}${f("theme.figLabel", "圖號名稱（例如：圖、Figure）")}
+${f("theme.runHead", "列印時每頁加頁首", { check: true, re: true, col: "col-12 mb-2" })}
+${t.runHead ? `${f("theme.runHeadLeft", "頁首左側文字")}${f("theme.runHeadRight", "頁首右側文字")}` : ""}
+${f("theme.runFootLeft", "頁尾左側文字（例如：機密聲明、文件編號）", { col: "col-12 mb-2" })}
+${f("theme.pageNo", "列印時顯示頁碼", { check: true, re: true, col: "col-12 mb-2" })}
+${t.pageNo ? f("theme.pageFmt", "頁碼格式（{p} = 目前頁、{n} = 總頁數）", { col: "col-12 mb-2" }) : ""}
+</div><div class="small text-muted">頁首、頁尾、頁碼會在「列印 / 存成 PDF」時出現（封面不顯示），預覽畫面看不到。</div></div>`}
 <div class="er-sub"><div class="fw-bold small mb-2">🏷️ 品牌</div><div class="row g-0">
 ${f("theme.companyName", "公司名稱")}${f("theme.companySub", "副標（英文標語等）")}
 ${f("theme.footerText", "頁尾聲明", { col: "col-12 mb-2" })}${f("theme.footerBless", "頁尾祝福語", { col: "col-12 mb-2" })}
 </div></div>
 <div class="er-sub"><div class="fw-bold small mb-2">🖼️ Logo</div>
 ${drop("@", "theme.logo", t.logo)}
+<button class="btn btn-sm btn-outline-secondary mb-2" data-act="default-logo" data-b="@">用預設 Logo（瘋菓）</button>
 <div class="row g-0">
 ${f("theme.logoShow", "顯示位置", { opts: [["cover", "封面"], ["top", "每份內容最上方"], ["bottom", "內容最下方（頁尾前）"], ["none", "不顯示"]] })}
 ${f("theme.logoAlign", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] })}
@@ -768,6 +795,22 @@ ${saveBtns}`;
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(img, 0, 0, c.width, c.height);
         return c.toDataURL("image/jpeg", 0.85);
+    }
+
+    // 系統內建的瘋菓 Logo（img/logo.png）
+    async function fetchDefaultLogo() {
+        const res = await fetch("../img/logo.png");
+        if (!res.ok) throw new Error("找不到預設 Logo");
+        return compress(await res.blob(), true);
+    }
+
+    async function loadDefaultLogo() {
+        try {
+            report.theme.logo = await fetchDefaultLogo();
+            changed(true);
+        } catch (err) {
+            alert("載入預設 Logo 失敗：" + (err?.message || err));
+        }
     }
 
     function putImages(o, p, multi, urls) {
@@ -976,11 +1019,44 @@ ${saveBtns}`;
 
     const MODES = ["🛒 **產品販售**（經銷／通路供應）：提供高蛋白冰品、膳食纖維冰淇淋、造型甜點等現成品。", "🔧 **OEM／ODM 客製化開發**：OEM 協助製作貴司配方；ODM 依需求調整風味、營養配方、口感、造型。", "🤩 **聯名／活動合作**：品牌行銷專案、限定甜點、主題活動出攤等。"].join("\n");
 
+    const h2 = t => ({ type: "heading", level: "h2", text: t, align: "left" });
+    const kv = rows => ({ type: "table", mode: "kv", rows });
+    const grid = rows => ({ type: "table", mode: "grid", rows });
+    const note = (variant, title, html) => ({ type: "callout", variant, title, html });
+    const compactDate = () => todayText().replace(/-/g, "");
+
     const TEMPLATES = {
         blank: {
             name: "空白報告（A4 文件）",
             theme: { layout: "doc" },
             blocks: () => [{ type: "cover", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }, { type: "heading", level: "h2", text: "新章節", align: "left" }, text("<p>在這裡輸入內容…</p>")]
+        },
+        production: {
+            name: "生產報告（正式版面，A4）",
+            defaultLogo: true,
+            theme: {
+                layout: "doc", pageSize: "a4", preset: "brand", primary: "#8b4a2b", dark: "#2f2a26", textColor: "#2b2b2b",
+                font: "jhenghei", baseSize: 13, numbering: true, headStyle: "line", figLabel: "圖",
+                companyName: "瘋菓貿易社", companySub: "Fonegle Dessert Lab", logoShow: "cover", logoW: 150,
+                footerText: "本文件為瘋菓貿易社內部生產紀錄，未經授權請勿轉載、散佈。", footerBless: "", watermark: false,
+                runHead: true, runHeadLeft: "瘋菓貿易社", runHeadRight: "生產報告", runFootLeft: "機密文件・僅供內部使用", pageNo: true, pageFmt: "第 {p} 頁 / 共 {n} 頁"
+            },
+            meta: () => ({ rows: [{ label: "報告編號", value: "PR-" + compactDate() + "-01" }, { label: "生產日期", value: todayText() }, { label: "製表人", value: "" }, { label: "版次", value: "V1.0" }] }),
+            blocks: () => [
+                { type: "cover", style: "formal", kicker: "Production Report", title: "生產報告", subtitle: "（產品名稱／生產批號）", customer: "", image: "" },
+                h2("基本資訊"),
+                kv([["產品名稱", ""], ["產品編號 / SKU", ""], ["生產批號", ""], ["生產日期", todayText()], ["生產地點 / 產線", ""], ["預定產量", ""], ["實際產量", ""], ["良率", ""], ["負責人", ""]]),
+                h2("原料與配方"),
+                grid([["原料名稱", "用量", "單位", "批號 / 效期", "備註"], ["", "", "", "", ""], ["", "", "", "", ""], ["", "", "", "", ""]]),
+                h2("製程紀錄"),
+                grid([["步驟", "內容 / 條件", "起訖時間", "操作人員", "備註"], ["", "", "", "", ""], ["", "", "", "", ""], ["", "", "", "", ""]]),
+                h2("品質檢驗"),
+                grid([["檢驗項目", "標準", "實測值", "判定", "檢驗人員"], ["外觀", "", "", "", ""], ["口感 / 質地", "", "", "", ""], ["重量 / 規格", "", "", "", ""], ["保存溫度", "", "", "", ""]]),
+                h2("異常與處置"),
+                note("risk", "異常狀況", "<p>（無異常請填「無」）</p>"),
+                h2("結論與建議"),
+                note("conclusion", "結論", "<p>請填寫本批生產的整體結論。</p>"),
+                { type: "signature", roles: ["製表", "審核", "核准"] }]
         },
         brand: {
             name: "品牌介紹頁（瘋菓冰品研究室）",
@@ -1070,9 +1146,12 @@ ${saveBtns}`;
     function currentTpl() {
 
         const v = dom.tplSelect.value;
-        if (v.startsWith("b:")) return TEMPLATES[v.slice(2)] && { name: TEMPLATES[v.slice(2)].name, theme: TEMPLATES[v.slice(2)].theme, blocks: TEMPLATES[v.slice(2)].blocks() };
+        if (v.startsWith("b:")) {
+            const t = TEMPLATES[v.slice(2)];
+            return t && { name: t.name, theme: t.theme, blocks: t.blocks(), meta: t.meta && t.meta(), defaultLogo: !!t.defaultLogo };
+        }
         const u = userTpl.find(t => "u:" + t.id === v);
-        return u && { name: u.name, theme: u.theme, blocks: JSON.parse(JSON.stringify(u.blocks)) };
+        return u && { name: u.name, theme: u.theme, blocks: JSON.parse(JSON.stringify(u.blocks)), meta: u.meta && JSON.parse(JSON.stringify(u.meta)) };
     }
 
     async function saveTemplate() {
@@ -1080,7 +1159,7 @@ ${saveBtns}`;
         const name = (prompt("範本名稱？（同名會覆蓋）", "") || "").trim();
         if (!name) return;
 
-        const item = { id: (userTpl.find(t => t.name === name) || {}).id || uid(), name, theme: JSON.parse(JSON.stringify(report.theme)), blocks: JSON.parse(JSON.stringify(report.blocks)) };
+        const item = { id: (userTpl.find(t => t.name === name) || {}).id || uid(), name, theme: JSON.parse(JSON.stringify(report.theme)), meta: JSON.parse(JSON.stringify(report.meta)), blocks: JSON.parse(JSON.stringify(report.blocks)) };
         item.blocks.forEach(b => delete b.auto);
         userTpl = userTpl.filter(t => t.id !== item.id).concat(item);
 
@@ -1103,7 +1182,7 @@ ${saveBtns}`;
     function exportTemplate() {
 
         const name = (report.blocks.find(b => b.type === "cover")?.title || report.theme.title || "範本").replace(/[\\/:*?"<>|]/g, "_");
-        const data = { fonegleTemplate: 1, name, theme: report.theme, blocks: report.blocks.map(b => { const c = Object.assign({}, b); delete c.auto; return c; }) };
+        const data = { fonegleTemplate: 1, name, theme: report.theme, meta: report.meta, blocks: report.blocks.map(b => { const c = Object.assign({}, b); delete c.auto; return c; }) };
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
         a.download = `${name}.範本.json`;
@@ -1125,7 +1204,8 @@ ${saveBtns}`;
             const blocks = d.blocks.filter(b => b && TYPES[b.type]);
             if (!blocks.length) throw new Error("沒有可用的區塊");
 
-            const item = { id: uid(), name: String(d.name || "匯入的範本").slice(0, 40), theme: Object.assign(defaultTheme(), d.theme || {}), blocks: blocks.map(b => { const c = Object.assign({}, b); delete c.id; return c; }) };
+            const item = { id: uid(), name: String(d.name || "匯入的範本").slice(0, 40), theme: Object.assign(defaultTheme(), d.theme || {}),
+                meta: d.meta && Array.isArray(d.meta.rows) ? { rows: d.meta.rows.slice(0, 12).map(r => ({ label: String(r.label || "").slice(0, 40), value: String(r.value || "").slice(0, 200) })) } : undefined, blocks: blocks.map(b => { const c = Object.assign({}, b); delete c.id; return c; }) };
             userTpl.push(item);
 
             if (!(await DraftStore.set("templates", userTpl))) throw new Error("空間不足，無法儲存");
@@ -1136,7 +1216,7 @@ ${saveBtns}`;
         }
     }
 
-    function applyTemplate() {
+    async function applyTemplate() {
 
         const tpl = currentTpl();
         if (!tpl) return;
@@ -1144,6 +1224,8 @@ ${saveBtns}`;
 
         const logo = report.theme.logo;
         report.theme = Object.assign(defaultTheme(), tpl.theme, logo && !tpl.theme.logo ? { logo } : {});
+        if (tpl.meta && Array.isArray(tpl.meta.rows)) report.meta = tpl.meta;
+        if (tpl.defaultLogo && !report.theme.logo) { try { report.theme.logo = await fetchDefaultLogo(); } catch { } }
         report.blocks = tpl.blocks.map(b => Object.assign({}, b, { id: uid() }));
         report.source = null;
         openId = report.blocks[0].id;
@@ -1158,7 +1240,7 @@ ${saveBtns}`;
     function saveBrand() {
         const t = report.theme;
         const keys = ["preset", "primary", "dark", "textColor", "font", "baseSize", "pageSize", "companyName", "companySub", "logo", "watermark", "watermarkText", "footerText", "footerBless", "numbering", "layout", "pageBg", "cardBg", "cardWidth", "cardRadius",
-            "logoShow", "logoAlign", "logoW", "logoDx", "logoDy", "watermarkType", "wmImage", "wmColor", "wmSize", "wmOpacity", "wmAngle", "wmPos"];
+            "logoShow", "logoAlign", "logoW", "logoDx", "logoDy", "headStyle", "figLabel", "runHead", "runHeadLeft", "runHeadRight", "runFootLeft", "pageNo", "pageFmt", "watermarkType", "wmImage", "wmColor", "wmSize", "wmOpacity", "wmAngle", "wmPos"];
         const brand = {};
         keys.forEach(k => brand[k] = t[k]);
         try {
@@ -1204,7 +1286,7 @@ ${saveBtns}`;
         const blob = new Blob([R.buildReportHtml(report)], { type: "text/html;charset=utf-8" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `${title}_${report.meta.date || todayText()}.html`;
+        a.download = `${title}_${(report.meta.rows.find(r => /日期/.test(r.label)) || {}).value || todayText()}.html`;
         document.body.appendChild(a);
         a.click();
         a.remove();
