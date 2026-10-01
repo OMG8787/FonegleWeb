@@ -12,6 +12,9 @@ window.ReportRender = (() => {
         blue: { name: "海洋藍", primary: "#0d6efd", dark: "#0d3b66" },
         green: { name: "森林綠", primary: "#198754", dark: "#14532d" },
         pink: { name: "莓果粉", primary: "#d63384", dark: "#6f1a45" },
+        cetus: { name: "鑫堡紅", primary: "#E60012", dark: "#1f2937" },
+        slate: { name: "石板灰", primary: "#475569", dark: "#1e293b" },
+        qgreen: { name: "品質綠", primary: "#15803d", dark: "#14532d" },
         dark: { name: "沉穩灰", primary: "#495057", dark: "#212529" }
     };
 
@@ -19,7 +22,8 @@ window.ReportRender = (() => {
         jhenghei: { name: "微軟正黑體", css: `"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif` },
         noto: { name: "Noto 黑體", css: `"Noto Sans TC","Microsoft JhengHei",sans-serif`, google: "Noto+Sans+TC:wght@400;700" },
         system: { name: "系統預設（網頁常用）", css: `-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Microsoft JhengHei",Arial,sans-serif` },
-        serif: { name: "Noto 明體", css: `"Noto Serif TC","PMingLiU",serif`, google: "Noto+Serif+TC:wght@400;700" }
+        serif: { name: "Noto 明體", css: `"Noto Serif TC","PMingLiU",serif`, google: "Noto+Serif+TC:wght@400;700" },
+        kai: { name: "標楷體", css: `"DFKai-SB","BiauKai","KaiTi",serif` }
     };
 
     const PAGES = {
@@ -30,11 +34,12 @@ window.ReportRender = (() => {
     };
 
     const CALLOUTS = {
-        conclusion: { name: "結論", icon: "✅", color: "#198754" },
-        suggest: { name: "建議", icon: "💡", color: "#0d6efd" },
-        notice: { name: "注意", icon: "⚠️", color: "#f08c00" },
-        risk: { name: "風險", icon: "🚨", color: "#dc3545" },
-        note: { name: "說明", icon: "📝", color: "#6c757d" }
+        conclusion: { name: "結論（主色）", icon: "✔", color: null },
+        suggest: { name: "建議（綠）", icon: "💡", color: "#15803d" },
+        notice: { name: "注意（橘）", icon: "⚠", color: "#d97706" },
+        risk: { name: "風險（紅）", icon: "✖", color: "#dc2626" },
+        info: { name: "說明（藍）", icon: "ℹ", color: "#2563eb" },
+        note: { name: "備註（灰）", icon: "📝", color: "#6c757d" }
     };
 
     // ---------- 安全過濾 ----------
@@ -57,7 +62,9 @@ window.ReportRender = (() => {
 
     const safeUrl = u => /^(https?:\/\/|mailto:)[^\s"'<>]+$/i.test(String(u || "").trim()) ? String(u).trim() : "";
 
-    const ALLOWED_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "S", "BR", "P", "DIV", "SPAN", "UL", "OL", "LI", "H3", "H4", "A", "FONT"]);
+    const ALLOWED_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "SPAN", "FONT", "P", "DIV", "BR", "UL", "OL", "LI", "SUB", "SUP", "H3", "H4",
+        "BLOCKQUOTE", "A", "MARK", "SMALL", "TABLE", "TBODY", "THEAD", "TR", "TD", "TH", "HR"]);
+    const ALLOWED_STYLE = /^(color|background-color|font-size|font-weight|font-style|text-decoration|text-align|line-height|margin-left|padding-left)$/i;
 
     function cleanStyle(style) {
         const out = [];
@@ -66,15 +73,12 @@ window.ReportRender = (() => {
             if (i < 0) return;
             const k = p.slice(0, i).trim().toLowerCase();
             const v = p.slice(i + 1).trim();
-            if ((k === "color" || k === "background-color") && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|[a-z]{3,20})$/i.test(v)) out.push(`${k}:${v}`);
-            else if (k === "font-size" && /^\d{1,3}(\.\d+)?(px|pt|em|rem|%)$/.test(v)) out.push(`${k}:${v}`);
-            else if (k === "text-align" && /^(left|right|center|justify)$/.test(v)) out.push(`${k}:${v}`);
-            else if (k === "font-weight" && /^(bold|normal|[1-9]00)$/.test(v)) out.push(`${k}:${v}`);
+            if (ALLOWED_STYLE.test(k) && v && !/url\s*\(|expression|javascript|@import|[<>"'`{}\\]/i.test(v)) out.push(`${k}:${v}`);
         });
         return out.join(";");
     }
 
-    // 富文字白名單：只留安全標籤與屬性，其餘拿掉（保留文字）
+    // 富文字白名單：只留安全標籤與屬性，其餘拿掉（保留文字）。內容可能是從網頁 / Word 貼上來的
     function sanitizeRichHtml(html) {
 
         const doc = new DOMParser().parseFromString(`<body>${String(html || "")}</body>`, "text/html");
@@ -104,6 +108,11 @@ window.ReportRender = (() => {
                     const c = ch.getAttribute("color");
                     if (c && /^(#[0-9a-f]{3,8}|[a-z]{3,20})$/i.test(c)) keep.color = c;
                 }
+                if (ch.tagName === "TD" || ch.tagName === "TH") {
+                    ["colspan", "rowspan"].forEach(n => { const v = Number(ch.getAttribute(n)); if (v > 1 && v <= 12) keep[n] = String(v); });
+                }
+                const al = ch.getAttribute("align");
+                if (al && /^(left|center|right|justify)$/i.test(al)) keep.align = al;
 
                 [...ch.attributes].forEach(a => ch.removeAttribute(a.name));
                 Object.keys(keep).forEach(k => ch.setAttribute(k, keep[k]));
@@ -182,8 +191,11 @@ h1,h2,h3{color:var(--d);line-height:1.35}
 .rp-table.grid th{width:auto;background:var(--p);color:#fff}
 .rp-callout{margin:1em 0;padding:12px 16px;border-left:6px solid var(--c);background:var(--cb);border-radius:6px;break-inside:avoid;page-break-inside:avoid}
 .rp-callout .t{font-weight:700;color:var(--c);margin-bottom:.3em}
-.rp-sign{display:flex;gap:16px;margin:2em 0 1em;break-inside:avoid}
-.rp-sign div{flex:1;border-top:1px solid #555;padding-top:6px;text-align:center;min-height:60px;padding-top:40px}
+.rp-sign{display:flex;gap:16px;margin:30px 0 10px}
+.rp-sign-box{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px}
+.rp-sign-label{font-weight:700;color:var(--d);font-size:.9em}
+.rp-sign-line{height:52px;border-bottom:1px solid #94a3b8;display:flex;align-items:flex-end;justify-content:center;font-size:1.05em}
+.rp-sign-date{font-size:.85em;color:#64748b;margin-top:6px}
 .rp-pagebreak{break-after:page;page-break-after:always;height:0}
 .mk-hero{min-height:90mm;margin:0 -14mm;padding:22mm 14mm;color:#fff;text-align:center;background:linear-gradient(135deg,var(--d),var(--p)) center/cover;display:flex;flex-direction:column;justify-content:center;align-items:center;break-inside:avoid}
 .mk-hero h1{color:#fff;font-size:2.6em;margin:0 0 .3em;text-shadow:0 2px 12px rgba(0,0,0,.35)}
@@ -235,12 +247,32 @@ h1,h2,h3{color:var(--d);line-height:1.35}
 .bx-tint{background:var(--bxbg,var(--tint))}
 .bx-dashed{border:2px dashed var(--bxbd,var(--p));background:var(--bxbg,transparent)}
 .bx-bar{border-left:6px solid var(--bxbd,var(--p));background:var(--bxbg,var(--tint));border-radius:0 var(--bxr,12px) var(--bxr,12px) 0}
+.rp-card{margin:0 0 16px}
+.rp-h3{display:flex;align-items:center;gap:8px;font-size:1.1em;color:var(--d);margin:0 0 10px;break-after:avoid}
+.rp-badge{display:inline-block;padding:1px 10px;border-radius:12px;background:var(--p);color:#fff;font-size:.8em;font-weight:700}
+.rp-avoid{break-inside:avoid;page-break-inside:avoid}
+.rp-table.kv4{table-layout:fixed}.rp-table.kv4 td.k{width:auto}
+.rp-empty{color:#cbd5e1}
+.rp-images{margin:6px 0 18px}.rp-grid{display:grid;gap:12px}.rp-cols-1 .rp-grid{display:block}
+.rp-figure img{max-width:100%;height:auto}
+.rp-cols-2 .rp-figure img,.rp-cols-3 .rp-figure img{width:100%;aspect-ratio:4/3;object-fit:contain;background:#f8fafc}
+.rp-placeholder{border:2px dashed #cbd5e1;border-radius:8px;padding:22px;text-align:center;color:#94a3b8;margin:6px 0 16px}
+.rp-pagebreak-mark{text-align:center;color:#94a3b8;font-size:12px;letter-spacing:2px;margin:18px 0;border-top:1px dashed #cbd5e1;padding-top:4px}
+.rp-header{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:3px solid var(--p);margin-bottom:22px}
+.rp-header-logo img{height:52px;object-fit:contain}.rp-header-info{text-align:right}
+.rp-company{font-size:1.5em;font-weight:800;color:var(--d)}.rp-company-sub{font-size:.85em;color:#64748b;letter-spacing:1px}
+.rp-doctitle{font-size:2em;font-weight:800;color:var(--d);margin:0 0 6px;padding-left:14px;border-left:7px solid var(--p)}
+.rp-meta{font-size:.9em;color:#64748b;margin-bottom:26px}.rp-dot{color:#cbd5e1;margin:0 4px}
+.cv-extra{text-align:left;width:100%;margin-top:1.4em}
+.cv-foot{margin-top:18px;font-size:.85em;color:#94a3b8;text-align:center}
+.hs-badge .rp-h2{display:flex;align-items:center;gap:10px;border-left:0;padding-left:0;border-bottom:2px solid ${hexToRgba(o.primary, .18)};padding-bottom:8px}
+.hs-badge .rp-h2 .no{background:var(--p);color:#fff;border-radius:6px;min-width:34px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-size:.65em;padding:0 6px;margin-right:0}
 .rp-foot{margin-top:2.5em;padding-top:10px;border-top:2px solid var(--p);text-align:center;font-size:.85em;color:#666;break-inside:avoid}
 .rp-foot .co{font-weight:700;color:var(--d)}
 ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
 [data-block-id]:hover{outline:2px dashed var(--p)}
 [data-block-id].rp-active{outline:2px solid var(--p)}` : ""}
-@media print{body{background:#fff}.rp-page{max-width:none;padding:0;min-height:0}.mk-hero{margin:0}}
+@media print{body{background:#fff}.rp-page{max-width:none;padding:0;min-height:0}.mk-hero{margin:0}.rp-pagebreak-mark{display:none}}
 @media (max-width:640px){.mk-grid,.rp-cols,.mk-prods{grid-template-columns:1fr!important}.rp-steps{flex-direction:column}.rp-it{flex-direction:column!important}.rp-it .im{flex-basis:auto;width:100%}}`;
     }
 
@@ -344,16 +376,63 @@ ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
             { label: "報告編號", value: m.reportNo }, { label: "報告日期", value: m.date }, { label: "撰寫人", value: m.author }, { label: "版次", value: m.version }
         ]).filter(r => r && String(r.label || "").trim());
 
-        const hs = ["line", "plain"].includes(t.headStyle) ? t.headStyle : "bar";
+        const hs = ["line", "plain", "badge"].includes(t.headStyle) ? t.headStyle : "bar";
 
-        const parts = (report.blocks || []).map(b => {
+        const textToHtml = v => esc(v).replace(/\n/g, "<br>");
 
+        // 圖片 + 圖號圖說（圖 N：說明）
+        const figure = (src, caption, widthPct, imgH) => {
+            const s = safeImgSrc(src);
+            if (!s) return "";
+            fig++;
+            const st = [];
+            if (widthPct) st.push(`width:${widthPct}%`);
+            if (Number(imgH)) st.push(`height:${safeNum(imgH, 0, 20, 900)}px`, "object-fit:contain", "aspect-ratio:auto");
+            return `<figure class="rp-figure"><img src="${esc(s)}"${st.length ? ` style="${st.join(";")}"` : ""} alt="${esc(caption || "")}"><figcaption>${esc(t.figLabel ?? "圖")} ${fig}${caption ? "：" + esc(caption) : ""}</figcaption></figure>`;
+        };
+
+        const placeholder = (b, msg) => (opt.forEditor ? `<div class="rp-placeholder"${attr(b)}>${msg}</div>` : "");
+
+        // 資訊表：kv 兩欄；kv4 四欄（兩組欄位並排，標記「整列」的欄位自己佔一整列）
+        const kvTable = (rows, cols4) => {
+            rows = (rows || []).filter(r => r && (r[0] || r[1]));
+            if (!cols4) return `<table class="rp-table">${rows.map(r => `<tr><td class="k">${esc(r[0])}</td><td>${textToHtml(r[1])}</td></tr>`).join("")}</table>`;
+
+            const out = [];
+            let pending = null;
+            const lab = k => `<td class="k">${esc(k)}</td>`;
+            const val = (v, span) => `<td${span ? ` colspan="${span}"` : ""}>${String(v ?? "") !== "" ? textToHtml(v) : `<span class="rp-empty">-</span>`}</td>`;
+            const pair = r => lab(r[0]) + val(r[1]);
+            const blank = `<td class="k"></td><td></td>`;
+
+            rows.forEach(r => {
+                if (r[2]) {
+                    if (pending) { out.push(`<tr>${pair(pending)}${blank}</tr>`); pending = null; }
+                    out.push(`<tr>${lab(r[0])}${val(r[1], 3)}</tr>`);
+                } else if (pending) { out.push(`<tr>${pair(pending)}${pair(r)}</tr>`); pending = null; }
+                else pending = r;
+            });
+            if (pending) out.push(`<tr>${pair(pending)}${blank}</tr>`);
+
+            return `<table class="rp-table kv4"><colgroup><col style="width:17%"><col style="width:33%"><col style="width:17%"><col style="width:33%"></colgroup>${out.join("")}</table>`;
+        };
+
+        const renderOne = b => {
+
+            const prevBoxed = boxed;
             boxed = !!(b.box && b.box.style && b.box.style !== "none" && !NO_BOX[b.type]);
             let html = "";
 
             switch (b.type) {
 
-                case "cover":
+                case "cover": {
+                    // 封面可以放其他區塊（表格、文字、圖片…）
+                    const kids = (b.children || []).filter(c => c && c.type !== "cover" && c.type !== "pagebreak").map(renderOne).join("");
+                    const extra = kids ? `<div class="cv-extra">${kids}</div>` : "";
+                    const sub = b.subtitle ? `<div class="sub">${textToHtml(b.subtitle)}</div>` : "";
+                    const cimg = safeImgSrc(b.image) ? `<img class="cv" src="${esc(safeImgSrc(b.image))}" alt="" style="max-width:${safeNum(b.imgW, 70, 10, 100)}%;${Number(b.imgH) ? `height:${safeNum(b.imgH, 0, 20, 900)}px;max-height:none` : ""}">` : "";
+                    const foot = t.coverNote ? `<div class="cv-foot">${esc(t.coverNote)}</div>` : "";
+
                     if (b.style === "formal") {
                         const showLogo = logo && (t.logoShow || "cover") === "cover";
                         html = `<section class="rp-cover formal"${attr(b)}>
@@ -363,24 +442,28 @@ ${o.forEditor ? `[data-block-id]{cursor:pointer;outline-offset:3px}
 <div class="cv-main">
 ${b.kicker ? `<div class="kicker">${esc(b.kicker)}</div>` : ""}
 <h1>${esc(b.title || t.title || "")}</h1>
-${b.subtitle ? `<div class="sub">${esc(b.subtitle)}</div>` : ""}
-${safeImgSrc(b.image) ? `<img class="cv" src="${esc(safeImgSrc(b.image))}" alt="" style="max-width:${safeNum(b.imgW, 70, 10, 100)}%;${Number(b.imgH) ? `height:${safeNum(b.imgH, 0, 20, 900)}px;max-height:none` : ""}">` : ""}
+${sub}${cimg}
 ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
+${extra}
 </div>
 ${metaRows.length ? `<table class="cv-meta">${metaRows.map(r => `<tr><td class="k">${esc(r.label)}</td><td>${esc(r.value)}</td></tr>`).join("")}</table>` : ""}
+${foot}
 </section>`;
                         break;
                     }
+
                     html = `<section class="rp-cover"${attr(b)}>
 ${logoHtml("cover")}
 ${b.kicker ? `<div class="kicker">${esc(b.kicker)}</div>` : ""}
 <h1>${esc(b.title || t.title || "")}</h1>
-${b.subtitle ? `<div class="sub">${esc(b.subtitle)}</div>` : ""}
-${safeImgSrc(b.image) ? `<img class="cv" src="${esc(safeImgSrc(b.image))}" alt="" style="max-width:${safeNum(b.imgW, 70, 10, 100)}%;${Number(b.imgH) ? `height:${safeNum(b.imgH, 0, 20, 900)}px;max-height:none` : ""}">` : ""}
+${sub}${cimg}
 ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
+${extra}
 <div class="meta">${metaRows.filter(r => String(r.value || "").trim()).map(r => `${esc(r.label)}：${esc(r.value)}`).join("　|　")}</div>
+${foot}
 </section>`;
                     break;
+                }
 
                 case "banner": {
                     const h = safeNum(b.height, 0, 0, 600);
@@ -389,7 +472,10 @@ ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
                 }
 
                 case "heading": {
-                    const al = ["center", "right"].includes(b.align) ? ` style="text-align:${b.align}"` : "";
+                    const stl = [];
+                    if (["center", "right"].includes(b.align)) stl.push(`text-align:${b.align}`);
+                    if (b.color) stl.push(`color:${safeColor(b.color, dark)}`);
+                    const al = stl.length ? ` style="${stl.join(";")}"` : "";
                     if (b.level === "h1") html = `<h1 class="rp-title"${attr(b)}${al}>${esc(b.text)}</h1>`;
                     else if (b.level === "h3") html = `<h3 class="rp-sec"${attr(b)}${al}>${esc(b.text)}</h3>`;
                     else {
@@ -399,9 +485,13 @@ ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
                     break;
                 }
 
-                case "text":
-                    html = `<div class="rp-text"${attr(b)}>${sanitizeRichHtml(b.html)}</div>`;
+                case "text": {
+                    const st = [];
+                    if (b.color) st.push(`color:${safeColor(b.color, text)}`);
+                    if (["left", "center", "right", "justify"].includes(b.align)) st.push(`text-align:${b.align}`);
+                    html = `<div class="rp-text"${attr(b)}${st.length ? ` style="${st.join(";")}"` : ""}>${sanitizeRichHtml(b.html)}</div>`;
                     break;
+                }
 
                 case "claim":
                     html = `<div class="rp-claim"${attr(b)}${["center", "right"].includes(b.align) ? ` style="text-align:${b.align}"` : ""}><div class="big">${esc(b.big)}</div>${b.sub ? `<div class="sub">${esc(b.sub)}</div>` : ""}</div>`;
@@ -419,19 +509,21 @@ ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
                 }
 
                 case "images": {
-                    const w = safeNum(b.widthPct, 100, 20, 100);
-                    const list = (b.images || []).filter(i => safeImgSrc(i.src));
-                    const n = Math.max(1, list.length);
-                    html = `<div class="rp-figs ${["center", "right"].includes(b.align) ? b.align : ""}"${attr(b)}>${list.map(i => {
-                        fig++;
-                        return `<figure class="rp-figure" style="width:calc(${w / n}% - 12px)">${Number(b.imgH) ? img(i.src, i.caption).replace("<img ", `<img style="height:${safeNum(b.imgH, 0, 20, 900)}px;object-fit:contain" `) : img(i.src, i.caption)}<figcaption>${esc(t.figLabel ?? "圖")} ${fig}${i.caption ? "　" + esc(i.caption) : ""}</figcaption></figure>`;
-                    }).join("")}</div>`;
+                    const items = (b.images || []).filter(i => safeImgSrc(i.src));
+                    if (!items.length) { html = placeholder(b, "（圖片區：尚未加入圖片）"); break; }
+                    const cols = b.columns ? safeNum(b.columns, 1, 1, 3) : Math.min(3, items.length);
+                    const width = cols === 1 ? safeNum(b.width ?? b.widthPct, 80, 20, 100) : 0;
+                    const al = ["left", "right"].includes(b.align) ? b.align : "center";
+                    html = `<div class="rp-images rp-cols-${cols}"${attr(b)} style="text-align:${al}">${b.title ? `<h3 class="rp-h3">${esc(b.title)}</h3>` : ""}<div class="rp-grid" style="grid-template-columns:repeat(${cols},1fr)">${items.map(i => figure(i.src, i.caption, width, b.imgH)).join("")}</div></div>`;
                     break;
                 }
 
-                case "imageText":
-                    html = `<div class="rp-it ${b.imageSide === "right" ? "rev" : ""}"${attr(b)}><div class="im" style="flex:0 0 ${safeNum(b.imgW, 42, 10, 90)}%">${img(b.image)}</div><div class="tx">${sanitizeRichHtml(b.html)}</div></div>`;
+                case "imageText": {
+                    const w = safeNum(b.imgW, 42, 10, 90);
+                    const imgHtml = safeImgSrc(b.image) ? figure(b.image, b.caption, 0, 0) : (opt.forEditor ? `<div class="rp-placeholder">（尚未加入圖片）</div>` : "");
+                    html = `<div class="rp-it rp-avoid ${b.imageSide === "right" ? "rev" : ""}"${attr(b)}><div class="im" style="flex:0 0 ${w}%">${imgHtml}</div><div class="tx">${b.title ? `<h3 class="rp-h3">${esc(b.title)}</h3>` : ""}<div class="rp-text">${sanitizeRichHtml(b.html)}</div></div></div>`;
                     break;
+                }
 
                 case "columns": {
                     const n = safeNum(b.cols, 2, 2, 3);
@@ -440,25 +532,31 @@ ${b.customer ? `<div class="cust">${esc(b.customer)}</div>` : ""}
                 }
 
                 case "table": {
+                    const badge = b.badge ? `<span class="rp-badge">${esc(b.badge)}</span>` : "";
+                    const head = b.title || badge ? `<h3 class="rp-h3">${badge}${esc(b.title || "")}</h3>` : "";
                     const rows = (b.rows || []).map(r => (r || []).map(c => esc(c)));
-                    html = b.mode === "grid"
-                        ? `<table class="rp-table grid"${attr(b)}>${rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${c}</th>` : `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`
-                        : `<table class="rp-table"${attr(b)}>${rows.map(r => `<tr><td class="k">${r[0] || ""}</td><td>${r[1] || ""}</td></tr>`).join("")}</table>`;
+                    const tbl = b.mode === "grid"
+                        ? `<table class="rp-table grid">${rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${c}</th>` : `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`
+                        : kvTable(b.rows, b.mode === "kv4");
+                    html = `<div class="rp-card"${attr(b)}>${head}${tbl}</div>`;
                     break;
                 }
 
                 case "callout": {
                     const v = CALLOUTS[b.variant] || CALLOUTS.note;
-                    html = `<div class="rp-callout" style="--c:${v.color};--cb:${hexToRgba(v.color, .08)}"${attr(b)}><div class="t">${v.icon} ${esc(b.title || v.name)}</div>${sanitizeRichHtml(b.html)}</div>`;
+                    const c = v.color || primary;
+                    html = `<div class="rp-callout" style="--c:${c};--cb:${hexToRgba(c, .08)}"${attr(b)}><div class="t">${v.icon} ${esc(b.title || v.name)}</div>${sanitizeRichHtml(b.html)}</div>`;
                     break;
                 }
 
-                case "signature":
-                    html = `<div class="rp-sign"${attr(b)}>${(b.roles || []).map(r => `<div>${esc(r)}</div>`).join("")}</div>`;
+                case "signature": {
+                    const slots = Array.isArray(b.slots) ? b.slots : (b.roles || []).map(label => ({ label, name: "", date: "" }));
+                    html = `<div class="rp-sign rp-avoid"${attr(b)}>${slots.filter(s => s && s.label).map(s => `<div class="rp-sign-box"><div class="rp-sign-label">${esc(s.label)}</div><div class="rp-sign-line">${esc(s.name || "")}</div><div class="rp-sign-date">日期：${esc(s.date || "＿＿＿＿＿＿")}</div></div>`).join("")}</div>`;
                     break;
+                }
 
                 case "pagebreak":
-                    html = `<div class="rp-pagebreak"${attr(b)}></div>`;
+                    html = opt.forEditor ? `<div class="rp-pagebreak-mark"${attr(b)}>── 分頁 ──</div><div class="rp-pagebreak"></div>` : `<div class="rp-pagebreak"></div>`;
                     break;
 
                 case "divider": {
@@ -534,15 +632,29 @@ ${safeImgSrc(b.qr) ? `<img src="${esc(safeImgSrc(b.qr))}" alt="QR Code" style="w
                     html = "";
             }
 
-            return deco(b, boxWrap(b, html));
-        });
+            const out = deco(b, boxWrap(b, html));
+            boxed = prevBoxed;
+            return out;
+        };
+
+        const parts = (report.blocks || []).map(b => renderOne(b));
 
         const gfont = font.google ? `<link href="https://fonts.googleapis.com/css2?family=${font.google}&display=swap" rel="stylesheet">` : "";
         const title = (report.blocks || []).find(b => b.type === "cover")?.title || t.title || "報告";
 
-        const hasFoot = t.companyName || t.footerText || t.footerBless;
+        const footLines = String(t.footerText || "").split("\n").map(x => x.trim()).filter(Boolean);
+        const hasFoot = t.companyName || footLines.length || t.footerBless;
         const footer = hasFoot ? `<div class="rp-foot">${t.companyName ? `<div class="co">${esc(t.companyName)}${t.companySub ? "　" + esc(t.companySub) : ""}</div>` : ""}
-${t.footerText ? `<div>${esc(t.footerText)}</div>` : ""}${t.footerBless ? `<div>${esc(t.footerBless)}</div>` : ""}</div>` : "";
+${footLines.map(l => `<div>${esc(l)}</div>`).join("")}${t.footerBless ? `<div>${esc(t.footerBless)}</div>` : ""}</div>` : "";
+
+        // 文件抬頭（Logo + 公司名 + 標題 + 編號列）：有封面時放在封面後面，沒有封面就放最上面
+        const filled = metaRows.filter(r => String(r.value || "").trim());
+        const docHeader = t.docHeader ? `<header class="rp-header"><div class="rp-header-logo">${logo ? `<img src="${esc(logo)}" alt="">` : ""}</div>
+<div class="rp-header-info"><div class="rp-company">${esc(t.companyName)}</div><div class="rp-company-sub">${esc(t.companySub)}</div></div></header>
+<h1 class="rp-doctitle">${esc(t.title || "報告")}</h1>
+${filled.length ? `<div class="rp-meta">${filled.map(r => `${esc(r.label)}：${esc(r.value)}`).join(`<span class="rp-dot">｜</span>`)}</div>` : ""}` : "";
+        const first = (report.blocks || [])[0];
+        const bodyHtml = docHeader && first && first.type === "cover" ? [parts[0], docHeader, ...parts.slice(1)].join("") : docHeader + parts.join("");
 
         // 列印 / 存成 PDF 時的每頁頁首、頁尾與頁碼（封面不顯示）
         const cs = v => `"${String(v || "").replace(/[\\"\r\n]/g, " ")}"`;
@@ -569,7 +681,7 @@ ${String(t.runFootLeft || "").trim() ? box("bottom-left", cs(t.runFootLeft)) : "
 
         return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>${gfont}<style>${css}</style></head>
-<body>${watermarkHtml()}<div class="rp-page hs-${hs}"><div class="rp-content">${logoHtml("top")}${parts.join("")}${logoHtml("bottom")}${footer}</div></div></body></html>`;
+<body>${watermarkHtml()}<div class="rp-page hs-${hs}"><div class="rp-content">${logoHtml("top")}${bodyHtml}${logoHtml("bottom")}${footer}</div></div></body></html>`;
     }
 
     return { THEMES, FONTS, PAGES, CALLOUTS, BOX_STYLES, esc, safeColor, safeImgSrc, safeUrl, sanitizeRichHtml, buildReportHtml };

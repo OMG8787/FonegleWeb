@@ -18,6 +18,7 @@ Pages.Report = (() => {
     let report = null;
     let userTpl = [];
     let openId = null;
+    const openIds = new Set();
     let events = [];
     let days = [];
     let products = null;
@@ -32,14 +33,14 @@ Pages.Report = (() => {
     const uid = () => "b" + Date.now().toString(36) + (seq++);
 
     const TYPES = {
-        cover: { label: "封面", icon: "📕", make: () => ({ style: "center", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }), sum: b => b.title },
+        cover: { label: "封面", icon: "📕", make: () => ({ style: "center", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "", children: [] }), sum: b => (b.title || "") + ((b.children || []).length ? `（含 ${b.children.length} 個區塊）` : "") },
         heading: { label: "標題", icon: "🔖", make: () => ({ text: "新章節", level: "h2", align: "left" }), sum: b => b.text },
         text: { label: "文字段落", icon: "📝", make: () => ({ html: "<p>在這裡輸入內容…</p>" }), sum: b => plain(b.html) },
-        images: { label: "圖片（1～3 張）", icon: "🖼️", make: () => ({ images: [], widthPct: 100, align: "center" }), sum: b => `${(b.images || []).length} 張` },
-        imageText: { label: "圖文並排", icon: "🧩", make: () => ({ image: "", html: "<p>說明文字…</p>", imageSide: "left" }), sum: b => plain(b.html) },
-        table: { label: "表格", icon: "📊", make: () => ({ mode: "kv", rows: [["項目", "內容"]] }), sum: b => `${(b.rows || []).length} 列` },
+        images: { label: "圖片（可多張）", icon: "🖼️", make: () => ({ title: "", columns: 2, width: 80, images: [], align: "center" }), sum: b => `${(b.images || []).length} 張` },
+        imageText: { label: "圖文並排", icon: "🧩", make: () => ({ title: "", image: "", caption: "", html: "<p>說明文字…</p>", imageSide: "left" }), sum: b => plain(b.html) },
+        table: { label: "表格", icon: "📊", make: () => ({ title: "", badge: "", mode: "kv", rows: [["項目", "內容"]] }), sum: b => `${(b.rows || []).length} 列` },
         callout: { label: "重點框", icon: "💡", make: () => ({ variant: "suggest", title: "", html: "<p>重點說明…</p>" }), sum: b => plain(b.html) },
-        signature: { label: "簽核欄", icon: "✍️", make: () => ({ roles: ["製表", "審核", "核准"] }), sum: b => (b.roles || []).join("／") },
+        signature: { label: "簽核欄", icon: "✍️", make: () => ({ slots: [{ label: "製表", name: "", date: "" }, { label: "審核", name: "", date: "" }, { label: "核准", name: "", date: "" }] }), sum: b => (b.slots || (b.roles || []).map(label => ({ label }))).map(x => x.label).join("／") },
         pagebreak: { label: "強制分頁", icon: "✂️", make: () => ({}), sum: () => "" },
         hero: { label: "主視覺（大標語）", icon: "🌟", make: () => ({ headline: "一句吸引人的標語", sub: "副標題", image: "", ctaText: "", ctaUrl: "" }), sum: b => b.headline },
         features: { label: "賣點卡片", icon: "✨", make: () => ({ cols: 3, layout: "stack", items: [{ icon: "🍦", title: "賣點一", text: "說明" }, { icon: "🌿", title: "賣點二", text: "說明" }, { icon: "❤️", title: "賣點三", text: "說明" }] }), sum: b => `${(b.items || []).length} 張` },
@@ -73,6 +74,7 @@ Pages.Report = (() => {
         items_testimonial: () => ({ quote: "", name: "" }),
         plans: () => ({ name: "", price: "", unit: "", features: "", highlight: false }),
         roles: () => "",
+        slots: () => ({ label: "簽核", name: "", date: "" }),
         rows: () => ["", ""],
         items_steps: () => ({ icon: "", title: "", text: "" }),
         items_buttons: () => ({ text: "按鈕", url: "", style: "solid" }),
@@ -85,6 +87,39 @@ Pages.Report = (() => {
         const d = new DOMParser().parseFromString(`<body>${R.sanitizeRichHtml(html)}</body>`, "text/html");
         return (d.body.textContent || "").trim().slice(0, 40);
     };
+
+    // 走訪所有區塊（含封面裡的子區塊）；fn 回傳 true 就停止
+    function walkBlocks(arr, fn, parent = null) {
+        for (let i = 0; i < arr.length; i++) {
+            const b = arr[i];
+            if (fn(b, arr, i, parent) === true) return true;
+            if (Array.isArray(b.children) && walkBlocks(b.children, fn, b)) return true;
+        }
+        return false;
+    }
+
+    function locate(id) {
+        let r = null;
+        walkBlocks(report.blocks, (b, arr, i, parent) => { if (b.id === id) { r = { b, arr, i, parent }; return true; } });
+        return r;
+    }
+
+    // 展開並選取某個區塊（封面裡的子區塊會一併展開封面）
+    function activate(id) {
+        if (!id) return;
+        openId = id;
+        openIds.add(id);
+        const loc = locate(id);
+        if (loc && loc.parent) openIds.add(loc.parent.id);
+    }
+
+    // 複製 / 套用範本時重新編號（含子區塊），並拿掉「自動帶入」標記
+    function reid(b) {
+        b.id = uid();
+        delete b.auto;
+        (b.children || []).forEach(reid);
+        return b;
+    }
 
     const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
 
@@ -150,7 +185,7 @@ Pages.Report = (() => {
 
         [
             "btnNew", "btnDownload", "btnPrint", "srcKind", "srcRecord", "btnSrcBuild", "btnSrcRefill",
-            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl", "btnTplSave", "btnTplDel", "btnTplExport", "btnTplImport", "tplFile"
+            "addType", "btnAddBlock", "blockList", "themeForm", "preview", "saveState", "tplSelect", "btnTpl", "btnTplSave", "btnTplDel", "btnTplExport", "btnTplImport", "tplFile", "btnCollapseAll", "btnExpandAll", "zoom"
         ].forEach(id => dom[id] = document.getElementById(id));
 
         dom.addType.innerHTML = TYPE_GROUPS.map(([g, keys]) =>
@@ -164,7 +199,7 @@ Pages.Report = (() => {
 
         const saved = await DraftStore.get(draftKey());
         report = saved && Array.isArray(saved.blocks) ? normalize(saved) : await newReport();
-        openId = report.blocks[0]?.id || null;
+        activate(report.blocks[0]?.id);
 
         renderAll();
         loadSources();
@@ -174,12 +209,15 @@ Pages.Report = (() => {
         r.theme = Object.assign(defaultTheme(), r.theme || {});
         r.meta = r.meta || {};
         if (!Array.isArray(r.meta.rows)) r.meta.rows = defaultMetaRows(r.meta.author || "", r.meta);
-        r.blocks.forEach(b => {
+        walkBlocks(r.blocks, b => {
             if (!b.id) b.id = uid();
-            if (b.type === "cover") b.style = b.style || "center";
+            if (b.type === "cover") { b.style = b.style || "center"; b.children = Array.isArray(b.children) ? b.children : []; }
             if (b.type === "heading") { b.level = b.level || "h2"; b.align = b.align || "left"; }
             if (b.type === "features") { b.cols = b.cols || 3; b.layout = b.layout || "stack"; }
             if (b.type === "gallery") b.ratio = b.ratio || "1/1";
+            if (b.type === "images") { b.columns = b.columns || Math.min(3, (b.images || []).length || 1); if (b.width === undefined) b.width = b.widthPct || 80; }
+            if (b.type === "signature" && !Array.isArray(b.slots)) b.slots = (b.roles || []).map(label => ({ label, name: "", date: "" }));
+            if (b.type === "table") { b.title = b.title || ""; b.badge = b.badge || ""; }
         });
         return r;
     }
@@ -196,7 +234,7 @@ Pages.Report = (() => {
             preset: "brand", primary: R.THEMES.brand.primary, dark: R.THEMES.brand.dark, textColor: "#2b2b2b",
             font: "jhenghei", baseSize: 14, pageSize: "a4",
             layout: "doc", pageBg: "#f4f6f8", cardBg: "#ffffff", cardWidth: 720, cardRadius: 12,
-            logoShow: "cover", logoAlign: "center", logoW: 120, logoDx: 0, logoDy: 0,
+            logoShow: "cover", logoAlign: "center", logoW: 120, logoDx: 0, logoDy: 0, docHeader: false, coverNote: "",
             headStyle: "bar", figLabel: "圖", runHead: false, runHeadLeft: "", runHeadRight: "", runFootLeft: "", pageNo: false, pageFmt: "第 {p} 頁 / 共 {n} 頁",
             watermarkType: "text", wmImage: "", wmColor: "#4d341c", wmSize: 88, wmOpacity: 6, wmAngle: -24, wmPos: "center",
             companyName: "瘋菓 Fonegle Dessert", companySub: "", logo: "",
@@ -258,18 +296,29 @@ Pages.Report = (() => {
             const keep = report.theme;
             report = await newReport();
             report.theme = keep;
-            openId = report.blocks[0].id;
+            openIds.clear();
+            activate(report.blocks[0].id);
             renderAll();
         });
 
         dom.btnAddBlock.addEventListener("click", () => {
-            const b = Object.assign({ id: uid(), type: dom.addType.value }, TYPES[dom.addType.value].make());
-            const i = report.blocks.findIndex(x => x.id === openId);
-            report.blocks.splice(i < 0 ? report.blocks.length : i + 1, 0, b);
-            openId = b.id;
+            const type = dom.addType.value;
+            const b = Object.assign({ id: uid(), type }, TYPES[type].make());
+            if (type === "cover") report.blocks.unshift(b);
+            else {
+                const loc = locate(openId);
+                const top = loc ? (loc.parent ? report.blocks.indexOf(loc.parent) : loc.i) : -1;
+                report.blocks.splice(top < 0 ? report.blocks.length : top + 1, 0, b);
+            }
+            activate(b.id);
             changed(true);
             document.getElementById(`blk-${b.id}`)?.scrollIntoView({ block: "nearest" });
         });
+
+        dom.btnCollapseAll.addEventListener("click", () => { openIds.clear(); renderBlocks(); });
+        dom.btnExpandAll.addEventListener("click", () => { walkBlocks(report.blocks, b => { openIds.add(b.id); }); renderBlocks(); });
+        dom.zoom.addEventListener("change", applyZoom);
+        window.addEventListener("beforeunload", () => { if (saveTimer && report) DraftStore.set(draftKey(), report); });
 
         dom.tplSelect.addEventListener("change", () => { dom.btnTplDel.disabled = !dom.tplSelect.value.startsWith("u:"); });
         dom.btnTpl.addEventListener("click", applyTemplate);
@@ -310,7 +359,21 @@ Pages.Report = (() => {
         document.addEventListener("paste", e => {
             const z = document.activeElement?.closest?.(".er-drop") || (document.activeElement?.closest?.(".er-rich") ? null : hoverZone);
             const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith("image/"));
-            if (z && files.length && document.body.contains(z)) { e.preventDefault(); addImages(z, files); }
+            if (z && files.length && document.body.contains(z)) { e.preventDefault(); addImages(z, files); return; }
+
+            // 在畫面空白處按 Ctrl+V：貼到目前選取的圖片類區塊
+            if (!files.length || e.target?.closest?.("input, textarea, [contenteditable='true']") || !report) return;
+            const b = objOf(openId);
+            const spot = { images: ["images", true], gallery: ["images", true], imageText: ["image", false], cover: ["image", false], hero: ["image", false], banner: ["image", false] }[b && b.type];
+            if (!spot) { alert("請先點選一個「圖片」或「圖文並排」區塊，再貼上截圖"); return; }
+            e.preventDefault();
+            (async () => {
+                try {
+                    const urls = [], caps = [];
+                    for (const f of files) { urls.push(await compress(f, false)); caps.push(""); }
+                    putImages(b, spot[0], spot[1], urls, caps);
+                } catch (err) { alert("圖片讀取失敗：" + (err?.message || "格式不支援")); }
+            })();
         });
 
         dom.preview.addEventListener("load", () => {
@@ -320,14 +383,20 @@ Pages.Report = (() => {
                 const el = e.target.closest("[data-block-id]");
                 if (!el) return;
                 e.preventDefault();
-                openId = el.dataset.blockId;
+                activate(el.dataset.blockId);
                 renderBlocks();
                 document.getElementById(`blk-${openId}`)?.scrollIntoView({ block: "nearest" });
                 markActive();
             });
             markActive();
+            applyZoom();
             if (previewScroll) d.documentElement.scrollTop = previewScroll;
         });
+    }
+
+    function applyZoom() {
+        const d = dom.preview.contentDocument;
+        if (d && d.documentElement) d.documentElement.style.zoom = dom.zoom.value;
     }
 
     let previewScroll = 0;
@@ -339,7 +408,7 @@ Pages.Report = (() => {
         d.querySelector(`[data-block-id="${openId}"]`)?.classList.add("rp-active");
     }
 
-    const objOf = id => (id === "@" ? report : report.blocks.find(b => b.id === id));
+    const objOf = id => (id === "@" ? report : (locate(id) || {}).b);
 
     function onInput(e) {
 
@@ -382,14 +451,25 @@ Pages.Report = (() => {
             report.theme.dark = R.THEMES[t.value].dark;
         }
 
+        if ((t.dataset.p === "theme.primary" || t.dataset.p === "theme.dark") && report.theme.preset !== "custom") {
+            report.theme.preset = "custom";
+            const ps = dom.themeForm.querySelector('[data-p="theme.preset"]');
+            if (ps) ps.value = "custom";
+        }
+
         if (t.dataset.p === "mode" && o.type === "table") reshapeTable(o);
 
         changed(!!t.dataset.re || t.dataset.p === "theme.preset");
     }
 
     function reshapeTable(b) {
-        const cols = b.mode === "kv" ? 2 : Math.max(2, (b.rows[0] || []).length || 2);
-        b.rows = (b.rows.length ? b.rows : [["", ""]]).map(r => Array.from({ length: cols }, (_, i) => r[i] || ""));
+        const base = b.rows.length ? b.rows : [["", ""]];
+        if (b.mode === "kv") b.rows = base.map(r => [r[0] || "", r[1] || ""]);
+        else if (b.mode === "kv4") b.rows = base.map(r => [r[0] || "", r[1] || "", r[2] === true]);
+        else {
+            const cols = Math.max(2, (base[0] || []).length);
+            b.rows = base.map(r => Array.from({ length: cols }, (_, i) => (typeof r[i] === "boolean" ? "" : r[i]) || ""));
+        }
     }
 
     function onClick(e) {
@@ -411,36 +491,59 @@ Pages.Report = (() => {
 
         if (!btn) {
             const head = e.target.closest(".er-bh");
-            if (head) { openId = openId === head.dataset.id ? null : head.dataset.id; renderBlocks(); markActive(); }
+            if (head) {
+                const hid = head.dataset.id;
+                if (openIds.has(hid)) openIds.delete(hid); else openIds.add(hid);
+                openId = hid;
+                renderBlocks();
+                markActive();
+            }
             return;
         }
 
         const id = btn.dataset.b;
-        const i = report.blocks.findIndex(x => x.id === id);
+        const loc = locate(id);
+        const arr = loc && loc.arr;
+        const i = loc ? loc.i : -1;
         const b = objOf(id);
         const act = btn.dataset.act;
 
-        if (act === "up" && i > 0) [report.blocks[i - 1], report.blocks[i]] = [report.blocks[i], report.blocks[i - 1]];
-        else if (act === "down" && i < report.blocks.length - 1) [report.blocks[i + 1], report.blocks[i]] = [report.blocks[i], report.blocks[i + 1]];
-        else if (act === "dup") {
-            const c = JSON.parse(JSON.stringify(b));
-            c.id = uid();
-            delete c.auto;
-            report.blocks.splice(i + 1, 0, c);
-            openId = c.id;
+        if (act === "up" && arr && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+        else if (act === "down" && arr && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+        else if (act === "dup" && arr) {
+            const c = reid(JSON.parse(JSON.stringify(b)));
+            arr.splice(i + 1, 0, c);
+            activate(c.id);
         }
-        else if (act === "del") {
+        else if (act === "del" && arr) {
             if (!confirm("刪除這個區塊？")) return;
-            report.blocks.splice(i, 1);
+            arr.splice(i, 1);
+            openIds.delete(id);
             if (openId === id) openId = null;
+        }
+        else if (act === "cover-add") {
+            const type = document.querySelector(`[data-cover-type="${id}"]`)?.value || "text";
+            const nb = Object.assign({ id: uid(), type }, TYPES[type].make());
+            b.children = b.children || [];
+            b.children.push(nb);
+            activate(nb.id);
         }
         else if (act === "arr-add") {
             const arr = getPath(b, btn.dataset.arr);
             const max = Number(btn.dataset.max || 99);
             if (arr.length >= max) { alert(`最多 ${max} 個`); return; }
-            arr.push(btn.dataset.tpl === "rows" ? Array.from({ length: arr[0]?.length || 2 }, () => "") : ITEM_TPL[btn.dataset.tpl]());
+            arr.push(btn.dataset.tpl === "rows" ? Array.from({ length: arr[0]?.length || (b.mode === "kv4" ? 3 : 2) }, (_, k) => (b.mode === "kv4" && k === 2 ? false : "")) : ITEM_TPL[btn.dataset.tpl]());
         }
         else if (act === "arr-del") getPath(b, btn.dataset.arr).splice(Number(btn.dataset.i), 1);
+        else if (act === "arr-up" || act === "arr-down") {
+            const a = getPath(b, btn.dataset.arr);
+            const k = Number(btn.dataset.i);
+            const j = act === "arr-up" ? k - 1 : k + 1;
+            if (j < 0 || j >= a.length) return;
+            [a[j], a[k]] = [a[k], a[j]];
+        }
+        else if (act === "clear-prop") delete b[btn.dataset.p];
+        else if (act === "clear-logo") report.theme.logo = "";
         else if (act === "col-add") b.rows.forEach(r => r.push(""));
         else if (act === "col-del") { if ((b.rows[0] || []).length > 2) b.rows.forEach(r => r.pop()); }
         else if (act === "img-clear") setPath(b, btn.dataset.p, "");
@@ -472,28 +575,56 @@ Pages.Report = (() => {
         dom.saveState.textContent = "";
     }
 
-    function renderBlocks() {
+    function blockCard(b, arr, i, nested) {
 
-        const top = dom.blockList.scrollTop;
+        const T = TYPES[b.type] || { label: b.type, icon: "❓", sum: () => "" };
+        const open = openIds.has(b.id);
 
-        dom.blockList.innerHTML = report.blocks.map((b, i) => {
-            const T = TYPES[b.type] || { label: b.type, icon: "❓", sum: () => "" };
-            const open = b.id === openId;
-            return `
-<div class="er-block ${open ? "active" : ""}" id="blk-${b.id}">
+        return `
+<div class="er-block ${b.id === openId ? "active" : ""} ${nested ? "er-nested" : ""}" id="blk-${b.id}">
     <div class="er-bh" data-id="${b.id}">
+        <span class="text-muted">${open ? "▾" : "▸"}</span>
         <span>${T.icon}</span>
         <span class="t">${E(T.label)} <span class="sum">${E(String(T.sum(b) || "").slice(0, 26))}</span>${b.auto ? ` <span class="badge bg-info text-dark">自動帶入</span>` : ""}</span>
         <button class="btn btn-sm btn-link" data-act="up" data-b="${b.id}" title="上移" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button class="btn btn-sm btn-link" data-act="down" data-b="${b.id}" title="下移" ${i === report.blocks.length - 1 ? "disabled" : ""}>↓</button>
+        <button class="btn btn-sm btn-link" data-act="down" data-b="${b.id}" title="下移" ${i === arr.length - 1 ? "disabled" : ""}>↓</button>
         <button class="btn btn-sm btn-link" data-act="dup" data-b="${b.id}" title="複製">⧉</button>
         <button class="btn btn-sm btn-link text-danger" data-act="del" data-b="${b.id}" title="刪除">✕</button>
     </div>
     <div class="er-bb ${open ? "" : "d-none"}">${open ? editorBody(b) : ""}</div>
 </div>`;
-        }).join("") || `<div class="text-muted small">還沒有區塊，請從上方新增</div>`;
+    }
+
+    function renderBlocks() {
+
+        const top = dom.blockList.scrollTop;
+
+        dom.blockList.innerHTML = report.blocks.map((b, i) => blockCard(b, report.blocks, i, false)).join("")
+            || `<div class="text-muted small">還沒有區塊，請從上方新增</div>`;
 
         dom.blockList.scrollTop = top;
+    }
+
+    // 封面裡的內容區塊（表格、文字、圖片…）：有自己的「新增區塊」
+    function coverChildren(b) {
+
+        b.children = b.children || [];
+
+        const skip = ["cover", "pagebreak", "banner", "hero"];
+        const types = TYPE_GROUPS.map(([g, keys]) =>
+            `<optgroup label="${g}">${keys.filter(k => !skip.includes(k)).map(k => `<option value="${k}">${TYPES[k].icon} ${TYPES[k].label}</option>`).join("")}</optgroup>`).join("");
+
+        return `<div class="er-sub mt-2"><div class="small fw-bold mb-1">🧩 封面內容區塊（可放表格、文字、圖片…）</div>
+${b.children.map((c, i) => blockCard(c, b.children, i, true)).join("") || `<div class="small text-muted mb-2">目前封面只有標題。從下面新增表格、文字等區塊，會顯示在標題下方。</div>`}
+<div class="d-flex gap-1"><select class="form-select form-select-sm" data-cover-type="${b.id}">${types}</select>
+<button class="btn btn-sm btn-primary text-nowrap" data-act="cover-add" data-b="${b.id}">＋ 新增區塊</button></div></div>`;
+    }
+
+    // 顏色欄位：沒選過就用主題色，可一鍵改回
+    function colorField(b, key, label, def) {
+        return `<div class="mb-2"><label class="form-label small mb-0">${label}</label><div class="d-flex gap-1 align-items-center">
+<input type="color" class="form-control form-control-sm form-control-color" data-b="${b.id}" data-p="${key}" value="${E(R.safeColor(b[key], R.safeColor(def, "#000000")))}">
+<button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" data-act="clear-prop" data-b="${b.id}" data-p="${key}" ${b[key] ? "" : "disabled"}>改回主題色</button></div></div>`;
     }
 
     function field(b, p, label, o = {}) {
@@ -508,7 +639,7 @@ Pages.Report = (() => {
         let el;
         if (o.area) el = `<textarea class="form-control form-control-sm" rows="${o.area}" ${base}>${E(v)}</textarea>`;
         else if (o.opts) el = `<select class="form-select form-select-sm" ${base}>${o.opts.map(([k, n]) => `<option value="${E(k)}" ${String(v) === String(k) ? "selected" : ""}>${E(n)}</option>`).join("")}</select>`;
-        else el = `<input class="form-control form-control-sm" type="${o.type || "text"}" ${o.min !== undefined ? `min="${o.min}" max="${o.max}"` : ""} ${base} value="${E(v)}" placeholder="${E(o.ph || "")}">`;
+        else el = `<input class="${o.type === "range" ? "form-range" : "form-control form-control-sm"}" type="${o.type || "text"}" ${o.min !== undefined ? `min="${o.min}" max="${o.max}"` : ""} ${base} value="${E(v)}" placeholder="${E(o.ph || "")}">`;
 
         return `<div class="${cls}">${label ? `<label class="form-label small mb-0">${label}</label>` : ""}${el}</div>`;
     }
@@ -556,8 +687,11 @@ ${s && !multi ? `<button class="btn btn-sm btn-outline-secondary mb-2" data-act=
         const list = b.images || [];
         return `<div class="er-thumbs">${list.map((im, i) => `
 <div class="er-thumb">${R.safeImgSrc(im.src) ? `<img src="${E(im.src)}" alt="">` : ""}
-    <input class="form-control form-control-sm mt-1" data-b="${b.id}" data-p="images.${i}.caption" value="${E(im.caption)}" placeholder="圖說">
-    ${delBtn(b, "images", i)}</div>`).join("")}</div>
+    <input class="form-control form-control-sm mt-1" data-b="${b.id}" data-p="images.${i}.caption" value="${E(im.caption)}" placeholder="圖說（圖 ${i + 1}）">
+    <div class="d-flex gap-1 mt-1 align-items-center">
+        <button class="btn btn-sm btn-outline-secondary py-0" data-act="arr-up" data-b="${b.id}" data-arr="images" data-i="${i}" title="往前" ${i === 0 ? "disabled" : ""}>◀</button>
+        <button class="btn btn-sm btn-outline-secondary py-0" data-act="arr-down" data-b="${b.id}" data-arr="images" data-i="${i}" title="往後" ${i === list.length - 1 ? "disabled" : ""}>▶</button>
+        ${delBtn(b, "images", i)}</div></div>`).join("")}</div>
 ${list.length < max ? drop(b.id, "images", "", true) : `<div class="small text-muted">最多 ${max} 張</div>`}`;
     }
 
@@ -647,34 +781,49 @@ ${field(b, "dx", "左右位移 px（負數往左）", { type: "number", min: -40
 
 
             case "cover":
-                return field(b, "style", "封面樣式", { opts: [["center", "置中（標題在中間）"], ["formal", "正式（左上 Logo、右上公司名、下方資訊表）"]] }) + field(b, "kicker", "上方小字（例如：專案提案）") + field(b, "title", "標題") + field(b, "subtitle", "副標題") + field(b, "customer", "對象 / 客戶") + drop(b.id, "image", b.image);
+                return field(b, "style", "封面樣式", { opts: [["center", "置中（標題在中間）"], ["formal", "正式（左上 Logo、右上公司名、下方資訊表）"]] }) + field(b, "kicker", "上方小字（例如：專案提案）") +
+                    field(b, "title", "標題") + field(b, "subtitle", "副標題（可多行）", { area: 2 }) + field(b, "customer", "對象 / 客戶") + drop(b.id, "image", b.image) + coverChildren(b);
 
             case "heading":
                 return field(b, "level", "層級", { opts: [["h1", "頁面大標題"], ["h2", "章節標題（可自動編號）"], ["h3", "小標題"]] }) + field(b, "text", "標題文字") +
+                    colorField(b, "color", "標題顏色（自訂）", report.theme.dark) +
                     field(b, "align", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] });
 
             case "text":
-                return rich(b, "html");
+                return `<div class="row g-2">${field(b, "align", "整段對齊", { col: "col-6", opts: [["", "預設（靠左）"], ["center", "置中"], ["right", "靠右"], ["justify", "左右對齊"]] })}<div class="col-6">${colorField(b, "color", "整段顏色（自訂）", report.theme.textColor || "#2b2b2b")}</div></div>` + rich(b, "html");
 
             case "images":
-                return thumbs(b, 3) + `<div class="row g-2">${field(b, "widthPct", "整體寬度 %", { type: "number", min: 20, max: 100, col: "col-6" })}${field(b, "align", "對齊", { col: "col-6", opts: [["center", "置中"], ["left", "靠左"], ["right", "靠右"]] })}</div>`;
+                return `<div class="row g-2">${field(b, "title", "區塊標題（選填）", { col: "col-12" })}${field(b, "columns", "每列張數", { col: "col-6", re: true, opts: [["1", "1 張"], ["2", "2 張並排"], ["3", "3 張並排"]] })}${field(b, "align", "對齊", { col: "col-6", opts: [["center", "置中"], ["left", "靠左"], ["right", "靠右"]] })}</div>` +
+                    (Number(b.columns) === 1 ? field(b, "width", "圖片寬度 %（每列 1 張時）", { type: "range", min: 20, max: 100 }) : "") + thumbs(b, 24);
 
             case "imageText":
-                return field(b, "imageSide", "圖片位置", { opts: [["left", "圖左文右"], ["right", "文左圖右"]] }) + drop(b.id, "image", b.image) + rich(b, "html");
+                return `<div class="row g-2">${field(b, "title", "標題（選填）", { col: "col-7" })}${field(b, "imageSide", "圖片位置", { col: "col-5", opts: [["left", "圖在左"], ["right", "圖在右"]] })}</div>` +
+                    drop(b.id, "image", b.image) + (b.image ? field(b, "caption", "圖說") : "") + rich(b, "html");
 
             case "table": {
+                const mode = b.mode || "kv";
                 const cols = (b.rows[0] || []).length;
-                return field(b, "mode", "表格樣式", { re: true, opts: [["kv", "資訊表（兩欄）"], ["grid", "自由表格（第一列為表頭）"]] }) +
-                    b.rows.map((r, i) => `<div class="d-flex gap-1 mb-1 align-items-center">${r.map((c, j) => `<input class="form-control form-control-sm" data-b="${b.id}" data-p="rows.${i}.${j}" value="${E(c)}">`).join("")}${delBtn(b, "rows", i)}</div>`).join("") +
-                    addBtn(b, "rows", "rows", "新增一列") +
-                    (b.mode === "grid" ? ` <button class="btn btn-sm btn-outline-secondary mb-2" data-act="col-add" data-b="${b.id}">＋ 欄</button><button class="btn btn-sm btn-outline-secondary mb-2 ms-1" data-act="col-del" data-b="${b.id}" ${cols <= 2 ? "disabled" : ""}>－ 欄</button>` : "");
+                const ctl = i => `<button class="btn btn-sm btn-outline-secondary py-0" data-act="arr-up" data-b="${b.id}" data-arr="rows" data-i="${i}" title="上移" ${i === 0 ? "disabled" : ""}>↑</button>${delBtn(b, "rows", i)}`;
+
+                const rows = b.rows.map((r, i) => mode === "grid"
+                    ? `<div class="d-flex gap-1 mb-1 align-items-center">${r.map((c, j) => `<input class="form-control form-control-sm" data-b="${b.id}" data-p="rows.${i}.${j}" value="${E(c)}">`).join("")}${ctl(i)}</div>`
+                    : `<div class="d-flex gap-1 mb-1 align-items-start"><input class="form-control form-control-sm" style="max-width:34%" data-b="${b.id}" data-p="rows.${i}.0" value="${E(r[0])}" placeholder="欄位名稱">
+<textarea class="form-control form-control-sm" rows="1" data-b="${b.id}" data-p="rows.${i}.1" placeholder="內容">${E(r[1])}</textarea>
+${mode === "kv4" ? `<label class="small text-nowrap pt-1"><input type="checkbox" class="form-check-input" data-b="${b.id}" data-p="rows.${i}.2" ${r[2] ? "checked" : ""}> 整列</label>` : ""}${ctl(i)}</div>`).join("");
+
+                return `<div class="row g-2">${field(b, "badge", "標籤（例如 CCD1）", { col: "col-4" })}${field(b, "title", "表格標題", { col: "col-8" })}</div>` +
+                    field(b, "mode", "表格樣式", { re: true, opts: [["kv", "資訊表（兩欄）"], ["kv4", "資訊表（四欄並排，可標記整列）"], ["grid", "自由表格（第一列為表頭）"]] }) +
+                    rows + addBtn(b, "rows", "rows", "新增一列") +
+                    (mode === "grid" ? ` <button class="btn btn-sm btn-outline-secondary mb-2" data-act="col-add" data-b="${b.id}">＋ 欄</button><button class="btn btn-sm btn-outline-secondary mb-2 ms-1" data-act="col-del" data-b="${b.id}" ${cols <= 2 ? "disabled" : ""}>－ 欄</button>` : "");
             }
 
             case "callout":
                 return `<div class="row g-2">${field(b, "variant", "類型", { col: "col-5", re: true, opts: Object.keys(R.CALLOUTS).map(k => [k, R.CALLOUTS[k].icon + " " + R.CALLOUTS[k].name]) })}${field(b, "title", "標題（留空用類型名稱）", { col: "col-7" })}</div>` + rich(b, "html");
 
-            case "signature":
-                return b.roles.map((r, i) => `<div class="d-flex gap-1 mb-1"><input class="form-control form-control-sm" data-b="${b.id}" data-p="roles.${i}" value="${E(r)}">${delBtn(b, "roles", i)}</div>`).join("") + addBtn(b, "roles", "roles", "新增簽核欄", 5);
+            case "signature": {
+                if (!Array.isArray(b.slots)) b.slots = (b.roles || []).map(label => ({ label, name: "", date: "" }));
+                return b.slots.map((s, i) => `<div class="er-sub"><div class="row g-2">${field(b, `slots.${i}.label`, "欄位", { col: "col-4" })}${field(b, `slots.${i}.name`, "姓名（選填）", { col: "col-4" })}${field(b, `slots.${i}.date`, "日期（選填）", { col: "col-4" })}</div>${delBtn(b, "slots", i)}</div>`).join("") + addBtn(b, "slots", "slots", "新增簽核欄", 6);
+            }
 
             case "hero":
                 return field(b, "headline", "大標語") + field(b, "sub", "副標題") + drop(b.id, "image", b.image) +
@@ -725,14 +874,16 @@ ${t.layout === "web"
             : f("theme.pageSize", "紙張 / 尺寸", { opts: Object.keys(R.PAGES).map(k => [k, R.PAGES[k].name]) })}
 </div></div>
 <div class="er-sub"><div class="fw-bold small mb-2">🎨 配色與字型</div><div class="row g-0">
-${f("theme.preset", "預設配色", { opts: Object.keys(R.THEMES).map(k => [k, R.THEMES[k].name]) })}
+${f("theme.preset", "預設配色", { opts: Object.keys(R.THEMES).map(k => [k, R.THEMES[k].name]).concat([["custom", "自訂"]]) })}
 ${f("theme.font", "字型", { opts: Object.keys(R.FONTS).map(k => [k, R.FONTS[k].name]) })}
 ${f("theme.primary", "主色", { type: "color" })}${f("theme.dark", "標題深色", { type: "color" })}
 ${f("theme.textColor", "內文顏色", { type: "color" })}${f("theme.baseSize", "內文字級 px", { type: "number", min: 8, max: 48 })}
 ${f("theme.numbering", "章節自動編號", { check: true, col: "col-12 mb-2" })}
 </div></div>
 ${t.layout === "web" ? "" : `<div class="er-sub"><div class="fw-bold small mb-2">📑 正式文件設定</div><div class="row g-0">
-${f("theme.headStyle", "章節標題樣式", { opts: [["bar", "左側粗線"], ["line", "底線（正式）"], ["plain", "純文字"]] })}${f("theme.figLabel", "圖號名稱（例如：圖、Figure）")}
+${f("theme.headStyle", "章節標題樣式", { opts: [["bar", "左側粗線"], ["line", "底線（正式）"], ["badge", "編號徽章（正式）"], ["plain", "純文字"]] })}${f("theme.figLabel", "圖號名稱（例如：圖、Figure）")}
+${f("theme.docHeader", "文件抬頭（Logo + 公司名 + 標題 + 編號列，放在封面之後）", { check: true, col: "col-12 mb-2" })}
+${f("theme.coverNote", "封面底部說明", { col: "col-12 mb-2" })}
 ${f("theme.runHead", "列印時每頁加頁首", { check: true, re: true, col: "col-12 mb-2" })}
 ${t.runHead ? `${f("theme.runHeadLeft", "頁首左側文字")}${f("theme.runHeadRight", "頁首右側文字")}` : ""}
 ${f("theme.runFootLeft", "頁尾左側文字（例如：機密聲明、文件編號）", { col: "col-12 mb-2" })}
@@ -741,11 +892,12 @@ ${t.pageNo ? f("theme.pageFmt", "頁碼格式（{p} = 目前頁、{n} = 總頁�
 </div><div class="small text-muted">頁首、頁尾、頁碼會在「列印 / 存成 PDF」時出現（封面不顯示），預覽畫面看不到。</div></div>`}
 <div class="er-sub"><div class="fw-bold small mb-2">🏷️ 品牌</div><div class="row g-0">
 ${f("theme.companyName", "公司名稱")}${f("theme.companySub", "副標（英文標語等）")}
-${f("theme.footerText", "頁尾聲明", { col: "col-12 mb-2" })}${f("theme.footerBless", "頁尾祝福語", { col: "col-12 mb-2" })}
+${f("theme.footerText", "頁尾聲明（可多行）", { col: "col-12 mb-2", area: 3 })}${f("theme.footerBless", "頁尾祝福語", { col: "col-12 mb-2" })}
 </div></div>
 <div class="er-sub"><div class="fw-bold small mb-2">🖼️ Logo</div>
 ${drop("@", "theme.logo", t.logo)}
 <button class="btn btn-sm btn-outline-secondary mb-2" data-act="default-logo" data-b="@">用預設 Logo（瘋菓）</button>
+<button class="btn btn-sm btn-outline-secondary mb-2" data-act="clear-logo" data-b="@">移除 Logo</button>
 <div class="row g-0">
 ${f("theme.logoShow", "顯示位置", { opts: [["cover", "封面"], ["top", "每份內容最上方"], ["bottom", "內容最下方（頁尾前）"], ["none", "不顯示"]] })}
 ${f("theme.logoAlign", "對齊", { opts: [["left", "靠左"], ["center", "置中"], ["right", "靠右"]] })}
@@ -782,19 +934,25 @@ ${saveBtns}`;
 
         const src = await readFile(file);
         const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-        const max = keepPng ? 700 : 1600;
+        const isPng = /^data:image\/png/.test(src);
+        const max = keepPng ? 700 : 1800;
         const k = Math.min(1, max / Math.max(img.width, img.height));
+
+        // 不需要縮小、檔案也不大：維持原圖
+        if (!keepPng && k === 1 && src.length < 700 * 1024) return src;
+
         const c = document.createElement("canvas");
         c.width = Math.round(img.width * k);
         c.height = Math.round(img.height * k);
         const ctx = c.getContext("2d");
 
-        if (keepPng) return (ctx.drawImage(img, 0, 0, c.width, c.height), c.toDataURL("image/png"));
-
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(0, 0, c.width, c.height);
+        // PNG（截圖、Logo）盡量維持 PNG 保留透明；照片轉 JPEG 縮小檔案
+        const asPng = keepPng || (isPng && src.length < 3 * 1024 * 1024);
+        if (!asPng) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); }
         ctx.drawImage(img, 0, 0, c.width, c.height);
-        return c.toDataURL("image/jpeg", 0.85);
+
+        const out = asPng ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.86);
+        return !keepPng && out.length >= src.length ? src : out;
     }
 
     // 系統內建的瘋菓 Logo（img/logo.png）
@@ -813,13 +971,16 @@ ${saveBtns}`;
         }
     }
 
-    function putImages(o, p, multi, urls) {
+    function putImages(o, p, multi, urls, captions = []) {
 
         if (multi) {
-            const max = o.type === "gallery" ? 12 : 3;
+            const max = o.type === "gallery" ? 12 : 24;
             const arr = getPath(o, p);
-            urls.forEach(u => { if (arr.length < max) arr.push({ src: u, caption: "" }); });
-        } else setPath(o, p, urls[0]);
+            urls.forEach((u, k) => { if (arr.length < max) arr.push({ src: u, caption: captions[k] || "" }); });
+        } else {
+            setPath(o, p, urls[0]);
+            if (o.type === "imageText" && p === "image" && !o.caption && captions[0]) o.caption = captions[0];
+        }
 
         changed(true);
     }
@@ -834,10 +995,13 @@ ${saveBtns}`;
         const keepPng = p === "theme.logo" || p === "theme.wmImage" || p === "qr";
 
         try {
-            const urls = [];
-            for (const f of files) urls.push(await compress(f, keepPng));
+            const urls = [], caps = [];
+            for (const f of files) {
+                urls.push(await compress(f, keepPng));
+                caps.push(f.name && !/^image\.\w+$/i.test(f.name) ? f.name.replace(/\.[^.]+$/, "") : "");   // 圖說預設用檔名（貼上的截圖除外）
+            }
 
-            putImages(o, p, zone.dataset.multi === "1", urls);
+            putImages(o, p, zone.dataset.multi === "1", urls, caps);
         } catch (err) {
             alert("圖片讀取失敗：" + (err?.message || "格式不支援"));
         }
@@ -958,7 +1122,8 @@ ${saveBtns}`;
             if (report.blocks.length && !confirm("用這筆資料建立新內容？目前的區塊會被取代（品牌設定保留）。")) return;
             report.blocks = s.blocks.map(b => Object.assign({ id: uid() }, b));
             report.source = { kind: s.kind, id: s.id };
-            openId = report.blocks[0].id;
+            openIds.clear();
+            activate(report.blocks[0].id);
             renderAll();
             scheduleSave();
             return;
@@ -1030,6 +1195,32 @@ ${saveBtns}`;
             name: "空白報告（A4 文件）",
             theme: { layout: "doc" },
             blocks: () => [{ type: "cover", kicker: "", title: "報告標題", subtitle: "", customer: "", image: "" }, { type: "heading", level: "h2", text: "新章節", align: "left" }, text("<p>在這裡輸入內容…</p>")]
+        },
+        report: {
+            name: "評估報告（資訊表版型，A4）",
+            defaultLogo: true,
+            theme: {
+                layout: "doc", pageSize: "a4", preset: "cetus", primary: "#E60012", dark: "#1f2937", textColor: "#2b2b2b", font: "jhenghei", baseSize: 14,
+                title: "評估報告", numbering: true, headStyle: "badge", docHeader: true, figLabel: "圖", companyName: "公司名稱", companySub: "Company Tagline",
+                logoShow: "cover", logoW: 140, watermark: true, watermarkType: "text", watermarkText: "公司名稱", wmSize: 72, wmOpacity: 5, wmAngle: -30,
+                footerText: "本文件為 公司名稱 評估報告\n文件內容涉及技術與商業資訊，禁止未經授權轉載、散佈或商業使用", footerBless: "Thank you for your trust and support.",
+                coverNote: "本報告內容僅供評估參考，實際效果以現場驗證為準"
+            },
+            meta: () => ({ rows: [{ label: "報告編號", value: "ER-" + compactDate() + "-01" }, { label: "報告日期", value: todayText() }, { label: "撰寫人", value: "" }, { label: "版次", value: "V1.0" }] }),
+            blocks: () => [
+                { type: "cover", style: "formal", kicker: "EVALUATION REPORT", title: "評估報告", subtitle: "（專案名稱）", customer: "", image: "",
+                    children: [{ type: "table", mode: "kv4", title: "", badge: "", rows: [["客戶名稱", "", false], ["終端客戶", "", false]] }] },
+                h2("基本資訊"),
+                { type: "table", mode: "kv4", title: "", badge: "", rows: [["客戶名稱", "", false], ["終端客戶", "", false], ["聯絡人", "", false], ["業務", "", false], ["負責人", "", false], ["產品應用", "", false], ["待測物件", "", false], ["使用軟體", "", false], ["需求描述", "", true]] },
+                h2("原始需求分析"),
+                { type: "table", mode: "kv4", title: "檢測需求", badge: "需求 1", rows: [["檢測需求", "", true], ["FOV (mm)", "", false], ["WD (mm)", "", false], ["精度", "", false], ["光源限制", "", false], ["飛拍速度 (mm/s)", "", false], ["檢測速度 (pcs/s)", "", false]] },
+                h2("評估方案"),
+                { type: "table", mode: "kv4", title: "方案規格", badge: "方案 1", rows: [["相機型號", "", false], ["鏡頭型號", "", false], ["延伸環", "", false], ["WD (mm)", "", false], ["FOV (mm)", "", false], ["空間解析度", "", false], ["光源", "", false], ["光源控制器", "", false], ["測試結論", "", true]] },
+                h2("測試影像"),
+                { type: "images", title: "", columns: 2, width: 80, align: "center", images: [] },
+                h2("評估結論"),
+                note("conclusion", "評估結論", "<p>請填寫整體評估結論。</p>"),
+                { type: "signature", slots: [{ label: "撰寫", name: "", date: "" }, { label: "審核", name: "", date: "" }, { label: "客戶確認", name: "", date: "" }] }]
         },
         production: {
             name: "生產報告（正式版面，A4）",
@@ -1203,6 +1394,10 @@ ${saveBtns}`;
             if (!d || d.fonegleTemplate !== 1 || !Array.isArray(d.blocks) || d.blocks.length > 300) throw new Error("不是範本檔");
             const blocks = d.blocks.filter(b => b && TYPES[b.type]);
             if (!blocks.length) throw new Error("沒有可用的區塊");
+            blocks.forEach(b => {
+                if (Array.isArray(b.children)) b.children = b.children.filter(c => c && TYPES[c.type] && !["cover", "pagebreak"].includes(c.type));
+                else delete b.children;
+            });
 
             const item = { id: uid(), name: String(d.name || "匯入的範本").slice(0, 40), theme: Object.assign(defaultTheme(), d.theme || {}),
                 meta: d.meta && Array.isArray(d.meta.rows) ? { rows: d.meta.rows.slice(0, 12).map(r => ({ label: String(r.label || "").slice(0, 40), value: String(r.value || "").slice(0, 200) })) } : undefined, blocks: blocks.map(b => { const c = Object.assign({}, b); delete c.id; return c; }) };
@@ -1226,9 +1421,10 @@ ${saveBtns}`;
         report.theme = Object.assign(defaultTheme(), tpl.theme, logo && !tpl.theme.logo ? { logo } : {});
         if (tpl.meta && Array.isArray(tpl.meta.rows)) report.meta = tpl.meta;
         if (tpl.defaultLogo && !report.theme.logo) { try { report.theme.logo = await fetchDefaultLogo(); } catch { } }
-        report.blocks = tpl.blocks.map(b => Object.assign({}, b, { id: uid() }));
+        report.blocks = tpl.blocks.map(b => reid(Object.assign({}, b)));
         report.source = null;
-        openId = report.blocks[0].id;
+        openIds.clear();
+        activate(report.blocks[0].id);
 
         renderAll();
         scheduleSave();
@@ -1240,7 +1436,7 @@ ${saveBtns}`;
     function saveBrand() {
         const t = report.theme;
         const keys = ["preset", "primary", "dark", "textColor", "font", "baseSize", "pageSize", "companyName", "companySub", "logo", "watermark", "watermarkText", "footerText", "footerBless", "numbering", "layout", "pageBg", "cardBg", "cardWidth", "cardRadius",
-            "logoShow", "logoAlign", "logoW", "logoDx", "logoDy", "headStyle", "figLabel", "runHead", "runHeadLeft", "runHeadRight", "runFootLeft", "pageNo", "pageFmt", "watermarkType", "wmImage", "wmColor", "wmSize", "wmOpacity", "wmAngle", "wmPos"];
+            "logoShow", "logoAlign", "logoW", "logoDx", "logoDy", "docHeader", "coverNote", "headStyle", "figLabel", "runHead", "runHeadLeft", "runHeadRight", "runFootLeft", "pageNo", "pageFmt", "watermarkType", "wmImage", "wmColor", "wmSize", "wmOpacity", "wmAngle", "wmPos"];
         const brand = {};
         keys.forEach(k => brand[k] = t[k]);
         try {
