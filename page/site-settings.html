@@ -17,6 +17,12 @@
         .feat-group h6 { margin: 0 0 6px; }
         .feat-item { display: inline-flex; align-items: center; gap: 6px; margin: 2px 14px 2px 0; font-size: .92rem; }
         .feat-item.locked { color: #6c757d; }
+        .bb { border: 1px solid #e5e5e5; border-radius: 10px; margin-bottom: 8px; background: #fff; }
+        .bb-h { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f8f9fa; border-radius: 10px 10px 0 0; cursor: pointer; }
+        .bb-h .t { flex: 1; font-weight: 600; font-size: .9rem; }
+        .bb-h .sum { color: #888; font-weight: 400; font-size: .8rem; }
+        .bb-b { padding: 10px; }
+        .bb-sub { border: 1px solid #eee; border-radius: 8px; padding: 8px; margin-bottom: 6px; background: #fcfcfc; }
     </style>
 </head>
 
@@ -39,6 +45,8 @@
                     </div>
                 </div>
 
+                <div id="sourceStatus" class="alert alert-secondary small d-none" role="alert"></div>
+
                 <div class="row g-3">
 
                     <div class="col-lg-7">
@@ -49,7 +57,7 @@
                                 <div class="d-flex flex-wrap gap-2 mt-3">
                                     <button id="btnSaveCompany" class="btn btn-primary">💾 儲存公司資料</button>
                                     <button id="btnResetCompany" class="btn btn-outline-secondary">還原為系統預設</button>
-                                    <button id="btnExportCompany" class="btn btn-outline-secondary" title="把目前畫面上的公司資料與功能開關下載成檔案，換系統或備份時用">⬇️ 匯出設定</button>
+                                    <button id="btnExportCompany" class="btn btn-outline-secondary" title="下載 site-config.json，放到網站根目錄（和 index.html 同一層），網站開啟時會先讀這個檔，比讀試算表快很多">⬇️ 匯出 site-config.json</button>
                                     <button id="btnImportCompany" class="btn btn-outline-secondary" title="從檔案填入畫面（不會立刻儲存，確認後再按儲存）">⬆️ 匯入設定</button>
                                     <input id="settingsFile" type="file" accept=".json,application/json" class="d-none">
                                 </div>
@@ -59,7 +67,7 @@
                             </div>
                         </div>
 
-                        <div class="card border-0 shadow-sm">
+                        <div class="card border-0 shadow-sm mb-3">
                             <div class="card-body">
                                 <h5 class="mb-3">🖼️ Logo</h5>
                                 <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -89,6 +97,23 @@
                         </div>
                     </div>
 
+
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <h5 class="mb-1">📘 品牌資訊頁內容</h5>
+                                <div class="small text-muted mb-3">「市集營運 → 品牌資訊」頁顯示的內容（大標題、資料欄、產品清單、連結、表格…）。這裡編輯，品牌資訊頁只負責瀏覽與複製。內容會和公司設定一起匯出到 <code>site-config.json</code>。</div>
+                                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                                    <span class="small text-muted">新增區塊：</span>
+                                    <select id="addType" class="form-select form-select-sm w-auto"></select>
+                                    <button id="btnAdd" class="btn btn-sm btn-primary">＋ 新增</button>
+                                    <button id="btnSaveBrand" class="btn btn-sm btn-success ms-auto">💾 儲存品牌資訊</button>
+                                    <button id="btnReloadBrand" class="btn btn-sm btn-outline-secondary" title="放棄修改，重新從試算表載入">取消修改</button>
+                                </div>
+                                <div id="content"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -108,6 +133,7 @@
     <script src="../js/api.js"></script>
     <script src="../js/layout.js"></script>
     <script src="../js/core.js"></script>
+    <script src="../js/brand-blocks.js"></script>
     <script src="../js/ai-chat.js"></script>
     <script src="../js/favorite.js"></script>
     <script src="../js/pages/site-settings.js"></script>

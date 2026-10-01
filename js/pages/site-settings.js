@@ -10,6 +10,9 @@ Pages.SiteSettings = (() => {
 
     const E = App.esc;
     const dom = {};
+    let editor = null;        // 品牌資訊頁的區塊編輯器（js/brand-blocks.js）
+    let savedBrand = [];      // 試算表裡目前的品牌資訊區塊（含 id，用來比對要新增 / 修改 / 刪除）
+    let pendingLogo = "";     // 匯入檔裡的 Logo，按「儲存公司資料」時一起存
 
     // [欄位, 名稱, 說明, 寬度 col, 型別]
     const FIELDS = [
@@ -36,17 +39,22 @@ Pages.SiteSettings = (() => {
     async function init() {
 
         [
-            "companyForm", "btnSaveCompany", "btnResetCompany", "btnExportCompany", "btnImportCompany", "settingsFile", "logoPreview", "logoEmpty", "logoFile", "btnClearLogo",
-            "featureList", "optAiChat", "btnSaveFeatures"
+            "sourceStatus", "companyForm", "btnSaveCompany", "btnResetCompany", "btnExportCompany", "btnImportCompany", "settingsFile", "logoPreview", "logoEmpty", "logoFile", "btnClearLogo",
+            "featureList", "optAiChat", "btnSaveFeatures", "content", "addType", "btnAdd", "btnSaveBrand", "btnReloadBrand"
         ].forEach(id => dom[id] = document.getElementById(id));
 
-        // 先向伺服器取最新設定再畫畫面
-        await Site.refresh(true);
+        // 編輯一律以試算表為準（略過 site-config.json），避免拿舊檔案的內容去覆蓋試算表
+        await Site.refresh(true, "sheet");
 
         renderCompany();
         renderLogo();
         renderFeatures();
+        editor = BrandBlocks.createEditor({ content: dom.content, addType: dom.addType, addBtn: dom.btnAdd });
+        loadBrand();
+        renderStatus();
 
+        dom.btnSaveBrand.addEventListener("click", saveBrand);
+        dom.btnReloadBrand.addEventListener("click", () => { if (!editor.isDirty() || confirm("放棄剛才的修改？")) loadBrand(); });
         dom.btnSaveCompany.addEventListener("click", saveCompany);
         dom.btnResetCompany.addEventListener("click", resetCompany);
         dom.btnExportCompany.addEventListener("click", exportSettings);
@@ -60,6 +68,77 @@ Pages.SiteSettings = (() => {
             const g = e.target.closest("[data-group]");
             if (g) dom.featureList.querySelectorAll(`[data-in-group="${g.dataset.group}"]:not(:disabled)`).forEach(c => { c.checked = g.checked; });
         });
+    }
+
+    // =========================
+    // 資料來源狀態：site-config.json 與試算表是否一致
+    // =========================
+    const brandNorm = list => BrandBlocks.clean(list).map(b => [b.type, b.data]);
+
+    const norm = (c, f, logo, brand) => JSON.stringify({
+        brand: brandNorm(brand),
+        company: Object.fromEntries(FIELDS.map(([k]) => [k, String((c || {})[k] ?? "")])),
+        off: [...new Set(((f || {}).disabled || []).map(Number))].sort((a, b) => a - b),
+        ai: (f || {}).aiChat !== false,
+        logo: String(logo || "")
+    });
+
+    async function renderStatus() {
+
+        const box = dom.sourceStatus;
+        const file = await Site.readFile();
+
+        box.className = "alert small";
+
+        if (!file) {
+            box.classList.add("alert-info");
+            box.innerHTML = "ℹ️ 網站根目錄目前<b>沒有</b> <code>site-config.json</code>，所以每次開啟網站都會向試算表讀取設定（比較慢）。設定好之後請按「⬇️ 匯出 site-config.json」，把檔案放到網站根目錄（和 index.html 同一層），之後網站會優先讀這個檔，開啟更快。";
+            return;
+        }
+
+        const same = norm(Site.company, Site.features, Site.logo, Site.brand) === norm(file.company, file.features, file.logo, file.brandPage);
+
+        if (same) {
+            box.classList.add("alert-success");
+            box.innerHTML = `✅ 網站正在使用 <code>site-config.json</code>（匯出時間 ${E(file.exportedAt ? new Date(file.exportedAt).toLocaleString("zh-TW", { hour12: false }) : "未知")}），內容與試算表一致。`;
+        } else {
+            box.classList.add("alert-warning");
+            box.innerHTML = "⚠️ 網站其他人目前看到的是 <code>site-config.json</code> 的內容，和你現在試算表裡的設定<b>不一樣</b>。請按「⬇️ 匯出 site-config.json」，用新檔案覆蓋網站根目錄的舊檔（這個瀏覽器已先套用你剛改的內容）。";
+        }
+    }
+
+    // =========================
+    // 品牌資訊頁內容（BrandBlocks 表，一列一個區塊）
+    // =========================
+    function loadBrand() {
+        savedBrand = BrandBlocks.clean(Site.brand);
+        editor.load(savedBrand);
+    }
+
+    async function saveBrand() {
+
+        let ops;
+        try { ops = editor.buildOps(savedBrand); } catch (err) { alert(err.message); return; }
+
+        try {
+
+            dom.btnSaveBrand.disabled = true;
+            if (ops.length) await API.batch(ops);
+
+            await Site.refresh(true, "sheet");
+            Site.touch();
+            loadBrand();
+            renderStatus();
+            alert(ops.length ? "✅ 品牌資訊已儲存到試算表。\n\n若網站根目錄有 site-config.json，請重新「匯出 site-config.json」並更新該檔案，其他人才會看到；沒有這個檔的話，重新整理頁面就會看到。" : "沒有變更");
+
+        } catch (err) {
+
+            App.error(err, "儲存失敗");
+
+        } finally {
+
+            dom.btnSaveBrand.disabled = false;
+        }
     }
 
     // =========================
@@ -94,7 +173,9 @@ Pages.SiteSettings = (() => {
         try {
             dom.btnSaveCompany.disabled = true;
             await Site.save("company", data);
-            alert("✅ 公司資料已儲存，其他人重新整理頁面就會看到");
+            if (pendingLogo) { await Site.save("logo", pendingLogo); pendingLogo = ""; renderLogo(); }
+            renderStatus();
+            alert("✅ 公司資料已儲存到試算表。\n\n若網站根目錄有 site-config.json，其他人要等你重新「匯出 site-config.json」並更新該檔案後才會看到；沒有這個檔的話，重新整理頁面就會看到。");
         } catch (err) {
             App.error(err, "儲存失敗");
         } finally {
@@ -118,17 +199,22 @@ Pages.SiteSettings = (() => {
     // =========================
     // 匯出 / 匯入（備份或換系統用；匯入只填進畫面，確認後再按儲存）
     // =========================
+    // 匯出的品牌資訊：畫面上編輯中的內容（還沒有內容、也沒改過就不匯出）
+    function savedBrandForExport() {
+        return savedBrand.length || editor.isDirty() ? editor.blocks() : [];
+    }
+
     function exportSettings() {
 
         const company = {};
         FIELDS.forEach(([k]) => { company[k] = document.getElementById("f_" + k).value.trim(); });
 
         const disabled = [...dom.featureList.querySelectorAll("[data-id]:not(:disabled)")].filter(c => !c.checked).map(c => Number(c.dataset.id));
-        const data = { fonegleSettings: 1, company, features: { disabled, aiChat: dom.optAiChat.checked } };
+        const data = { fonegleSettings: 1, exportedAt: new Date().toISOString(), company, features: { disabled, aiChat: dom.optAiChat.checked }, logo: Site.logo, brandPage: savedBrandForExport() };
 
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
-        a.download = "公司設定.json";
+        a.download = "site-config.json";
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -143,19 +229,43 @@ Pages.SiteSettings = (() => {
 
         try {
             const d = JSON.parse(await f.text());
-            if (!d || d.fonegleSettings !== 1 || typeof d.company !== "object") throw new Error("不是公司設定檔");
+            const isSettings = d && d.fonegleSettings === 1 && typeof d.company === "object";
+            const isBrand = d && d.fonegleBrandPage === 1 && Array.isArray(d.blocks);   // 只有品牌資訊頁內容的舊格式
 
-            FIELDS.forEach(([k]) => {
-                if (typeof d.company[k] === "string") document.getElementById("f_" + k).value = d.company[k];
-            });
+            if (!isSettings && !isBrand) throw new Error("不是設定檔");
 
-            if (d.features && typeof d.features === "object") {
-                const off = new Set((d.features.disabled || []).map(Number));
-                dom.featureList.querySelectorAll("[data-id]:not(:disabled)").forEach(c => { c.checked = !off.has(Number(c.dataset.id)); });
-                if (typeof d.features.aiChat === "boolean") dom.optAiChat.checked = d.features.aiChat;
+            const notes = [];
+
+            if (isSettings) {
+
+                FIELDS.forEach(([k]) => {
+                    if (typeof d.company[k] === "string") document.getElementById("f_" + k).value = d.company[k];
+                });
+
+                if (d.features && typeof d.features === "object") {
+                    const off = new Set((d.features.disabled || []).map(Number));
+                    dom.featureList.querySelectorAll("[data-id]:not(:disabled)").forEach(c => { c.checked = !off.has(Number(c.dataset.id)); });
+                    if (typeof d.features.aiChat === "boolean") dom.optAiChat.checked = d.features.aiChat;
+                }
+
+                if (typeof d.logo === "string" && /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(d.logo) && d.logo.length <= 45000) pendingLogo = d.logo;
+
+                notes.push("請確認後，分別按「儲存公司資料」與「儲存功能開關」");
             }
 
-            alert("已把檔案內容填入畫面。請確認後，分別按「儲存公司資料」與「儲存功能開關」才會真正儲存。");
+            const list = isSettings ? d.brandPage : d.blocks;
+
+            if (Array.isArray(list) && list.length <= 300) {
+
+                const blocks = BrandBlocks.clean(list);
+
+                if (blocks.length) {
+                    editor.replace(blocks);
+                    notes.push(`品牌資訊頁已載入 ${blocks.length} 個區塊，請按「儲存品牌資訊」`);
+                }
+            }
+
+            alert("已把檔案內容填入畫面（還沒有儲存）。\n" + notes.join("；") + "，才會真正儲存。");
 
         } catch (err) {
             alert("匯入失敗：" + (err?.message || err));
@@ -246,7 +356,8 @@ Pages.SiteSettings = (() => {
         try {
             dom.btnSaveFeatures.disabled = true;
             await Site.save("features", { disabled, aiChat: dom.optAiChat.checked });
-            alert(`✅ 已儲存（關閉 ${disabled.length} 個功能）。其他人重新整理頁面後生效`);
+            renderStatus();
+            alert(`✅ 已儲存（關閉 ${disabled.length} 個功能）。\n\n若網站根目錄有 site-config.json，請重新「匯出 site-config.json」並更新該檔案；沒有這個檔的話，其他人重新整理頁面後生效。`);
         } catch (err) {
             App.error(err, "儲存失敗");
         } finally {

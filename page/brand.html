@@ -15,13 +15,6 @@
         .copy-btn:hover { color: #000; transform: scale(1.1); }
         .note-block { white-space: pre-wrap; padding: 6px 0; border-bottom: 1px dashed #e5e5e5; }
         .note-block:last-child { border-bottom: 0; }
-        .bb { border: 1px solid #e5e5e5; border-radius: 10px; margin-bottom: 8px; background: #fff; }
-        .bb.nested { margin-left: 0; }
-        .bb-h { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f8f9fa; border-radius: 10px 10px 0 0; cursor: pointer; }
-        .bb-h .t { flex: 1; font-weight: 600; font-size: .9rem; }
-        .bb-h .sum { color: #888; font-weight: 400; font-size: .8rem; }
-        .bb-b { padding: 10px; }
-        .bb-sub { border: 1px solid #eee; border-radius: 8px; padding: 8px; margin-bottom: 6px; background: #fcfcfc; }
         .prod-line { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed #eee; }
         .prod-line:last-child { border-bottom: 0; }
         .prod-line .n { font-weight: 600; white-space: nowrap; }
@@ -46,26 +39,8 @@
                     <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <div>
                             <h2 class="mb-1">品牌資訊</h2>
-                            <p class="text-muted mb-0" id="subTitle">報名或介紹專用，點 📋 即可複製</p>
+                            <p class="text-muted mb-0" id="subTitle">報名或介紹專用，點 📋 即可複製；內容在「系統 → 公司與功能設定」編輯</p>
                         </div>
-                        <div class="d-flex flex-wrap gap-2" id="toolbar">
-                            <button id="btnEdit" class="btn btn-primary d-none">✏️ 編輯內容</button>
-                            <button id="btnSave" class="btn btn-success d-none">💾 儲存</button>
-                            <button id="btnCancel" class="btn btn-outline-secondary d-none">取消</button>
-                            <button id="btnExport" class="btn btn-outline-secondary d-none" title="把這一頁的內容下載成檔案備份">⬇️ 匯出</button>
-                            <button id="btnImport" class="btn btn-outline-secondary d-none" title="從檔案載入內容（取代目前編輯中的內容，按儲存才會寫入）">⬆️ 匯入</button>
-                            <input id="importFile" type="file" accept=".json,application/json" class="d-none">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 編輯模式：新增區塊 -->
-                <div id="addBar" class="card border-0 shadow-sm mb-3 d-none">
-                    <div class="card-body d-flex flex-wrap gap-2 align-items-center">
-                        <span class="small text-muted">新增區塊：</span>
-                        <select id="addType" class="form-select form-select-sm w-auto"></select>
-                        <button id="btnAdd" class="btn btn-sm btn-primary">＋ 新增</button>
-                        <span class="small text-muted ms-auto">排好順序、改好內容後，按右上角「💾 儲存」</span>
                     </div>
                 </div>
 
@@ -89,6 +64,7 @@
     <script src="../js/core.js"></script>
     <script src="../js/ai-chat.js"></script>
     <script src="../js/favorite.js"></script>
+    <script src="../js/brand-blocks.js"></script>
     <script src="../js/pages/brand.js"></script>
 
     <script>
