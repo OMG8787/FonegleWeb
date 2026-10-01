@@ -66,7 +66,7 @@ window.Site = (() => {
         get brandShort() { return String(company().brandShort || "").trim() || this.appName; },
 
         isDisabled(id) {
-            return (this.features.disabled || []).map(Number).includes(Number(id)) && !(window.Config?.lockedIds || []).includes(Number(id));
+            return (this.features.disabled || []).map(Number).includes(Number(id)) && !((typeof Config !== "undefined" && Config.lockedIds) || []).includes(Number(id));
         },
 
         onChange(fn) { listeners.push(fn); },
@@ -118,7 +118,8 @@ window.Site = (() => {
 
             try {
 
-                if (window.Auth && Auth.getToken && Auth.getToken()) {
+                // Auth 是 const 宣告，不在 window 上，要用 typeof 判斷
+                if (typeof Auth !== "undefined" && Auth.getToken && Auth.getToken()) {
 
                     const rows = await Auth.request("list", { table: "Settings" }, { silent: true });
                     const get = k => (rows.find(r => r.Key === k) || {}).Value;
