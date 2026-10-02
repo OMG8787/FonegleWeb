@@ -153,8 +153,9 @@ Pages.FinanceReport = (() => {
         const brandOutOnly = brandOut.filter(e => !expKey.has((App.toDateInput(e.RecordDate) || "") + "|" + Math.round(App.num(e.Amount))));
         const dupCount = brandOut.length - brandOutOnly.length;
 
+        const shipOf = OrderStats.shipMap(orderRows);     // 運費不算營收
         const arIncome = receivables.reduce((t, r) => {
-            const paid = App.num(r.PaidAmount);
+            const paid = OrderStats.netPaid(r, shipOf);
             if (!paid) return t;
             const d = App.toDateInput(r.PaymentDate) || "";
             if (d) return matchFn(d) ? t + paid : t;

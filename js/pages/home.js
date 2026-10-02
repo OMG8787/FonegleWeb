@@ -73,6 +73,7 @@ Pages.Home = (() => {
 
             if (finance && data.Receivable && "Expenses" in data && "StallRecords" in data && "BrandCosts" in data) {
                 dom.financeRow.classList.remove("d-none");
+                shipMap = OrderStats.shipMap(data.Orders);
                 renderFinance(data.Receivable, data.Expenses || [], data.StallRecords || [], data.BrandCosts || []);
             }
 
@@ -320,6 +321,7 @@ Pages.Home = (() => {
             dom.todoCol.classList.add("d-none");
             dom.financeRow.firstElementChild.className = "col-12";
             dom.financeRow.classList.remove("d-none");
+            shipMap = OrderStats.shipMap(d.Orders);
             renderFinance(d.Receivable || [], d.Expenses || [], d.StallRecords || [], d.BrandCosts || []);
             renderChannels(d.StallRecords || [], d.Orders || [], d.Products || []);
         } catch (err) {
@@ -374,6 +376,8 @@ Pages.Home = (() => {
         dom.chB2bSub.title = dom.chOnlineSub.title = missing ? `${missing} 個品項沒有產品成本價，以 0 計` : "";
     }
 
+    let shipMap = new Map();     // 訂單編號 → 運費（運費不算營收）
+
     function renderFinance(receivables, expenses, stalls, brand = []) {
 
         lastFinance = [receivables, expenses, stalls, brand];
@@ -410,7 +414,7 @@ Pages.Home = (() => {
 
         const calc = inRange => {
             // 已收款但沒填付款日的帳款：只算進「成立至今」
-            const arIncome = sum(receivables, "PaymentDate", r => App.num(r.PaidAmount), d => d ? inRange(d) : inRange === periods.a);
+            const arIncome = sum(receivables, "PaymentDate", r => OrderStats.netPaid(r, shipMap), d => d ? inRange(d) : inRange === periods.a);
             const stallIncome = sum(stalls, "StallDate", r => App.num(r.Revenue), inRange);
             // 出攤費用不含「食材成本估算」，實際食材採購記在支出表，避免重複計算
             const stallCost = sum(stalls, "StallDate", r => App.num(r.TotalCost) - App.num(r.FoodCost), inRange);
@@ -452,7 +456,7 @@ Pages.Home = (() => {
         ].filter(Boolean).sort()[0];
         dom.plSince.textContent = first ? `成立至今，自 ${first.replace(/-/g, "/")}` : "成立至今";
 
-        dom.mDetail.innerHTML = `營收 = 帳款收款（依付款日）＋ 出攤營業額${useBrand ? " ＋ 品牌攤提表「回收」" : ""}<br>
+        dom.mDetail.innerHTML = `營收 = 帳款收款（依付款日，不含運費）＋ 出攤營業額${useBrand ? " ＋ 品牌攤提表「回收」" : ""}<br>
             支出 = 支出表 ＋ 出攤費用（攤位、車資、人手、手續費等，不含食材估算）${useBrand ? " ＋ 品牌攤提表「支出」（全額計入投入當時）" : ""}<br>
             <b>成立至今明細</b>：帳款收款 ${money(all.arIncome)}、出攤營業額 ${money(all.stallIncome)}${useBrand ? `、攤提表回收 ${money(all.brandIncome)}` : ""}；
             支出表 ${money(all.expense)}、出攤費用 ${money(all.stallCost)}${useBrand ? `、攤提表投入 ${money(all.brandCost)}` : ""}<br>

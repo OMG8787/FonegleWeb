@@ -1454,11 +1454,11 @@ function financeSummary_(req, ctx) {
     });
 
     return {
-        Receivable: pick('Receivable', ['PaymentDate', 'PaidAmount']),
+        Receivable: pick('Receivable', ['PaymentDate', 'PaidAmount', 'Amount', 'OrderID']),
         Expenses: pick('Expenses', ['ExpenseDate', 'Amount']),
         StallRecords: pick('StallRecords', ['StallDate', 'Revenue', 'TotalCost', 'FoodCost', 'ProfitLoss']),
         BrandCosts: pick('BrandCosts', ['RecordDate', 'Type', 'Amount']),
-        Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate']),
+        Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'ShippingFee', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate']),
         Products: pick('Products', ['ID', 'CostPrice'])
     };
 }
