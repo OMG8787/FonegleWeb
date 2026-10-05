@@ -127,7 +127,7 @@ const SCHEMA = {
         key: 'ID', seq: 'ID',
         cols: 'ID:n SKU Barcode ProductName ShortName CategoryID:n Brand Specification Flavor Capacity Weight:n Color Material Unit ' +
             'SalePrice:n MemberPrice:n CostPrice:n ShelfLifeDays:n FormulaID MinStock:n CurrentStock:n Status IsB2B:b IsB2C:b IsActive:b ' +
-            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt'
+            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson'
     },
     Material: {
         key: 'ID', seq: 'ID',
@@ -332,7 +332,7 @@ const COLUMN_LABELS = {
     // 商品與生產
     SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
     Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
-    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
     MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
     CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',

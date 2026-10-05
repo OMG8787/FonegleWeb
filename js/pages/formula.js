@@ -163,6 +163,7 @@ Pages.Formula = (() => {
             const b = e.target.closest("[data-act]");
             if (!b) return;
             const i = Number(b.dataset.i);
+            if (b.dataset.act === "matadd" || b.dataset.act === "matedit") return editMaterial(i, b.dataset.act === "matedit");
             if (b.dataset.act === "remove") rows.splice(i, 1);
             if (b.dataset.act === "up" && i > 0) [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
             if (b.dataset.act === "down" && i < rows.length - 1) [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]];
@@ -327,6 +328,33 @@ Pages.Formula = (() => {
         return n ? materials.find(m => String(m.MaterialName).trim() === n) : null;
     }
 
+    // 在配方裡直接新增 / 修改原料庫（原料換名稱、產地、單價時不用離開配方）
+    function editMaterial(i, isEdit) {
+
+        const r = rows[i];
+        if (!r || formMode === "view") return;
+
+        MaterialQuick.open({
+            material: isEdit ? materialById(r.MaterialID) : null,
+            name: String(r.MaterialName || "").trim(),
+            onSaved(m) {
+                const k = materials.findIndex(x => String(x.ID) === String(m.ID));
+                if (k >= 0) materials[k] = m; else materials.push(m);
+                renderMaterialNames();
+
+                // 這個原料出現在配方的每一列：名稱與單價都同步
+                rows.forEach(x => {
+                    if (String(x.MaterialID) === String(m.ID) || x === r) {
+                        x.MaterialID = m.ID;
+                        x.MaterialName = m.MaterialName;
+                        if (m.CostPrice !== null && m.CostPrice !== undefined && m.CostPrice !== "") { x.UnitCost = m.CostPrice; x.Remark = ""; }
+                    }
+                });
+                renderRows();
+            }
+        });
+    }
+
     function renderMaterialNames() {
         dom.materialNames.innerHTML = materials
             .map(m => `<option value="${App.esc(m.MaterialName)}">${m.CostPrice !== null && m.CostPrice !== undefined ? `$${m.CostPrice}/${App.esc(m.Unit || "g")}` : ""}</option>`)
@@ -346,7 +374,9 @@ Pages.Formula = (() => {
     <td class="ing">
         <div class="input-group input-group-sm">
             <input class="form-control" list="materialNames" data-f="MaterialName" value="${esc(r.MaterialName || "")}" placeholder="原料名稱" ${dis}>
-            ${linked ? `<span class="input-group-text link-badge" title="已連結原料庫：${esc(linked.MaterialName)}（$${esc(linked.CostPrice ?? "-")}/g）">🔗</span>` : ""}
+            ${linked ? `<span class="input-group-text link-badge" title="已連結原料庫：${esc(linked.MaterialName)}（$${esc(linked.CostPrice ?? "-")}/${esc(linked.Unit || "g")}）">🔗</span>
+            <button type="button" class="btn btn-outline-secondary" data-act="matedit" data-i="${i}" title="修改原料庫的名稱、產地、單價" ${dis}>✏️</button>`
+                : String(r.MaterialName || "").trim() ? `<button type="button" class="btn btn-outline-primary" data-act="matadd" data-i="${i}" title="這個原料還沒登入原料庫，點這裡新增（會自動連結並帶入單價）" ${dis}>＋ 新增原料</button>` : ""}
             ${r.Remark ? `<span class="input-group-text link-badge text-danger" title="${esc(r.Remark)}">⚠️</span>` : ""}
         </div>
     </td>
@@ -634,7 +664,7 @@ Pages.Formula = (() => {
 
         rows = detailsOf(f.FormulaID).map(d => ({
             MaterialID: d.MaterialID ?? "",
-            MaterialName: d.MaterialName || materialById(d.MaterialID)?.MaterialName || "",
+            MaterialName: materialById(d.MaterialID)?.MaterialName || d.MaterialName || "",
             Quantity: d.Quantity ?? "",
             UnitCost: d.UnitCost ?? materialById(d.MaterialID)?.CostPrice ?? "",
             Remark: d.Remark || ""

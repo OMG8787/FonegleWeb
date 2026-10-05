@@ -146,9 +146,12 @@
                         <div class="card section-card shadow-sm mb-3">
                             <div class="section-header d-flex justify-content-between align-items-center">
                                 <span>🔍 產品查詢</span>
-                                <button id="btnCreateTop" class="btn btn-success btn-sm">
-                                    ➕ 新增產品
-                                </button>
+                                <div class="d-flex gap-1">
+                                    <button id="btnRecalcAll" class="btn btn-outline-secondary btn-sm" title="依配方與包材目前的價格，重新計算所有已設定配方 / 包材的產品成本">🔄 重算成本</button>
+                                    <button id="btnCreateTop" class="btn btn-success btn-sm">
+                                        ➕ 新增產品
+                                    </button>
+                                </div>
                             </div>
                             <div class="section-body">
                                 <div class="search-area">
@@ -317,6 +320,52 @@
                                             <input id="CostPrice" type="number" class="form-control">
                                         </div>
                                     </div>
+                                    <hr>
+                                    <h5 class="mb-1">
+                                        🧮 成本計算（配方 + 包材）
+                                    </h5>
+                                    <div class="small text-muted mb-3">
+                                        選配方、填這個產品用多少（配方一份是 5 公斤、產品只用 1 公斤，就選「重量」填 1000），再加上包材，系統會自動算出成本並填入上面的「成本」欄；之後訂單就能直接算成本與毛利。
+                                    </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small mb-0">配方</label>
+                                            <select id="FormulaID" class="form-select form-select-sm">
+                                                <option value="">不使用配方（手動填成本）</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">用量單位</label>
+                                            <select id="FormulaUseMode" class="form-select form-select-sm">
+                                                <option value="portion">份數（配方的幾份）</option>
+                                                <option value="weight">重量（成品公克 g）</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0" id="useQtyLabel">用量</label>
+                                            <input id="FormulaUseQty" type="number" min="0" step="any" class="form-control form-control-sm">
+                                        </div>
+                                    </div>
+                                    <div id="formulaInfo" class="small text-muted mb-3"></div>
+
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-1">
+                                        <label class="form-label small mb-0 fw-bold">📦 包材（從原料庫選，分類填「包材」）</label>
+                                        <button id="btnAddPack" type="button" class="btn btn-sm btn-outline-primary">＋ 加入包材</button>
+                                    </div>
+                                    <datalist id="packNames"></datalist>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-2">
+                                            <thead class="table-light">
+                                                <tr><th>包材</th><th style="width:110px" class="text-end">數量</th><th style="width:100px" class="text-end">單價</th><th style="width:100px" class="text-end">小計</th><th style="width:90px"></th></tr>
+                                            </thead>
+                                            <tbody id="packList"></tbody>
+                                        </table>
+                                    </div>
+
+                                    <div id="costBox" class="alert alert-light border small mb-0"></div>
+                                    <div class="mt-2">
+                                        <button id="btnApplyCost" type="button" class="btn btn-sm btn-outline-success">↻ 重新計算並填入成本</button>
+                                    </div>
                                     <div class="alert alert-info mt-3 mb-3">
                                         毛利：
                                         <span id="profitValue">0</span>
@@ -347,17 +396,6 @@
                                                 保存期限(天)
                                             </label>
                                             <input id="ShelfLifeDays" type="number" class="form-control">
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">
-                                                配方
-                                            </label>
-                                            <div class="input-group">
-                                                <input id="FormulaID" class="form-control" readonly>
-                                                <button id="btnFormula" class="btn btn-outline-primary" type="button">
-                                                    查詢配方
-                                                </button>
-                                            </div>
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">
@@ -467,6 +505,7 @@
     <!-- 頁尾 -->
     <div id="footerArea"></div>
     <!-- 共用 layout -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../js/settings.js"></script>
     <script src="../js/site.js"></script>
     <script src="../js/auth.js"></script>
@@ -479,6 +518,8 @@
     <script src="../js/core.js"></script>
     <script src="../js/ai-chat.js"></script>
     <script src="../js/favorite.js"></script>
+    <script src="../js/cost.js"></script>
+    <script src="../js/material-quick.js"></script>
     <script src="../js/pages/category-manager.js"></script>
     <script src="../js/pages/product.js"></script>
     <script>

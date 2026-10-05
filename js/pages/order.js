@@ -487,7 +487,8 @@ Pages.Order = (() => {
                 id: String(p.ID),
                 name: p.ProductName || String(p.ID),
                 unit: p.Unit || "",
-                price: p.SalePrice ?? ""
+                price: p.SalePrice ?? "",
+                cost: p.CostPrice
             }));
 
         // 已經加入的商品列補上產品選項
@@ -880,6 +881,32 @@ class="btn btn-danger btn-sm">
         const shipping = parseFloat(dom.ShippingFee.value || 0);
         total = total - discount + shipping;
         dom.TotalAmount.value = total;
+        showCost(total - shipping);
+    }
+
+    // 預估成本與毛利：成本 = 數量 × 產品成本（產品頁用配方與包材算出）；運費是支出，不算營收
+    function showCost(revenue) {
+
+        const box = document.getElementById("orderCostInfo");
+        if (!box) return;
+
+        let cost = 0, missing = 0, lines = 0;
+
+        document.querySelectorAll("#orderDetailList tr").forEach(tr => {
+            const pid = tr.querySelector(".productID")?.value;
+            const qty = parseFloat(tr.querySelector(".qty")?.value || 0);
+            if (!qty) return;
+            lines++;
+            const p = pid ? productOptions.find(x => x.id === String(pid)) : null;
+            if (p && p.cost !== null && p.cost !== undefined && p.cost !== "") cost += qty * Number(p.cost);
+            else missing++;
+        });
+
+        if (!lines) { box.textContent = ""; return; }
+
+        const profit = revenue - cost;
+        box.innerHTML = `預估成本 $${Math.round(cost).toLocaleString()}　毛利 $${Math.round(profit).toLocaleString()}${revenue > 0 ? `（${(profit / revenue * 100).toFixed(1)}%）` : ""}　<span class="text-muted">（不含運費）</span>` +
+            (missing ? `<br><span class="text-danger">⚠️ ${missing} 個品項沒有成本（到產品頁設定配方或成本）</span>` : "");
     }
 
     function buildPayload(tr) {
