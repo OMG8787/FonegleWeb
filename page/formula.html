@@ -77,7 +77,11 @@
         }
 
         .recipe-table .ing {
-            min-width: 170px;
+            min-width: 230px;
+        }
+
+        .recipe-table td[data-c="cost"] {
+            font-weight: 600;
         }
 
         .recipe-table td.scaled {
@@ -283,9 +287,9 @@
                                                 <tr>
                                                     <th>#</th>
                                                     <th>原料</th>
-                                                    <th class="text-end">基準重量 g</th>
-                                                    <th class="text-end">百分比</th>
                                                     <th class="text-end">製作重量 g</th>
+                                                    <th class="text-end">百分比</th>
+                                                    <th class="text-end">基準重量 g</th>
                                                     <th class="text-end">單價（每 g）</th>
                                                     <th class="text-end">成本</th>
                                                     <th></th>
@@ -296,9 +300,9 @@
                                                 <tr>
                                                     <td></td>
                                                     <td>合計</td>
-                                                    <td class="text-end" id="sumBase">0</td>
-                                                    <td class="text-end" id="sumPct">0%</td>
                                                     <td class="text-end" id="sumScaled">0</td>
+                                                    <td class="text-end" id="sumPct">0%</td>
+                                                    <td class="text-end" id="sumBase">0</td>
                                                     <td></td>
                                                     <td class="text-end" id="sumCost">$0</td>
                                                     <td></td>

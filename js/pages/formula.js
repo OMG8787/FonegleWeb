@@ -380,9 +380,9 @@ Pages.Formula = (() => {
             ${r.Remark ? `<span class="input-group-text link-badge text-danger" title="${esc(r.Remark)}">⚠️</span>` : ""}
         </div>
     </td>
-    <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Quantity" value="${esc(r.Quantity ?? "")}" ${dis}></td>
-    <td class="text-end small" data-c="pct"></td>
     <td class="text-end scaled"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Scaled" ${dis}></td>
+    <td class="text-end small" data-c="pct"></td>
+    <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Quantity" value="${esc(r.Quantity ?? "")}" ${dis}></td>
     <td class="text-end"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="UnitCost" value="${esc(r.UnitCost ?? "")}" ${dis}></td>
     <td class="text-end" data-c="cost"></td>
     <td class="text-nowrap">
