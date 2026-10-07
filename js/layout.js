@@ -55,9 +55,11 @@ const Layout = {
             <button type="button" id="btnMenu" class="hdr-btn" onclick="Layout.toggleSidebar()" aria-label="功能選單" title="功能選單">☰</button>
             <a class="hdr-title" href="${Auth.root}home.html">${window.Site && Site.logo ? `<img src="${Site.logo}" alt="" style="height:26px;width:auto;vertical-align:middle;margin-right:6px;border-radius:6px">` : "🍦 "}<span class="hdr-title-full">${App.esc(window.Site ? Site.appName : "內部管理系統")}</span><span class="hdr-title-short">${App.esc(window.Site ? Site.shortTitle : "管理")}</span></a>
             <div class="hdr-right">
+                <button type="button" class="hdr-btn" data-theme-btn title="切換深色 / 淺色模式">🌙</button>
                 <button type="button" class="hdr-btn hdr-logout" onclick="Auth.logout()">登出</button>
             </div>
         </div>`;
+        if (window.Theme) Theme.refresh();
     },
     renderSidebar() {
 

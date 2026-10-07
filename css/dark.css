@@ -1,0 +1,109 @@
+/* =========================================================
+   深色模式（<html data-bs-theme="dark">，由 js/theme.js 切換）
+   Bootstrap 本身的元件會自動變深色；這裡處理各頁寫死的淺色背景與文字顏色
+   選擇器前面都加 html[data-bs-theme="dark"]，優先度比各頁自己的 <style> 高
+   ========================================================= */
+
+html[data-bs-theme="dark"] body { background: #14181d; color: var(--bs-body-color); }
+
+/* ---- 選單 ---- */
+html[data-bs-theme="dark"] #erp-sidebar { background: #1b2027; }
+html[data-bs-theme="dark"] .submenu-item { background: #2a313a; color: #e5e7eb; }
+html[data-bs-theme="dark"] .submenu-item:hover { background: #364150; }
+
+/* ---- 卡片 / 清單項目（原本寫死白底）---- */
+html[data-bs-theme="dark"] :is(.inventory-card, .member-card, .order-card, .product-card, .shipping-card, .business-card, .formula-card,
+    .stall-card, .production-card, .summary-card, .feat-group, .bb, .er-block, .report-summary, .order-ui .item, .order-ui .summary,
+    .rm-item, .draft-card, .list-group-item, .er-rich, .logo-box, .material-card) {
+    background: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+/* ---- 淺灰區塊 ---- */
+html[data-bs-theme="dark"] :is(.reminder, .search-area, .section-header, .event-preview, .sa-box, .result-box, .cost-box, .er-bh, .bb-h, .er-tb,
+    .bb-sub, .er-sub, .card-header, .setting-header:hover, .recipe-table tfoot td, .pl-ch, input[readonly], #TotalAmount,
+    #productionForm input[readonly], #materialForm input[readonly], #profileArea input:disabled,
+    #formCard.view-locked input:disabled, #formCard.view-locked select:disabled, #formCard.view-locked textarea:disabled,
+    .data-table .calc, .count-table .calc) {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+html[data-bs-theme="dark"] :is(.access-table thead th, .data-table thead th, .count-table thead th) { background: #2b3137; color: var(--bs-body-color); }
+
+/* ---- 選取中的卡片 / 列（藍色）---- */
+html[data-bs-theme="dark"] :is(.business-card.active, .inventory-card.active, .member-card.active, .order-card.active, .product-card.active,
+    .shipping-card.active, .production-card.active, .material-card.active, .material-card:hover, tr.active td) {
+    background: rgba(13, 110, 253, .2) !important;
+    border-color: #4f8dfd;
+}
+html[data-bs-theme="dark"] .formula-card:hover, html[data-bs-theme="dark"] .formula-card.active { background: rgba(25, 135, 84, .18); }
+
+/* ---- 狀態色塊（淺紅 / 淺橘 / 淺綠 / 淺黃）改成半透明 ---- */
+html[data-bs-theme="dark"] :is(.rm-item.overdue, .reminder.today) { background: rgba(220, 53, 69, .16); }
+html[data-bs-theme="dark"] .rm-item.today { background: rgba(253, 126, 20, .16); }
+html[data-bs-theme="dark"] :is(.pl-total, .pl-table td.pl-all, .pl-table th.pl-all, .edit-mode-tag, .access-table tr.changed td, .pending-card,
+    .data-table .used, .count-table .used) {
+    background: rgba(245, 158, 11, .15) !important;
+    border-color: rgba(245, 158, 11, .45);
+    color: var(--bs-body-color);
+}
+html[data-bs-theme="dark"] :is(.scale-bar, .recipe-table td.scaled) { background: rgba(25, 135, 84, .18); border-color: rgba(25, 135, 84, .5); }
+html[data-bs-theme="dark"] .order-ui .o-card { background: rgba(245, 158, 11, .12); }
+html[data-bs-theme="dark"] .order-ui .o-card2 { background: rgba(220, 53, 69, .12); }
+html[data-bs-theme="dark"] .order-status { background: rgba(13, 110, 253, .2); color: #9ec5fe; }
+html[data-bs-theme="dark"] .material-info span { background: rgba(79, 141, 253, .2); color: #9ec5fe; }
+
+/* ---- 文字顏色（原本寫死的深灰 / 淡灰）---- */
+html[data-bs-theme="dark"] :is(.material-name, .production-title, #productionForm h5, #productionForm label, .search-area label, .prod-line .d,
+    .production-info, .summary-title, .title, .form-label, .material-id) { color: var(--bs-body-color); }
+html[data-bs-theme="dark"] :is(.member-info, .product-info, .inventory-info, .sa-item .meta, .empty-area, .list-count, .sub-title,
+    .memo.done .memo-title, .access-table tr.inactive td, .feat-item.locked, .er-bh .sum, .bb-h .sum, .copy-btn, .day-number) { color: var(--bs-secondary-color); }
+html[data-bs-theme="dark"] .copy-btn:hover { color: var(--bs-body-color); }
+
+/* ---- 分隔線 ---- */
+html[data-bs-theme="dark"] :is(.memo, .section-title, #profileArea, .note-block, .prod-line, .order-ui .total, .material-card) { border-color: var(--bs-border-color); }
+
+/* ---- 表單 ---- */
+html[data-bs-theme="dark"] :is(.er-tb input[type=color], .er-drop) { background: var(--bs-body-bg); border-color: var(--bs-border-color); color: var(--bs-body-color); }
+html[data-bs-theme="dark"] .er-drop:hover, html[data-bs-theme="dark"] .er-drop.over { background: rgba(185, 128, 95, .18); }
+html[data-bs-theme="dark"] .form-control:focus, html[data-bs-theme="dark"] .form-select:focus { border-color: #6ea8fe; box-shadow: 0 0 0 .2rem rgba(110, 168, 254, .2); }
+
+/* ---- 行事曆 ---- */
+html[data-bs-theme="dark"] :is(.calendar-day, .day-cell, .day) { border-color: var(--bs-border-color); }
+
+/* ---- 登入頁 ---- */
+html[data-bs-theme="dark"] .login-card { background: rgba(30, 34, 40, .96); }
+html[data-bs-theme="dark"] .btn-login { background: #c48b6a; }
+html[data-bs-theme="dark"] .btn-login:hover { background: #d29a79; }
+
+/* ---- 捲軸 ---- */
+html[data-bs-theme="dark"] ::-webkit-scrollbar-thumb { background: #4b5563; }
+html[data-bs-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+html[data-bs-theme="dark"] .list-wrap::-webkit-scrollbar-thumb { background: #4b5563; }
+
+/* ---- 製作報告：預覽是「文件」，維持白底（輸出 / 列印用）---- */
+html[data-bs-theme="dark"] .er-preview { background: #fff; border-color: var(--bs-border-color); }
+
+/* ---- Tom Select（訂單頁的客戶 / 產品下拉）---- */
+html[data-bs-theme="dark"] .ts-control, html[data-bs-theme="dark"] .ts-wrapper.single.input-active .ts-control,
+html[data-bs-theme="dark"] .ts-dropdown { background: var(--bs-body-bg); color: var(--bs-body-color); border-color: var(--bs-border-color); }
+html[data-bs-theme="dark"] .ts-control input { color: var(--bs-body-color); }
+html[data-bs-theme="dark"] .ts-dropdown .option:hover, html[data-bs-theme="dark"] .ts-dropdown .active { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+html[data-bs-theme="dark"] .ts-dropdown .option .text-muted, html[data-bs-theme="dark"] .ts-dropdown .optgroup-header { color: var(--bs-secondary-color); }
+
+/* ---- 主題切換按鈕（登入頁右上角）---- */
+.theme-fab { position: fixed; top: 12px; right: 12px; z-index: 2000; border: 1px solid rgba(255, 255, 255, .35); background: rgba(0, 0, 0, .35); color: #fff; border-radius: 999px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
+.theme-fab:hover { background: rgba(0, 0, 0, .55); }
+
+/* 登入頁 Logo 是深褐色線條，深色底看不清楚 → 墊一塊白色圓角底板 */
+html[data-bs-theme="dark"] .logo img { background: #fff; padding: 12px 16px; box-sizing: border-box; }
+
+/* Bootstrap 的固定淺色工具類別（不會自動跟著深色模式）*/
+html[data-bs-theme="dark"] .bg-white { background-color: var(--bs-body-bg) !important; }
+html[data-bs-theme="dark"] .bg-light { background-color: var(--bs-tertiary-bg) !important; color: var(--bs-body-color); }
+html[data-bs-theme="dark"] .table-light { --bs-table-bg: #2b3137; --bs-table-color: var(--bs-body-color); --bs-table-border-color: var(--bs-border-color); }
+html[data-bs-theme="dark"] .btn-light { --bs-btn-bg: #2b3137; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); --bs-btn-hover-bg: #343a40; --bs-btn-hover-color: #fff; }
+html[data-bs-theme="dark"] .text-dark:not(.badge) { color: var(--bs-body-color) !important; }
+html[data-bs-theme="dark"] .text-black { color: var(--bs-body-color) !important; }
