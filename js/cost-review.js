@@ -1,0 +1,570 @@
+// =========================================================
+// 成本確認精靈：把「食材 → 原料庫 → 配方 → 產品」的關係一項一項確認好
+//   CostReview.open({ formulaId, onDone })
+//     沒帶 formulaId：全部（重複原料 → 食材對應 → 配方 → 產品）；帶了：只確認這個配方的食材與配方本身
+//   每一項都可以「選填」或按「核可」；不確定的按「略過」，下次還會再出現
+//
+//   1. 重複的原料        名稱寫法不同的同一種原料（匯入來源不同）→ 選一個保留，其他合併（配方改指向保留的、其餘停用）
+//   2. 食材對應原料庫    配方裡的食材沒有連到原料庫，或原料沒有單價 → 選原料庫既有的 / 新增，填包裝重量與價格自動算每克單價
+//   3. 配方確認          檢視每個食材成本、成品率、每份重量 → 核可
+//   4. 產品對上配方      選配方、用多少公克（預設用產品的重量）、包材 → 算出成本 → 核可
+//   成本單價（每 g）= 包裝價格 ÷ 包裝重量；產品成本 = 用量 g × 配方每克成本 + 包材
+// =========================================================
+window.CostReview = (() => {
+
+    "use strict";
+
+    const E = App.esc;
+    const num = v => Cost.num(v);
+    const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+    const money = (v, d = 2) => "$" + (Math.round((Number(v) || 0) * 10 ** d) / 10 ** d).toLocaleString();
+    const has = v => v !== null && v !== undefined && v !== "";
+
+    let modal = null, el = null, data = null, queue = [], idx = 0, opts = {}, changed = false, approved = 0, busy = false;
+
+    // =========================
+    // 名稱比對（不同來源寫法不同：全形半形、空白、括號品牌、大小寫…）
+    // =========================
+    const norm = s => String(s || "").normalize("NFKC").toLowerCase()
+        .replace(/[(（\[【][^)）\]】]*[)）\]】]/g, "")
+        .replace(/[\s·・,，.。、\-_\/\\*＊]/g, "");
+
+    function dice(a, b) {
+        if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+        const grams = s => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+        const A = grams(a), B = grams(b);
+        let hit = 0;
+        A.forEach((n, g) => { hit += Math.min(n, B.get(g) || 0); });
+        return 2 * hit / (a.length + b.length - 2);
+    }
+
+    function similarity(x, y) {
+        const a = norm(x), b = norm(y);
+        if (!a || !b) return 0;
+        if (a === b) return 1;
+        if (a.includes(b) || b.includes(a)) return Math.min(.95, .6 + .35 * Math.min(a.length, b.length) / Math.max(a.length, b.length));
+        return dice(a, b);
+    }
+
+    // =========================
+    // 資料
+    // =========================
+    const mats = () => data.materials.filter(m => m.IsActive !== false);
+    const matById = id => (has(id) ? data.materials.find(m => String(m.ID) === String(id)) : null);
+    const priced = m => !!m && num(m.CostPrice) > 0;
+    const detailsOf = fid => data.details.filter(d => String(d.FormulaID) === String(fid));
+    const formulaName = f => f.FormulaName || f.FormulaCode || "配方 " + f.FormulaID;
+
+    async function load() {
+        API.cacheClear();
+        const d = await API.getMany(["Material", "Formula", "FormulaDetail", "Products"]);
+        data = { materials: d.Material || [], formulas: d.Formula || [], details: d.FormulaDetail || [], products: d.Products || [] };
+    }
+
+    function candidatesFor(name, limit = 5) {
+        return mats().map(m => ({ m, s: similarity(name, m.MaterialName) })).filter(x => x.s >= .35)
+            .sort((a, b) => b.s - a.s || (priced(b.m) - priced(a.m))).slice(0, limit);
+    }
+
+    // 配方裡「還有問題」的食材列數（給配方頁提醒用）
+    function countIssues(formulaId, details, materials) {
+        return (details || []).filter(d => String(d.FormulaID) === String(formulaId)).filter(d => {
+            const m = has(d.MaterialID) ? (materials || []).find(x => String(x.ID) === String(d.MaterialID)) : null;
+            return !m || !priced(m) || !!d.Remark;
+        }).length;
+    }
+
+    // =========================
+    // 建立確認清單
+    // =========================
+    function build() {
+
+        const q = [];
+        const fid = opts.formulaId;
+        const scopeFormulas = data.formulas.filter(f => !fid || String(f.FormulaID) === String(fid));
+        const scopeIds = new Set(scopeFormulas.map(f => String(f.FormulaID)));
+        const scopeDetails = data.details.filter(d => scopeIds.has(String(d.FormulaID)));
+
+        // 1) 重複的原料
+        if (!fid) {
+            const active = mats();
+            const seen = new Set();
+            active.forEach(a => {
+                if (seen.has(a.ID)) return;
+                const group = active.filter(b => b.ID === a.ID || (!seen.has(b.ID) && similarity(a.MaterialName, b.MaterialName) >= .9));
+                if (group.length < 2) return;
+                group.forEach(g => seen.add(g.ID));
+                const keep = group.slice().sort((x, y) => (priced(y) - priced(x)) || (String(x.MaterialName).length - String(y.MaterialName).length))[0];
+                q.push({ type: "dupes", title: "重複的原料", group, st: { keep: keep.ID } });
+            });
+        }
+
+        // 2) 食材對應原料庫
+        const groups = new Map();
+        scopeDetails.forEach(d => {
+            const name = String(d.MaterialName || "").trim();
+            const m = matById(d.MaterialID);
+            let key;
+            if (m && m.IsActive !== false) { if (priced(m) && !d.Remark) return; key = "m:" + m.ID; }
+            else if (!name) return;
+            else key = "n:" + name;
+            const g = groups.get(key) || { key, name: m ? m.MaterialName : name, material: m && m.IsActive !== false ? m : null, rows: [], formulas: new Set() };
+            g.rows.push(d);
+            const f = data.formulas.find(x => String(x.FormulaID) === String(d.FormulaID));
+            if (f) g.formulas.add(formulaName(f));
+            groups.set(key, g);
+        });
+
+        const auto = [];
+        groups.forEach(g => {
+            if (!g.material) {
+                const exact = mats().filter(m => similarity(g.name, m.MaterialName) === 1 && priced(m));
+                if (exact.length === 1) { auto.push({ g, m: exact[0] }); return; }
+            }
+            q.push({ type: "ingredient", title: "食材：" + g.name, g, cands: candidatesFor(g.name), st: null });
+        });
+        if (auto.length) q.splice(q.filter(s => s.type === "dupes").length, 0, { type: "autolink", title: "名稱相同的食材", items: auto });
+
+        // 3) 配方確認（還沒核可的）
+        scopeFormulas.filter(f => f.IsVerified !== true).forEach(f => q.push({ type: "formula", title: "配方：" + formulaName(f), f, st: null }));
+
+        // 4) 產品對上配方（還沒確認成本的）
+        if (!fid) data.products.filter(p => p.IsActive !== false && p.CostVerified !== true).forEach(p => q.push({ type: "product", title: "產品：" + (p.ProductName || p.ID), p, st: null }));
+
+        return q;
+    }
+
+    // =========================
+    // 視窗框架
+    // =========================
+    function frame() {
+
+        el = document.createElement("div");
+        el.className = "modal fade";
+        el.tabIndex = -1;
+        el.setAttribute("data-bs-backdrop", "static");
+        el.innerHTML = `
+<div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title" id="crTitle"></h5><div class="small text-muted" id="crProg"></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body" id="crBody"></div>
+    <div class="modal-footer justify-content-between">
+        <button type="button" class="btn btn-outline-secondary" id="crPrev">← 上一項</button>
+        <div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" id="crSkip">略過（下次再確認）</button><button type="button" class="btn btn-success" id="crOk">✅ 核可</button></div>
+    </div>
+</div></div>`;
+        document.body.appendChild(el);
+        modal = new bootstrap.Modal(el);
+        el.querySelector("#crPrev").addEventListener("click", () => go(idx - 1));
+        el.querySelector("#crSkip").addEventListener("click", () => go(idx + 1));
+        el.querySelector("#crOk").addEventListener("click", approve);
+        el.addEventListener("hidden.bs.modal", () => { if (changed && opts.onDone) opts.onDone(); changed = false; });
+    }
+
+    const $ = s => el.querySelector(s);
+
+    function go(i) {
+        idx = Math.max(0, Math.min(queue.length, i));
+        render();
+    }
+
+    function render() {
+
+        const done = idx >= queue.length;
+        $("#crPrev").disabled = idx === 0 || busy;
+        $("#crSkip").classList.toggle("d-none", done);
+        $("#crOk").classList.toggle("d-none", done);
+        $("#crProg").textContent = done ? "" : `第 ${idx + 1} / ${queue.length} 項　已核可 ${approved} 項`;
+
+        if (done) {
+            $("#crTitle").textContent = "🎉 確認完成";
+            $("#crBody").innerHTML = `<div class="py-4 text-center"><div class="fs-4 mb-2">本次共核可 ${approved} 項</div><div class="text-muted">略過的項目下次開啟精靈時還會再出現。</div><button type="button" class="btn btn-primary mt-3" data-bs-dismiss="modal">關閉</button></div>`;
+            return;
+        }
+
+        const s = queue[idx];
+        $("#crTitle").textContent = ({ dupes: "🧩 ", autolink: "🔗 ", ingredient: "🧂 ", formula: "🧪 ", product: "📦 " })[s.type] + s.title;
+        $("#crOk").textContent = s.type === "autolink" ? "✅ 全部核可" : s.type === "dupes" ? "✅ 合併" : "✅ 核可";
+        ({ dupes: rDupes, autolink: rAuto, ingredient: rIngredient, formula: rFormula, product: rProduct })[s.type](s);
+    }
+
+    async function approve() {
+
+        const s = queue[idx];
+        if (busy || !s) return;
+
+        try {
+            busy = true;
+            $("#crOk").disabled = true;
+            const ok = await ({ dupes: aDupes, autolink: aAuto, ingredient: aIngredient, formula: aFormula, product: aProduct })[s.type](s);
+            if (ok === false) return;
+            approved++;
+            changed = true;
+            busy = false;
+
+            // 合併原料後，食材能對上的原料變了：重新整理後面的項目（還沒處理的重複原料保留）
+            if (s.type === "dupes") {
+                const rest = build().filter(x => x.type !== "dupes");
+                queue = queue.slice(0, idx + 1).concat(queue.slice(idx + 1).filter(x => x.type === "dupes"), rest);
+            }
+
+            go(idx + 1);
+        } catch (err) {
+            App.error(err, "儲存失敗");
+        } finally {
+            busy = false;
+            $("#crOk").disabled = false;
+        }
+    }
+
+    // =========================
+    // 1. 重複的原料
+    // =========================
+    function rDupes(s) {
+        $("#crBody").innerHTML = `
+<p class="text-muted small">這幾個原料看起來是同一種（名稱寫法不同）。選一個要保留的，其他會合併進去：配方裡的食材改指向保留的原料，其餘原料停用（不刪除）。不是同一種請按「略過」。</p>
+${s.group.map(m => `<label class="d-block border rounded p-2 mb-2"><input type="radio" name="keep" value="${m.ID}" ${String(s.st.keep) === String(m.ID) ? "checked" : ""}>
+    <b>${E(m.MaterialName)}</b>　${priced(m) ? money(m.CostPrice, 4) + "/" + E(m.Unit || "g") : '<span class="text-danger">沒有單價</span>'}
+    <span class="text-muted small">${[m.Category, m.OriginCountry, m.Specification].filter(Boolean).map(E).join("・")}　被 ${data.details.filter(d => String(d.MaterialID) === String(m.ID)).length} 個配方食材使用</span></label>`).join("")}`;
+        el.querySelectorAll("[name=keep]").forEach(r => r.addEventListener("change", () => { s.st.keep = r.value; }));
+    }
+
+    async function aDupes(s) {
+        const keep = matById(s.st.keep);
+        const others = s.group.filter(m => String(m.ID) !== String(keep.ID));
+        const ops = [];
+        others.forEach(o => {
+            data.details.filter(d => String(d.MaterialID) === String(o.ID)).forEach(d => {
+                ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { MaterialID: String(keep.ID), MaterialName: keep.MaterialName, UnitCost: has(keep.CostPrice) ? keep.CostPrice : d.UnitCost, Remark: "" } });
+                Object.assign(d, { MaterialID: String(keep.ID), MaterialName: keep.MaterialName });
+            });
+            ops.push({ action: "update", table: "Material", id: o.ID, data: { IsActive: false, Remark: `已合併到「${keep.MaterialName}」（${keep.ID}）` } });
+            o.IsActive = false;
+        });
+        if (ops.length) await API.batch(ops, { loadingText: "合併中…" });
+    }
+
+    // =========================
+    // 2a. 名稱相同的食材：一次核可
+    // =========================
+    function rAuto(s) {
+        $("#crBody").innerHTML = `
+<p class="text-muted small">這些食材的名稱和原料庫的原料寫法一致（忽略空白、全形半形、括號），已有單價。核可後會把配方裡的食材連到對應的原料。</p>
+<table class="table table-sm align-middle"><thead><tr><th>配方裡的食材</th><th>→ 原料庫</th><th class="text-end">單價</th><th class="text-end">配方數</th></tr></thead><tbody>
+${s.items.map(x => `<tr><td>${E(x.g.name)}</td><td>${E(x.m.MaterialName)}</td><td class="text-end">${money(x.m.CostPrice, 4)}/${E(x.m.Unit || "g")}</td><td class="text-end">${x.g.formulas.size}</td></tr>`).join("")}</tbody></table>`;
+    }
+
+    async function aAuto(s) {
+        const ops = [];
+        s.items.forEach(({ g, m }) => g.rows.forEach(d => {
+            ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { MaterialID: String(m.ID), MaterialName: m.MaterialName, UnitCost: m.CostPrice, Remark: "" } });
+            Object.assign(d, { MaterialID: String(m.ID), MaterialName: m.MaterialName, UnitCost: m.CostPrice, Remark: "" });
+        }));
+        for (let i = 0; i < ops.length; i += 40) await API.batch(ops.slice(i, i + 40), { loadingText: "更新配方食材中…" });
+    }
+
+    // =========================
+    // 2b. 單一食材：對上原料、填包裝與價格
+    // =========================
+    function initIngredient(s) {
+        const best = s.g.material || (s.cands[0] && s.cands[0].s >= .6 ? s.cands[0].m : null);
+        s.st = { pick: best ? String(best.ID) : "new" };
+        fillIng(s);
+    }
+
+    function fillIng(s) {
+        const m = s.st.pick === "new" ? null : matById(s.st.pick);
+        Object.assign(s.st, m ? {
+            name: m.MaterialName, unit: m.Unit || "g", pkgW: m.PackageWeight ?? "", pkgP: m.PackagePrice ?? "", price: m.CostPrice ?? "",
+            origin: m.OriginCountry || "", spec: m.Specification || ""
+        } : { name: s.g.name, unit: "g", pkgW: "", pkgP: "", price: "", origin: "", spec: "" });
+    }
+
+    function rIngredient(s) {
+
+        if (!s.st) initIngredient(s);
+        const st = s.st;
+        const others = mats().filter(m => !s.cands.some(c => String(c.m.ID) === String(m.ID)));
+
+        $("#crBody").innerHTML = `
+<div class="small text-muted mb-2">用在 ${s.g.formulas.size} 個配方：${E([...s.g.formulas].slice(0, 6).join("、"))}${s.g.formulas.size > 6 ? "…" : ""}　${s.g.material ? `（原料「${E(s.g.material.MaterialName)}」還沒有單價）` : "（還沒對上原料庫）"}</div>
+<div class="mb-2 fw-bold small">對應到哪個原料？</div>
+${s.cands.map(c => `<label class="d-block border rounded px-2 py-1 mb-1"><input type="radio" name="pick" value="${c.m.ID}" ${String(st.pick) === String(c.m.ID) ? "checked" : ""}>
+    ${E(c.m.MaterialName)}　<span class="small ${priced(c.m) ? "" : "text-danger"}">${priced(c.m) ? money(c.m.CostPrice, 4) + "/" + E(c.m.Unit || "g") : "沒有單價"}</span>
+    <span class="small text-muted">相似 ${Math.round(c.s * 100)}%　${[c.m.OriginCountry, c.m.Specification].filter(Boolean).map(E).join("・")}</span></label>`).join("")}
+<div class="d-flex gap-2 align-items-center mb-1"><label class="border rounded px-2 py-1 flex-shrink-0"><input type="radio" name="pick" value="other" ${st.pick === "other" ? "checked" : ""}> 從全部原料選</label>
+    <select class="form-select form-select-sm" id="crOther"><option value="">選擇…</option>${others.map(m => `<option value="${m.ID}" ${String(st.pick) === String(m.ID) && !s.cands.some(c => String(c.m.ID) === String(m.ID)) ? "selected" : ""}>${E(m.MaterialName)}</option>`).join("")}</select></div>
+<label class="d-block border rounded px-2 py-1 mb-3"><input type="radio" name="pick" value="new" ${st.pick === "new" ? "checked" : ""}> ＋ 新增為新原料</label>
+<div class="row g-2">
+    <div class="col-md-6"><label class="form-label small mb-0">原料名稱</label><input class="form-control form-control-sm" data-k="name" value="${E(st.name)}"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">單位</label><input class="form-control form-control-sm" data-k="unit" value="${E(st.unit)}"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">產地（選填）</label><input class="form-control form-control-sm" data-k="origin" value="${E(st.origin)}"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">包裝重量（${E(st.unit || "g")}）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="pkgW" value="${E(st.pkgW)}" placeholder="例如 1000"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">包裝價格（$）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="pkgP" value="${E(st.pkgP)}" placeholder="例如 350"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">單價（每 ${E(st.unit || "g")}）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="price" value="${E(st.price)}"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">包裝規格（選填）</label><input class="form-control form-control-sm" data-k="spec" value="${E(st.spec)}" placeholder="1kg/包"></div>
+</div>
+<div class="small text-muted mt-2">填「包裝重量」與「包裝價格」會自動算出單價；也可以直接填單價。核可後，所有同名食材都會連到這個原料並套用單價。</div>`;
+
+        el.querySelectorAll("[name=pick]").forEach(r => r.addEventListener("change", () => {
+            st.pick = r.value === "other" ? (el.querySelector("#crOther").value || "other") : r.value;
+            if (r.value !== "other") fillIng(s); else if (st.pick !== "other") fillIng(s);
+            rIngredient(s);
+        }));
+        el.querySelector("#crOther").addEventListener("change", e => {
+            if (!e.target.value) return;
+            st.pick = e.target.value;
+            fillIng(s);
+            rIngredient(s);
+        });
+        el.querySelectorAll("[data-k]").forEach(i => i.addEventListener("input", () => {
+            st[i.dataset.k] = i.value;
+            if ((i.dataset.k === "pkgW" || i.dataset.k === "pkgP") && num(st.pkgW) > 0 && num(st.pkgP) > 0) {
+                st.price = Math.round(num(st.pkgP) / num(st.pkgW) * 1e6) / 1e6;
+                el.querySelector("[data-k=price]").value = st.price;
+            }
+        }));
+    }
+
+    async function aIngredient(s) {
+
+        const st = s.st;
+        const name = String(st.name || "").trim();
+        if (!name) { alert("請輸入原料名稱"); return false; }
+        if (!(num(st.price) > 0)) { alert("請填單價，或填包裝重量與包裝價格（自動計算）"); return false; }
+
+        const body = {
+            MaterialName: name, Unit: String(st.unit || "g").trim() || "g", CostPrice: num(st.price), OriginCountry: String(st.origin || "").trim(),
+            Specification: String(st.spec || "").trim(), PackageWeight: has(st.pkgW) ? num(st.pkgW) : null, PackagePrice: has(st.pkgP) ? num(st.pkgP) : null
+        };
+
+        let m = st.pick === "new" || st.pick === "other" ? null : matById(st.pick);
+        m = m ? Object.assign(m, await API.update("Material", m.ID, body)) : await API.insert("Material", Object.assign({ IsActive: true, Category: "" }, body));
+        if (!data.materials.some(x => String(x.ID) === String(m.ID))) data.materials.push(m);
+
+        // 這個食材（同名 / 同原料）在配方裡的每一列：連到原料、套用單價、清掉 ⚠️ 待確認
+        const ops = s.g.rows.map(d => ({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { MaterialID: String(m.ID), MaterialName: m.MaterialName, UnitCost: m.CostPrice, Remark: "" } }));
+        // 同一個原料已連結的其他配方列，單價一併更新
+        data.details.filter(d => String(d.MaterialID) === String(m.ID) && !s.g.rows.includes(d)).forEach(d => ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { UnitCost: m.CostPrice } }));
+        for (let i = 0; i < ops.length; i += 40) await API.batch(ops.slice(i, i + 40), { loadingText: "更新配方食材中…" });
+
+        s.g.rows.forEach(d => Object.assign(d, { MaterialID: String(m.ID), MaterialName: m.MaterialName, UnitCost: m.CostPrice, Remark: "" }));
+    }
+
+    // =========================
+    // 3. 配方
+    // =========================
+    function formulaCalc(f, st) {
+        const details = detailsOf(f.FormulaID);
+        const view = Object.assign({}, f, { YieldRate: has(st.yieldRate) ? st.yieldRate : f.YieldRate, UnitWeight: has(st.unitWeight) ? st.unitWeight : f.UnitWeight });
+        const pg = Cost.perGram(view, details, data.materials);
+        const uw = Cost.unitWeight(view, details);
+        const extra = num(st.pack) + num(st.labor) + num(st.other);
+        return { details, pg, uw, perPortion: pg.value * uw + extra, extra };
+    }
+
+    function rFormula(s) {
+
+        const f = s.f;
+        if (!s.st) s.st = { yieldRate: f.YieldRate ?? "", unitWeight: f.UnitWeight ?? "", pack: f.PackagingCost ?? "", labor: f.LaborCost ?? "", other: f.OtherCost ?? "" };
+        const st = s.st;
+        const c = formulaCalc(f, st);
+        const base = c.details.reduce((t, d) => t + num(d.Quantity), 0);
+
+        $("#crBody").innerHTML = `
+<table class="table table-sm align-middle">
+<thead><tr><th>食材</th><th class="text-end">基準 g</th><th class="text-end">單價/g</th><th>狀態</th></tr></thead>
+<tbody>${c.details.map(d => {
+            const m = matById(d.MaterialID);
+            const price = m && has(m.CostPrice) ? num(m.CostPrice) : num(d.UnitCost);
+            return `<tr><td>${E((m && m.MaterialName) || d.MaterialName || "")}</td><td class="text-end">${num(d.Quantity)}</td><td class="text-end">${price ? money(price, 4) : "-"}</td>
+                <td class="small">${!price ? '<span class="text-danger">沒有單價</span>' : !m ? '<span class="text-warning">未連到原料庫</span>' : '<span class="text-success">已連結</span>'}${d.Remark ? ` <span class="text-danger">⚠️ ${E(d.Remark)}</span>` : ""}</td></tr>`;
+        }).join("") || `<tr><td colspan="4" class="text-muted">這個配方還沒有食材</td></tr>`}</tbody></table>
+<div class="row g-2 mb-2">
+    <div class="col-md-3"><label class="form-label small mb-0">成品率 %（選填）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="yieldRate" value="${E(st.yieldRate)}" placeholder="100"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">每份重量 g（選填）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="unitWeight" value="${E(st.unitWeight)}"></div>
+    <div class="col-md-2"><label class="form-label small mb-0">包材 / 份</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="pack" value="${E(st.pack)}"></div>
+    <div class="col-md-2"><label class="form-label small mb-0">人工 / 份</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="labor" value="${E(st.labor)}"></div>
+    <div class="col-md-2"><label class="form-label small mb-0">其他 / 份</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="other" value="${E(st.other)}"></div>
+</div>
+<div class="alert alert-light border small mb-0" id="crCalc"></div>`;
+
+        const calc = () => {
+            const k = formulaCalc(f, st);
+            el.querySelector("#crCalc").innerHTML = `原料總重 ${Math.round(base * 10) / 10} g　每公克成本 <b>${money(k.pg.value, 4)}</b>　每份（${Math.round(k.uw * 10) / 10} g）成本 <b class="text-success">${money(k.perPortion)}</b>` +
+                (k.pg.missing.length ? `<div class="text-danger mt-1">⚠️ 沒有單價（成本會偏低）：${E([...new Set(k.pg.missing)].join("、"))}。請先按「略過」，重新開啟精靈從食材開始確認。</div>` : "");
+        };
+        calc();
+        el.querySelectorAll("[data-k]").forEach(i => i.addEventListener("input", () => { st[i.dataset.k] = i.value; calc(); }));
+    }
+
+    async function aFormula(s) {
+
+        const f = s.f, st = s.st;
+        const c = formulaCalc(f, st);
+
+        if (c.pg.missing.length && !confirm(`還有 ${new Set(c.pg.missing).size} 個食材沒有單價（${[...new Set(c.pg.missing)].slice(0, 5).join("、")}），成本會偏低。仍要核可這個配方嗎？`)) return false;
+
+        let who = "";
+        try { who = (await API.me({ silent: true }))?.user?.Name || ""; } catch { }
+
+        const body = {
+            IsVerified: true, VerifiedAt: new Date().toLocaleString("sv-SE").slice(0, 16), VerifiedBy: who,
+            YieldRate: has(st.yieldRate) ? num(st.yieldRate) : null, UnitWeight: has(st.unitWeight) ? num(st.unitWeight) : null,
+            PackagingCost: has(st.pack) ? num(st.pack) : null, LaborCost: has(st.labor) ? num(st.labor) : null, OtherCost: has(st.other) ? num(st.other) : null,
+            MaterialCost: r2(c.pg.value * c.uw), UnitCost: r2(c.perPortion), TotalCost: r2(c.perPortion)
+        };
+
+        Object.assign(f, await API.update("Formula", f.FormulaID, body));
+
+        const ops = c.details.filter(d => d.Remark).map(d => ({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { Remark: "" } }));
+        if (ops.length) { await API.batch(ops, { silent: true }); c.details.forEach(d => { d.Remark = ""; }); }
+    }
+
+    // =========================
+    // 4. 產品：對上配方、公克數、包材 → 成本
+    // =========================
+    function weightGuess(p) {
+        if (num(p.Weight) > 0) return num(p.Weight);
+        const m = String(`${p.Capacity || ""} ${p.Specification || ""}`).normalize("NFKC").toLowerCase().match(/(\d+(?:\.\d+)?)\s*(kg|公斤|g|公克|克|l|公升|ml|毫升|cc)/);
+        if (!m) return 0;
+        const n = Number(m[1]), u = m[2];
+        return /kg|公斤|^l$|公升/.test(u) ? n * 1000 : n;       // 公升 ≈ 1000 g（冰品、液體以 1 ml ≈ 1 g 估算）
+    }
+
+    function initProduct(s) {
+
+        const p = s.p;
+        const cand = data.formulas.map(f => ({ f, s: String(f.ProductID) === String(p.ID) ? 2 : similarity(p.ProductName, f.FormulaName) }))
+            .filter(x => x.s >= .4).sort((a, b) => b.s - a.s).slice(0, 5);
+
+        const fid = p.FormulaID || (cand[0] && cand[0].s >= .6 ? String(cand[0].f.FormulaID) : "");
+        const pack = Cost.parsePackaging(p.PackagingJson).map(x => ({ MaterialID: String(x.MaterialID ?? ""), Qty: x.Qty ?? 1 }));
+
+        s.cand = cand;
+        s.st = {
+            useFormula: !(p.CostVerified === true && !p.FormulaID && has(p.CostPrice)), formulaId: fid ? String(fid) : "",
+            mode: p.FormulaUseMode === "portion" ? "portion" : "weight",
+            qty: has(p.FormulaUseQty) ? p.FormulaUseQty : (weightGuess(p) || ""), pack, manual: has(p.CostPrice) ? p.CostPrice : ""
+        };
+    }
+
+    const packChoices = () => { const a = mats().filter(m => /包/.test(m.Category || "")); return a.length ? a : mats(); };
+
+    function productCalc(s) {
+        const st = s.st;
+        return Cost.product({ FormulaID: st.useFormula ? st.formulaId : "", FormulaUseMode: st.mode, FormulaUseQty: st.qty,
+            PackagingJson: JSON.stringify(st.useFormula ? st.pack.filter(x => x.MaterialID) : []) }, data.formulas, data.details, data.materials);
+    }
+
+    function rProduct(s) {
+
+        if (!s.st) initProduct(s);
+        const p = s.p, st = s.st;
+        const sel = new Set(s.cand.map(c => String(c.f.FormulaID)));
+
+        $("#crBody").innerHTML = `
+<div class="small text-muted mb-2">售價 ${has(p.SalePrice) ? money(p.SalePrice) : "未填"}　目前成本 ${has(p.CostPrice) && num(p.CostPrice) ? money(p.CostPrice) : "<span class='text-danger'>沒有</span>"}　重量 ${num(p.Weight) ? num(p.Weight) + " g" : "未填"}${p.Capacity ? "　容量 " + E(p.Capacity) : ""}${p.Specification ? "　規格 " + E(p.Specification) : ""}</div>
+<div class="btn-group btn-group-sm mb-3" role="group">
+    <input type="radio" class="btn-check" name="useF" id="uf1" value="1" ${st.useFormula ? "checked" : ""}><label class="btn btn-outline-primary" for="uf1">用配方計算成本</label>
+    <input type="radio" class="btn-check" name="useF" id="uf0" value="0" ${st.useFormula ? "" : "checked"}><label class="btn btn-outline-primary" for="uf0">不用配方，直接填成本</label>
+</div>
+<div id="crF" class="${st.useFormula ? "" : "d-none"}">
+    <div class="row g-2 mb-2">
+        <div class="col-md-6"><label class="form-label small mb-0">配方${s.cand.length ? "（建議的排在前面）" : ""}</label>
+            <select class="form-select form-select-sm" data-k="formulaId"><option value="">請選擇配方…</option>
+            ${s.cand.map(c => `<option value="${c.f.FormulaID}" ${String(st.formulaId) === String(c.f.FormulaID) ? "selected" : ""}>★ ${E(formulaName(c.f))}${c.s >= 2 ? "（配方指定了此產品）" : `（相似 ${Math.round(c.s * 100)}%）`}</option>`).join("")}
+            ${data.formulas.filter(f => !sel.has(String(f.FormulaID))).map(f => `<option value="${f.FormulaID}" ${String(st.formulaId) === String(f.FormulaID) ? "selected" : ""}>${E(formulaName(f))}</option>`).join("")}</select></div>
+        <div class="col-md-3"><label class="form-label small mb-0">用量單位</label>
+            <select class="form-select form-select-sm" data-k="mode"><option value="weight" ${st.mode === "weight" ? "selected" : ""}>重量（成品 g）</option><option value="portion" ${st.mode === "portion" ? "selected" : ""}>份數（配方幾份）</option></select></div>
+        <div class="col-md-3"><label class="form-label small mb-0">此產品用量（${st.mode === "weight" ? "g" : "份"}）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="qty" value="${E(st.qty)}"></div>
+    </div>
+    <div class="small fw-bold mb-1">包材（選填）</div>
+    <div id="crPack"></div>
+    <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="crAddPack">＋ 加入包材</button>
+</div>
+<div id="crM" class="${st.useFormula ? "d-none" : ""}"><label class="form-label small mb-0">成本（每個產品，$）</label><input type="number" min="0" step="any" class="form-control form-control-sm" style="max-width:200px" data-k="manual" value="${E(st.manual)}"></div>
+<div class="alert alert-light border small mt-2 mb-0" id="crCalc"></div>`;
+
+        const packHtml = () => {
+            el.querySelector("#crPack").innerHTML = st.pack.map((x, i) => `<div class="d-flex gap-1 mb-1" data-i="${i}">
+                <select class="form-select form-select-sm" data-pm><option value="">選擇包材…</option>${packChoices().map(m => `<option value="${m.ID}" ${String(x.MaterialID) === String(m.ID) ? "selected" : ""}>${E(m.MaterialName)}${priced(m) ? "（" + money(m.CostPrice, 4) + "/" + E(m.Unit || "個") + "）" : "（沒有單價）"}</option>`).join("")}</select>
+                <input type="number" min="0" step="any" class="form-control form-control-sm" style="max-width:90px" data-pq value="${E(x.Qty)}"><button type="button" class="btn btn-sm btn-link text-danger p-0" data-pd>✕</button></div>`).join("");
+        };
+
+        const calc = () => {
+            const box = el.querySelector("#crCalc");
+            if (!st.useFormula) { const sp = num(p.SalePrice), c = num(st.manual); box.innerHTML = `成本 <b>${money(c)}</b>${sp > 0 ? `　毛利 ${money(sp - c)}（${((sp - c) / sp * 100).toFixed(1)}%）` : ""}`; return; }
+            const c = productCalc(s), sp = num(p.SalePrice);
+            box.innerHTML = c.hasFormula
+                ? `用量 ${Math.round(c.grams * 10) / 10} g　配方原料 ${money(c.formula)}　人工/其他 ${money(c.extra)}　包材 ${money(c.packaging)}<br>每個產品成本 <b class="text-success">${money(c.total)}</b>${sp > 0 ? `　毛利 ${money(sp - c.total)}（${((sp - c.total) / sp * 100).toFixed(1)}%）` : ""}` +
+                (c.missing.length ? `<div class="text-danger mt-1">⚠️ 沒有單價：${E([...new Set(c.missing)].join("、"))}</div>` : "") + (!c.grams ? `<div class="text-danger mt-1">請填此產品的用量</div>` : "")
+                : "請選擇配方";
+        };
+
+        packHtml();
+        calc();
+
+        el.querySelectorAll("[name=useF]").forEach(r => r.addEventListener("change", () => { st.useFormula = r.value === "1"; rProduct(s); }));
+        el.querySelectorAll("[data-k]").forEach(i => i.addEventListener(i.tagName === "SELECT" ? "change" : "input", () => {
+            st[i.dataset.k] = i.value;
+            if (i.tagName === "SELECT") rProduct(s); else calc();
+        }));
+        const addBtn = el.querySelector("#crAddPack");
+        if (addBtn) addBtn.addEventListener("click", () => { st.pack.push({ MaterialID: "", Qty: 1 }); packHtml(); });
+        el.querySelector("#crPack").addEventListener("change", e => { const i = Number(e.target.closest("[data-i]").dataset.i); if (e.target.matches("[data-pm]")) st.pack[i].MaterialID = e.target.value; calc(); });
+        el.querySelector("#crPack").addEventListener("input", e => { if (e.target.matches("[data-pq]")) { st.pack[Number(e.target.closest("[data-i]").dataset.i)].Qty = e.target.value; calc(); } });
+        el.querySelector("#crPack").addEventListener("click", e => { if (e.target.matches("[data-pd]")) { st.pack.splice(Number(e.target.closest("[data-i]").dataset.i), 1); packHtml(); calc(); } });
+    }
+
+    async function aProduct(s) {
+
+        const p = s.p, st = s.st;
+        let body;
+
+        if (!st.useFormula) {
+            if (!has(st.manual)) { alert("請填成本"); return false; }
+            body = { FormulaID: "", FormulaUseMode: "", FormulaUseQty: null, PackagingJson: "[]", CostPrice: r2(num(st.manual)), CostVerified: true };
+        } else {
+            if (!st.formulaId) { alert("請選擇配方，或改選「不用配方，直接填成本」"); return false; }
+            if (!(num(st.qty) > 0)) { alert("請填此產品的用量（公克或份數）"); return false; }
+            const c = productCalc(s);
+            if (c.missing.length && !confirm(`這些項目沒有單價，成本會偏低：${[...new Set(c.missing)].slice(0, 6).join("、")}。仍要核可嗎？`)) return false;
+            const pack = st.pack.filter(x => x.MaterialID).map(x => { const m = matById(x.MaterialID); return { MaterialID: String(x.MaterialID), Name: m ? m.MaterialName : "", Qty: num(x.Qty), UnitCost: m && has(m.CostPrice) ? num(m.CostPrice) : "" }; });
+            body = { FormulaID: String(st.formulaId), FormulaUseMode: st.mode, FormulaUseQty: num(st.qty), PackagingJson: JSON.stringify(pack), CostPrice: r2(c.total), CostVerified: true };
+        }
+
+        Object.assign(p, await API.update("Products", p.ID, body));
+    }
+
+    // =========================
+    // 入口
+    // =========================
+    async function open(o = {}) {
+
+        opts = o;
+        approved = 0;
+        changed = false;
+
+        try {
+            await load();
+        } catch (err) {
+            App.error(err, "讀取資料失敗");
+            return;
+        }
+
+        queue = build();
+
+        if (!queue.length) {
+            alert(o.formulaId ? "這個配方的食材都已確認 👍" : "目前沒有需要確認的項目 👍");
+            return;
+        }
+
+        if (!el) frame();
+        idx = 0;
+        render();
+        modal.show();
+    }
+
+    return { open, countIssues, norm, similarity };
+
+})();

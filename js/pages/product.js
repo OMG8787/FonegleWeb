@@ -143,6 +143,7 @@ Pages.Product = (() => {
         );
 
         dom.btnRecalcAll.addEventListener("click", recalcAll);
+        document.getElementById("btnReview").addEventListener("click", () => CostReview.open({ onDone: async () => { await loadInit(); if (currentDetail) { const f = allProducts.find(p => p.ID === currentDetail.ID); if (f) { currentDetail = f; fillForm(f); } } } }));
         dom.btnApplyCost.addEventListener("click", () => recalc(true));
         dom.btnAddPack.addEventListener("click", () => {
             packRows.push({ MaterialID: "", Name: "", Qty: 1, UnitCost: "" });

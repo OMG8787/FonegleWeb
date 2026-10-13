@@ -127,12 +127,12 @@ const SCHEMA = {
         key: 'ID', seq: 'ID',
         cols: 'ID:n SKU Barcode ProductName ShortName CategoryID:n Brand Specification Flavor Capacity Weight:n Color Material Unit ' +
             'SalePrice:n MemberPrice:n CostPrice:n ShelfLifeDays:n FormulaID MinStock:n CurrentStock:n Status IsB2B:b IsB2C:b IsActive:b ' +
-            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson'
+            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson CostVerified:b'
     },
     Material: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n MaterialName Category SupplierID:n Barcode Unit CostPrice:n CurrentStock:n MinStock:n Specification OriginCountry ' +
-            'ExpireDays:n IsActive:b Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt'
+            'ExpireDays:n IsActive:b Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt PackageWeight:n PackagePrice:n'
     },
     Inventory: {
         key: 'InventoryID', seq: 'InventoryID',
@@ -143,7 +143,7 @@ const SCHEMA = {
         key: 'OrderID', seq: 'OrderID',
         cols: 'OrderID:n OrderNo MemberID MemberName MemberPhone MemberEmail ShippingAddress ProductID ProductName Qty:n Unit UnitPrice:n ' +
             'DiscountAmount:n ShippingFee:n TotalAmount:n PaymentMethod PaymentStatus OrderStatus ShippingStatus SalesChannel Note ' +
-            'OrderDate CheckoutAt ExpectedShippingDate CreatedBy CreatedAt UpdatedBy UpdatedAt CompanyId:n ContactName'
+            'OrderDate CheckoutAt ExpectedShippingDate CreatedBy CreatedAt UpdatedBy UpdatedAt CompanyId:n ContactName UnitCost:n'
     },
     Shipment: {
         key: 'ShipmentID', seq: 'ShipmentID',
@@ -332,7 +332,7 @@ const COLUMN_LABELS = {
     // 商品與生產
     SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
     Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
-    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
     MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
     CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
@@ -1458,7 +1458,7 @@ function financeSummary_(req, ctx) {
         Expenses: pick('Expenses', ['ExpenseDate', 'Amount']),
         StallRecords: pick('StallRecords', ['StallDate', 'Revenue', 'TotalCost', 'FoodCost', 'ProfitLoss']),
         BrandCosts: pick('BrandCosts', ['RecordDate', 'Type', 'Amount']),
-        Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'ShippingFee', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate']),
+        Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'ShippingFee', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate', 'UnitCost']),
         Products: pick('Products', ['ID', 'CostPrice'])
     };
 }
@@ -1718,7 +1718,23 @@ const HOOKS = {
         afterWrite(obj, ctx) { syncCalendarDeposit_(obj, ctx); }
     },
     // 訂單（連到客戶的）自動建立 / 更新應收帳款，發票提醒與收帳提醒都依帳款計算
+    // 訂單成本：沒結清（未付款）時用產品目前的成本（食材會浮動）；變成「已付款」那一刻把成本記進 UnitCost，
+    // 之後產品成本再怎麼變，這筆訂單的利潤都不會動
     Orders: {
+        beforeInsert(obj) {
+            if (obj.PaymentStatus === '已付款' && (obj.UnitCost === null || obj.UnitCost === undefined || obj.UnitCost === ''))
+                snapshotOrderCost_(obj);
+        },
+        beforeUpdate(patch, old) {
+            const nowPaid = (patch.PaymentStatus !== undefined ? patch.PaymentStatus : old.PaymentStatus) === '已付款';
+            const wasPaid = old.PaymentStatus === '已付款';
+            const hasOld = old.UnitCost !== null && old.UnitCost !== undefined && old.UnitCost !== '';
+
+            if (nowPaid && wasPaid && hasOld) delete patch.UnitCost;              // 已結清：成本鎖定，不接受修改
+            else if (nowPaid && !wasPaid && (patch.UnitCost === undefined || patch.UnitCost === null || patch.UnitCost === ''))
+                snapshotOrderCost_(patch, old);                                    // 剛結清：記下當下成本
+            else if (!nowPaid && patch.UnitCost === undefined && hasOld) patch.UnitCost = '';   // 退款 / 改回未付款：解除鎖定
+        },
         afterWrite(obj, ctx) { syncOrderReceivable_(obj.OrderNo, ctx); }
     },
     Roles: {
@@ -1777,6 +1793,14 @@ const HOOKS = {
 //   修改訂單：更新金額、品項、日期；訂單改成已付款 → 帳款補成已收（不會把已收的改回未收）
 //   刪除訂單：由訂單自動建立、而且還沒收款的帳款一起刪除
 // ------------------------------------------------------------
+// 把產品「目前」的成本記進這筆訂單（沒有產品或產品沒有成本就不記）
+function snapshotOrderCost_(target, old) {
+    const pid = target.ProductID !== undefined ? target.ProductID : (old && old.ProductID);
+    if (pid === null || pid === undefined || pid === '') return;
+    const p = findRow_(tbl_('Products'), pid);
+    if (p && p.obj.CostPrice !== null && p.obj.CostPrice !== undefined && p.obj.CostPrice !== '') target.UnitCost = Number(p.obj.CostPrice);
+}
+
 function syncOrderReceivable_(orderNo, ctx) {
     if (!orderNo) return;
 

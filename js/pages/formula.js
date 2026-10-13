@@ -100,6 +100,8 @@ Pages.Formula = (() => {
         dom.btnPrint.addEventListener("click", printSheet);
         dom.btnExcel.addEventListener("click", () => exportExcel([currentSnapshot()]));
         dom.btnExportAll.addEventListener("click", exportAll);
+        document.getElementById("btnReview").addEventListener("click", () => startReview());
+        document.getElementById("btnReviewThis").addEventListener("click", () => current && startReview(current.FormulaID));
 
         dom.btnAddMaterial.addEventListener("click", () => {
             rows.push({ MaterialID: "", MaterialName: "", Quantity: "", UnitCost: "", Remark: "" });
@@ -627,6 +629,7 @@ Pages.Formula = (() => {
     function openCreate(scroll) {
 
         current = null;
+        document.getElementById("reviewBanner")?.classList.add("d-none");
         tryMult = null;
         tryPortion = null;
         dom.formulaForm.reset();
@@ -645,9 +648,36 @@ Pages.Formula = (() => {
         if (scroll) dom.formCard.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
+    // 成本確認精靈（帶 formulaId = 只確認這個配方）；確認完重新載入資料
+    function startReview(formulaId) {
+        CostReview.open({
+            formulaId,
+            onDone: async () => {
+                const d = await API.getMany(["Formula", "FormulaDetail", "Material"]);
+                formulas = d.Formula || formulas;
+                allDetails = d.FormulaDetail || allDetails;
+                materials = (d.Material || materials).filter(m => m.IsActive !== false);
+                renderMaterialNames();
+                const again = current && formulas.find(x => x.FormulaID === current.FormulaID);
+                if (again) loadDetail(again); else renderList();
+            }
+        });
+    }
+
+    // 點開配方時，食材沒對上原料庫 / 沒有單價 / 還沒核可 → 提醒，一鍵開始確認
+    function showReviewBanner(f) {
+        const n = CostReview.countIssues(f.FormulaID, allDetails, materials);
+        const unverified = f.IsVerified !== true;
+        document.getElementById("reviewBanner").classList.toggle("d-none", !(n || unverified));
+        document.getElementById("reviewText").textContent = n
+            ? `⚠️ 這個配方有 ${n} 項食材還沒確認（沒對上原料庫、沒有單價或標記待確認），成本可能不準。`
+            : "這個配方還沒核可，要不要檢視一次食材與成本？";
+    }
+
     function loadDetail(f) {
 
         if (!f) return;
+        showReviewBanner(f);
 
         current = f;
         tryMult = null;

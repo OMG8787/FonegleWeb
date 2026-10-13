@@ -559,7 +559,8 @@ ${x.CompanyId ? "🏢" : "👤"} ${App.esc(x.MemberName || "未知")}
                 ProductName: r.ProductName || "",
                 Qty: r.Qty ?? "",
                 Unit: r.Unit || "",
-                Price: r.UnitPrice ?? ""
+                Price: r.UnitPrice ?? "",
+                UnitCost: r.UnitCost ?? ""
             }))
         };
         currentOrder = data;
@@ -631,6 +632,7 @@ ${x.CompanyId ? "🏢" : "👤"} ${App.esc(x.MemberName || "未知")}
                 p.Unit;
             tr.querySelector(".price").value =
                 p.Price;
+            tr.dataset.unitCost = p.UnitCost ?? "";     // 已結清訂單的成本單價（後端鎖定，這裡只是原樣帶回）
         });
         calculateTotal();
     }
@@ -676,6 +678,7 @@ class="btn btn-danger btn-sm">
         tr.querySelector(".productSelect")
             .addEventListener("change", function () {
                 const custom = isCustom(this.value);
+                tr.dataset.unitCost = "";          // 換了產品：舊的成本單價不能沿用
                 tr.querySelector(".productID").value = custom ? "" : this.value;
                 tr.querySelector(".productID").placeholder = custom ? "自訂品項" : "";
                 // 自動帶入單位與售價
@@ -898,7 +901,8 @@ class="btn btn-danger btn-sm">
             if (!qty) return;
             lines++;
             const p = pid ? productOptions.find(x => x.id === String(pid)) : null;
-            if (p && p.cost !== null && p.cost !== undefined && p.cost !== "") cost += qty * Number(p.cost);
+            if (tr.dataset.unitCost !== undefined && tr.dataset.unitCost !== "" && dom.PaymentStatus.value === "已付款") cost += qty * Number(tr.dataset.unitCost);   // 已結清：用當時記下的成本
+            else if (p && p.cost !== null && p.cost !== undefined && p.cost !== "") cost += qty * Number(p.cost);
             else missing++;
         });
 
@@ -928,6 +932,7 @@ class="btn btn-danger btn-sm">
             Qty: App.numOrNull(tr.querySelector(".qty").value),
             Unit: tr.querySelector(".unit").value.trim(),
             UnitPrice: App.numOrNull(tr.querySelector(".price").value),
+            UnitCost: App.numOrNull(tr.dataset.unitCost),
 
             // ===== 其它資料 =====
             DiscountAmount: App.numOrNull(dom.DiscountAmount.value),
