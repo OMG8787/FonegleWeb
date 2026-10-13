@@ -257,6 +257,29 @@ Pages.Material = (() => {
         scrollToForm();
     }
 
+    // 包裝規格與價格（同一個原料可有多種包裝；計價用的那一個決定單價）
+    let pkgs = [];
+
+    function renderPackages(material) {
+
+        pkgs = MaterialQuick.parsePackages(material);
+        if (!pkgs.length) pkgs = [{ label: "", weight: "", price: "", def: false }];
+
+        const old = document.getElementById("pkBox");
+        const box = old.cloneNode(false);        // 換掉容器，清掉上一次綁定的事件
+        old.replaceWith(box);
+
+        const sync = () => {
+            const f = MaterialQuick.packageFields(pkgs);
+            dom.CostPrice.readOnly = !!f;
+            if (f) dom.CostPrice.value = f.CostPrice;
+        };
+
+        box.innerHTML = MaterialQuick.packagesHtml(pkgs, dom.Unit.value.trim() || "g");
+        MaterialQuick.bindPackages(box, pkgs, () => dom.Unit.value.trim() || "g", sync);
+        sync();
+    }
+
     function fillForm(d) {
         const v = x => (x === null || x === undefined ? "" : String(x));
         dom.ID.value = v(d.ID);
@@ -274,6 +297,7 @@ Pages.Material = (() => {
         dom.IsActive.value = d.IsActive === false ? "false" : "true";
         dom.Description.value = v(d.Description);
         dom.Remark.value = v(d.Remark);
+        renderPackages(d);
     }
 
     function showForm() {
@@ -294,7 +318,8 @@ Pages.Material = (() => {
     }
 
     function buildPayload() {
-        return {
+        const pf = MaterialQuick.packageFields(pkgs);
+        return Object.assign(pf || { PackageWeight: null, PackagePrice: null, PackagesJson: "" }, {
             MaterialName: dom.MaterialName.value.trim(),
             Category: dom.Category.value.trim(),
             SupplierID: App.numOrNull(dom.SupplierID.value),
@@ -309,7 +334,7 @@ Pages.Material = (() => {
             IsActive: dom.IsActive.value === "true",
             Description: dom.Description.value,
             Remark: dom.Remark.value
-        };
+        }, pf ? { CostPrice: pf.CostPrice } : {});
     }
 
     async function submitMaterial() {
@@ -364,6 +389,7 @@ Pages.Material = (() => {
         dom.form.reset();
         dom.ID.value = "";
         dom.IsActive.value = "true";
+        renderPackages(null);
         showForm();
         setModeUI("create");
         scrollToForm();
@@ -379,6 +405,7 @@ Pages.Material = (() => {
             dom.form.reset();
             dom.ID.value = "";
             dom.IsActive.value = "true";
+            renderPackages(null);
         }
     }
     function setModeUI(newMode) {

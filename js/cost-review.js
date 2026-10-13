@@ -274,9 +274,11 @@ ${s.items.map(x => `<tr><td>${E(x.g.name)}</td><td>${E(x.m.MaterialName)}</td><t
     function fillIng(s) {
         const m = s.st.pick === "new" ? null : matById(s.st.pick);
         Object.assign(s.st, m ? {
-            name: m.MaterialName, unit: m.Unit || "g", pkgW: m.PackageWeight ?? "", pkgP: m.PackagePrice ?? "", price: m.CostPrice ?? "",
+            name: m.MaterialName, unit: m.Unit || "g", price: m.CostPrice ?? "",
             origin: m.OriginCountry || "", spec: m.Specification || ""
-        } : { name: s.g.name, unit: "g", pkgW: "", pkgP: "", price: "", origin: "", spec: "" });
+        } : { name: s.g.name, unit: "g", price: "", origin: "", spec: "" });
+        s.st.pkgs = m ? MaterialQuick.parsePackages(m) : [];
+        if (!s.st.pkgs.length) s.st.pkgs = [{ label: "", weight: "", price: "", def: false }];
     }
 
     function rIngredient(s) {
@@ -298,12 +300,22 @@ ${s.cands.map(c => `<label class="d-block border rounded px-2 py-1 mb-1"><input 
     <div class="col-md-6"><label class="form-label small mb-0">原料名稱</label><input class="form-control form-control-sm" data-k="name" value="${E(st.name)}"></div>
     <div class="col-md-3"><label class="form-label small mb-0">單位</label><input class="form-control form-control-sm" data-k="unit" value="${E(st.unit)}"></div>
     <div class="col-md-3"><label class="form-label small mb-0">產地（選填）</label><input class="form-control form-control-sm" data-k="origin" value="${E(st.origin)}"></div>
-    <div class="col-md-3"><label class="form-label small mb-0">包裝重量（${E(st.unit || "g")}）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="pkgW" value="${E(st.pkgW)}" placeholder="例如 1000"></div>
-    <div class="col-md-3"><label class="form-label small mb-0">包裝價格（$）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="pkgP" value="${E(st.pkgP)}" placeholder="例如 350"></div>
-    <div class="col-md-3"><label class="form-label small mb-0">單價（每 ${E(st.unit || "g")}）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="price" value="${E(st.price)}"></div>
-    <div class="col-md-3"><label class="form-label small mb-0">包裝規格（選填）</label><input class="form-control form-control-sm" data-k="spec" value="${E(st.spec)}" placeholder="1kg/包"></div>
+    <div class="col-md-6"><label class="form-label small mb-0">規格說明（選填）</label><input class="form-control form-control-sm" data-k="spec" value="${E(st.spec)}"></div>
+    <div class="col-md-6"><label class="form-label small mb-0">單價（每 ${E(st.unit || "g")}；有填下方規格時自動算出）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="price" value="${E(st.price)}"></div>
 </div>
-<div class="small text-muted mt-2">填「包裝重量」與「包裝價格」會自動算出單價；也可以直接填單價。核可後，所有同名食材都會連到這個原料並套用單價。</div>`;
+<div id="crPk" class="mt-3"></div>
+<div class="small text-muted mt-2">同一個原料可以有好幾種包裝（例如 1L 瓶、4L 桶）：每種填內容量與價格，再選「計價用」的那一個（沒選就用最便宜的）。核可後，所有同名食材都會連到這個原料並套用單價。</div>`;
+
+        const syncPrice = () => {
+            const f = MaterialQuick.packageFields(st.pkgs);
+            const input = el.querySelector("[data-k=price]");
+            input.readOnly = !!f;
+            if (f) { st.price = f.CostPrice; input.value = f.CostPrice; }
+        };
+        const pk = el.querySelector("#crPk");
+        pk.innerHTML = MaterialQuick.packagesHtml(st.pkgs, st.unit || "g");
+        MaterialQuick.bindPackages(pk, st.pkgs, () => st.unit || "g", syncPrice);
+        syncPrice();
 
         el.querySelectorAll("[name=pick]").forEach(r => r.addEventListener("change", () => {
             st.pick = r.value === "other" ? (el.querySelector("#crOther").value || "other") : r.value;
@@ -318,10 +330,7 @@ ${s.cands.map(c => `<label class="d-block border rounded px-2 py-1 mb-1"><input 
         });
         el.querySelectorAll("[data-k]").forEach(i => i.addEventListener("input", () => {
             st[i.dataset.k] = i.value;
-            if ((i.dataset.k === "pkgW" || i.dataset.k === "pkgP") && num(st.pkgW) > 0 && num(st.pkgP) > 0) {
-                st.price = Math.round(num(st.pkgP) / num(st.pkgW) * 1e6) / 1e6;
-                el.querySelector("[data-k=price]").value = st.price;
-            }
+            if (i.dataset.k === "unit") pk.innerHTML = MaterialQuick.packagesHtml(st.pkgs, st.unit || "g");
         }));
     }
 
@@ -330,12 +339,13 @@ ${s.cands.map(c => `<label class="d-block border rounded px-2 py-1 mb-1"><input 
         const st = s.st;
         const name = String(st.name || "").trim();
         if (!name) { alert("請輸入原料名稱"); return false; }
-        if (!(num(st.price) > 0)) { alert("請填單價，或填包裝重量與包裝價格（自動計算）"); return false; }
+        const pf = MaterialQuick.packageFields(st.pkgs);
+        if (!pf && !(num(st.price) > 0)) { alert("請填單價，或填至少一個包裝規格的內容量與價格（自動計算）"); return false; }
 
-        const body = {
+        const body = Object.assign({
             MaterialName: name, Unit: String(st.unit || "g").trim() || "g", CostPrice: num(st.price), OriginCountry: String(st.origin || "").trim(),
-            Specification: String(st.spec || "").trim(), PackageWeight: has(st.pkgW) ? num(st.pkgW) : null, PackagePrice: has(st.pkgP) ? num(st.pkgP) : null
-        };
+            Specification: String(st.spec || "").trim()
+        }, pf || { PackageWeight: null, PackagePrice: null, PackagesJson: "" });
 
         let m = st.pick === "new" || st.pick === "other" ? null : matById(st.pick);
         m = m ? Object.assign(m, await API.update("Material", m.ID, body)) : await API.insert("Material", Object.assign({ IsActive: true, Category: "" }, body));

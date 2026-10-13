@@ -132,7 +132,7 @@ const SCHEMA = {
     Material: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n MaterialName Category SupplierID:n Barcode Unit CostPrice:n CurrentStock:n MinStock:n Specification OriginCountry ' +
-            'ExpireDays:n IsActive:b Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt PackageWeight:n PackagePrice:n'
+            'ExpireDays:n IsActive:b Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt PackageWeight:n PackagePrice:n PackagesJson'
     },
     Inventory: {
         key: 'InventoryID', seq: 'InventoryID',
@@ -332,7 +332,7 @@ const COLUMN_LABELS = {
     // 商品與生產
     SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
     Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
-    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', PackagesJson: '包裝規格與價格（JSON，同一原料可有多種包裝）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
     MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
     CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
