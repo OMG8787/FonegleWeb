@@ -38,6 +38,45 @@ Pages.Order = (() => {
         }
     }
 
+    // 已付款、但還沒記成本的舊訂單：用產品目前的成本記下來並鎖定（只處理一次，之後食材漲跌不再影響）
+    async function lockOldOrders() {
+
+        let orders, products;
+
+        try {
+            API.cacheClear();
+            const d = await API.getMany(["Orders", "Products"]);
+            orders = d.Orders || [];
+            products = d.Products || [];
+        } catch (err) {
+            App.error(err, "讀取資料失敗");
+            return;
+        }
+
+        const costOf = new Map(products.filter(p => p.CostPrice !== null && p.CostPrice !== undefined && p.CostPrice !== "" && Number(p.CostPrice) > 0).map(p => [String(p.ID), Number(p.CostPrice)]));
+        const todo = orders.filter(o => o.PaymentStatus === "已付款" && (o.UnitCost === null || o.UnitCost === undefined || o.UnitCost === "") && costOf.has(String(o.ProductID ?? "")));
+        const noCost = orders.filter(o => o.PaymentStatus === "已付款" && (o.UnitCost === null || o.UnitCost === undefined || o.UnitCost === "") && !costOf.has(String(o.ProductID ?? ""))).length;
+
+        if (!todo.length) { alert(noCost ? `沒有可以鎖定的訂單。
+有 ${noCost} 筆已付款訂單沒有連到產品或產品沒有成本，無法記錄成本。` : "所有已付款訂單的成本都已經鎖定了 👍"); return; }
+
+        const orderCount = new Set(todo.map(o => o.OrderNo)).size;
+        if (!confirm(`要把 ${orderCount} 張已付款訂單（${todo.length} 個品項）的成本，用「產品目前的成本」記下來並鎖定嗎？
+
+之後食材價格變動，這些訂單的利潤都不會再改變。${noCost ? `
+（另有 ${noCost} 筆沒有連產品或沒有成本，會略過）` : ""}
+
+要改某張訂單的成本，開啟那張訂單按「用目前成本重算」即可。`)) return;
+
+        try {
+            for (let i = 0; i < todo.length; i += 40)
+                await API.batch(todo.slice(i, i + 40).map(o => ({ action: "update", table: "Orders", id: o.OrderID, data: { UnitCost: costOf.get(String(o.ProductID)) } })), { loadingText: "鎖定成本中…" });
+            alert(`✅ 已鎖定 ${orderCount} 張訂單的成本`);
+        } catch (err) {
+            App.error(err, "鎖定失敗");
+        }
+    }
+
     function cacheDom() {
         dom.qExpectedShippingDate =
             document.getElementById("qExpectedShippingDate");
@@ -144,6 +183,13 @@ Pages.Order = (() => {
             "click",
             addDetailRow
         );
+        document.getElementById("btnLockOld")?.addEventListener("click", lockOldOrders);
+        document.getElementById("orderCostInfo")?.addEventListener("click", e => {
+            if (!e.target.closest("#btnUnlockCost")) return;
+            document.querySelectorAll("#orderDetailList tr").forEach(tr => { tr.dataset.unitCost = ""; });
+            calculateTotal();
+            alert("已解除鎖定：按「儲存」後，這張訂單會改用產品「目前」的成本，並在已付款時重新鎖定。");
+        });
         dom.btnNew?.addEventListener(
             "click",
             createMode
@@ -893,7 +939,7 @@ class="btn btn-danger btn-sm">
         const box = document.getElementById("orderCostInfo");
         if (!box) return;
 
-        let cost = 0, missing = 0, lines = 0;
+        let cost = 0, missing = 0, lines = 0, locked = 0;
 
         document.querySelectorAll("#orderDetailList tr").forEach(tr => {
             const pid = tr.querySelector(".productID")?.value;
@@ -901,7 +947,7 @@ class="btn btn-danger btn-sm">
             if (!qty) return;
             lines++;
             const p = pid ? productOptions.find(x => x.id === String(pid)) : null;
-            if (tr.dataset.unitCost !== undefined && tr.dataset.unitCost !== "" && dom.PaymentStatus.value === "已付款") cost += qty * Number(tr.dataset.unitCost);   // 已結清：用當時記下的成本
+            if (tr.dataset.unitCost !== undefined && tr.dataset.unitCost !== "" && dom.PaymentStatus.value === "已付款") { cost += qty * Number(tr.dataset.unitCost); locked++; }   // 已結清：用當時記下的成本
             else if (p && p.cost !== null && p.cost !== undefined && p.cost !== "") cost += qty * Number(p.cost);
             else missing++;
         });
@@ -910,6 +956,7 @@ class="btn btn-danger btn-sm">
 
         const profit = revenue - cost;
         box.innerHTML = `預估成本 $${Math.round(cost).toLocaleString()}　毛利 $${Math.round(profit).toLocaleString()}${revenue > 0 ? `（${(profit / revenue * 100).toFixed(1)}%）` : ""}　<span class="text-muted">（不含運費）</span>` +
+            (locked ? `<br><span class="text-success">🔒 已結清，成本鎖定在當時的數字</span> <a href="#" id="btnUnlockCost" onclick="return false">用目前成本重算</a>` : "") +
             (missing ? `<br><span class="text-danger">⚠️ ${missing} 個品項沒有成本（到產品頁設定配方或成本）</span>` : "");
     }
 
