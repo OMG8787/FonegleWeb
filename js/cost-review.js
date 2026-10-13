@@ -20,7 +20,7 @@ window.CostReview = (() => {
     const money = (v, d = 2) => "$" + (Math.round((Number(v) || 0) * 10 ** d) / 10 ** d).toLocaleString();
     const has = v => v !== null && v !== undefined && v !== "";
 
-    let modal = null, el = null, data = null, queue = [], idx = 0, opts = {}, changed = false, approved = 0, busy = false;
+    let modal = null, el = null, data = null, queue = [], idx = 0, opts = {}, changed = false, approved = 0, busy = false, pendingOpen = null;
 
     // =========================
     // 名稱比對（不同來源寫法不同：全形半形、空白、括號品牌、大小寫…）
@@ -69,6 +69,7 @@ window.CostReview = (() => {
     // 配方裡「還有問題」的食材列數（給配方頁提醒用）
     function countIssues(formulaId, details, materials) {
         return (details || []).filter(d => String(d.FormulaID) === String(formulaId)).filter(d => {
+            if (d.SubFormulaId) return !!d.Remark;          // 再製品：成本來自它的配方
             const m = has(d.MaterialID) ? (materials || []).find(x => String(x.ID) === String(d.MaterialID)) : null;
             return !m || !priced(m) || !!d.Remark;
         }).length;
@@ -102,6 +103,7 @@ window.CostReview = (() => {
         // 2) 食材對應原料庫
         const groups = new Map();
         scopeDetails.forEach(d => {
+            if (d.SubFormulaId && data.formulas.some(f => String(f.FormulaID) === String(d.SubFormulaId))) return;      // 再製品：成本來自它的配方
             const name = String(d.MaterialName || "").trim();
             const m = matById(d.MaterialID);
             let key;
@@ -157,7 +159,14 @@ window.CostReview = (() => {
         el.querySelector("#crPrev").addEventListener("click", () => go(idx - 1));
         el.querySelector("#crSkip").addEventListener("click", () => go(idx + 1));
         el.querySelector("#crOk").addEventListener("click", approve);
-        el.addEventListener("hidden.bs.modal", () => { if (changed && opts.onDone) opts.onDone(); changed = false; });
+        el.addEventListener("hidden.bs.modal", async () => {
+            const open = pendingOpen;
+            pendingOpen = null;
+            try { if (changed && opts.onDone) await opts.onDone(); } catch (e) { console.warn(e); }
+            changed = false;
+            // 新增了再製品配方：到那個配方登入食材（在配方頁直接切換；其他頁開啟配方頁）
+            if (open) { if (opts.openFormula) opts.openFormula(open); else location.href = "formula.html?f=" + encodeURIComponent(open); }
+        });
     }
 
     const $ = s => el.querySelector(s);
@@ -324,7 +333,8 @@ ${s.items.map(x => `<tr><td>${E(x.g.name)}</td><td>${E(x.m.MaterialName)}</td><t
         const others = mats().filter(m => !s.cands.some(c => String(c.m.ID) === String(m.ID)));
 
         $("#crBody").innerHTML = `
-<div class="small text-muted mb-2">用在 ${s.g.formulas.size} 個配方：${E([...s.g.formulas].slice(0, 6).join("、"))}${s.g.formulas.size > 6 ? "…" : ""}　${s.g.material ? `（原料「${E(s.g.material.MaterialName)}」還沒有單價）` : "（還沒對上原料庫）"}</div>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2"><div class="small text-muted">用在 ${s.g.formulas.size} 個配方：${E([...s.g.formulas].slice(0, 6).join("、"))}${s.g.formulas.size > 6 ? "…" : ""}　${s.g.material ? `（原料「${E(s.g.material.MaterialName)}」還沒有單價）` : "（還沒對上原料庫）"}</div>
+<button type="button" class="btn btn-sm btn-outline-warning" id="crSemi" title="自己泡製 / 熬煮的（例如伯爵茶、焦糖醬、濃縮咖啡）：新增成配方，在那個配方登入食材，成本自動寫回">🍳 這是自己做的（再製品）→ 新增成配方</button></div>
 <div class="mb-2 fw-bold small">對應到哪個原料？</div>
 ${s.cands.map(c => `<label class="d-block border rounded px-2 py-1 mb-1"><input type="radio" name="pick" value="${c.m.ID}" ${String(st.pick) === String(c.m.ID) ? "checked" : ""}>
     ${E(c.m.MaterialName)}　<span class="small ${priced(c.m) ? "" : "text-danger"}">${priced(c.m) ? money(c.m.CostPrice, 4) + "/" + E(c.m.Unit || "g") : "沒有單價"}</span>
@@ -368,6 +378,8 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
         syncPrice();
         drawOptions();
 
+        el.querySelector("#crSemi").addEventListener("click", () => makeSemi(s));
+
         el.querySelectorAll("[name=pick]").forEach(r => r.addEventListener("change", () => {
             st.pick = r.value === "other" ? (el.querySelector("#crOther").value || "other") : r.value;
             if (r.value !== "other") fillIng(s); else if (st.pick !== "other") fillIng(s);
@@ -383,6 +395,39 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             st[i.dataset.k] = i.value;
             if (i.dataset.k === "unit") pk.innerHTML = MaterialQuick.packagesHtml(st.pkgs, st.unit || "g");
         }));
+    }
+
+    // 這個食材是自己做的：新增成再製品配方（已有同名配方就沿用），食材改連到那個配方，然後到那個配方登入食材與用量
+    async function makeSemi(s) {
+
+        if (busy) return;
+
+        const name = String(s.g.name || "").trim();
+        let sub = data.formulas.find(f => String(f.FormulaName).trim() === name);
+
+        if (!confirm(sub
+            ? `已經有一個配方叫「${name}」，要把它當作這個食材的再製品，並開啟它登入食材嗎？`
+            : `「${name}」是自己做的（泡製 / 熬煮）嗎？\n\n會新增一個配方「${name}」，接著帶你到那個配方登入食材與用量；儲存後成本會自動算出，並寫回用到它的配方。`)) return;
+
+        try {
+            busy = true;
+            if (!sub) { sub = await API.insert("Formula", { FormulaName: name, YieldQty: 1, YieldUnit: "g", UnitWeight: 1000, YieldRate: 100, IsActive: true, IsSemi: true }); data.formulas.push(sub); }
+            else if (sub.IsSemi !== true) Object.assign(sub, await API.update("Formula", sub.FormulaID, { IsSemi: true }));
+
+            const gram = Cost.subGramCost(sub.FormulaID, data.formulas, data.details, data.materials).price;
+            const ops = s.g.rows.map(d => ({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { SubFormulaId: String(sub.FormulaID), MaterialID: "", MaterialName: name, PackageId: "", UnitCost: Math.round(gram * 1e6) / 1e6, Remark: "" } }));
+            for (let i = 0; i < ops.length; i += 40) await API.batch(ops.slice(i, i + 40), { loadingText: "更新配方食材中…" });
+            s.g.rows.forEach(d => Object.assign(d, { SubFormulaId: String(sub.FormulaID), MaterialID: "", PackageId: "", UnitCost: gram, Remark: "" }));
+
+            changed = true;
+            pendingOpen = String(sub.FormulaID);
+            busy = false;
+            modal.hide();
+        } catch (err) {
+            App.error(err, "建立失敗");
+        } finally {
+            busy = false;
+        }
     }
 
     async function aIngredient(s) {
@@ -420,7 +465,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
     function formulaCalc(f, st) {
         const details = detailsOf(f.FormulaID);
         const view = Object.assign({}, f, { YieldRate: has(st.yieldRate) ? st.yieldRate : f.YieldRate, UnitWeight: has(st.unitWeight) ? st.unitWeight : f.UnitWeight });
-        const pg = Cost.perGram(view, details, data.materials);
+        const pg = Cost.perGram(view, details, data.materials, { formulas: data.formulas, allDetails: data.details, materials: data.materials, seen: new Set([String(f.FormulaID)]) });
         const uw = Cost.unitWeight(view, details);
         const extra = num(st.pack) + num(st.labor) + num(st.other);
         return { details, pg, uw, perPortion: pg.value * uw + extra, extra };
@@ -439,10 +484,11 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
 <thead><tr><th>食材</th><th class="text-end">基準 g</th><th class="text-end">單價/g</th><th>狀態</th></tr></thead>
 <tbody>${c.details.map(d => {
             const m = matById(d.MaterialID);
-            const price = Cost.detailPrice(d, m);
+            const subF = d.SubFormulaId ? data.formulas.find(f => String(f.FormulaID) === String(d.SubFormulaId)) : null;
+            const price = subF ? Cost.subGramCost(subF.FormulaID, data.formulas, data.details, data.materials).price : Cost.detailPrice(d, m);
             const opt = m && d.PackageId ? Cost.options(m).find(o => String(o.id) === String(d.PackageId)) : null;
             return `<tr><td>${E((m && m.MaterialName) || d.MaterialName || "")}${opt ? `<div class="small text-muted">${E(MaterialQuick.optionLabel(opt, m.Unit))}</div>` : ""}</td><td class="text-end">${num(d.Quantity)}</td><td class="text-end">${price ? money(price, 4) : "-"}</td>
-                <td class="small">${!price ? '<span class="text-danger">沒有單價</span>' : !m ? '<span class="text-warning">未連到原料庫</span>' : '<span class="text-success">已連結</span>'}${d.Remark ? ` <span class="text-danger">⚠️ ${E(d.Remark)}</span>` : ""}</td></tr>`;
+                <td class="small">${!price ? '<span class="text-danger">沒有單價</span>' : subF ? '<span class="text-success">🍳 再製品</span>' : !m ? '<span class="text-warning">未連到原料庫</span>' : '<span class="text-success">已連結</span>'}${d.Remark ? ` <span class="text-danger">⚠️ ${E(d.Remark)}</span>` : ""}</td></tr>`;
         }).join("") || `<tr><td colspan="4" class="text-muted">這個配方還沒有食材</td></tr>`}</tbody></table>
 <div class="row g-2 mb-2">
     <div class="col-md-3"><label class="form-label small mb-0">成品率 %（選填）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="yieldRate" value="${E(st.yieldRate)}" placeholder="100"></div>

@@ -65,6 +65,11 @@ Pages.Formula = (() => {
         } catch (err) {
             App.error(err, "載入資料失敗");
         }
+
+        // 從成本確認精靈（在其他頁）新增的再製品配方：?f=編號 → 直接開啟並進入編輯
+        const q = new URLSearchParams(location.search).get("f");
+        const target = q && formulas.find(f => String(f.FormulaID) === String(q));
+        if (target) { loadDetail(target); setMode("edit"); }
     }
 
     function cacheDom() {
@@ -104,7 +109,7 @@ Pages.Formula = (() => {
         document.getElementById("btnReviewThis").addEventListener("click", () => current && startReview(current.FormulaID));
 
         dom.btnAddMaterial.addEventListener("click", () => {
-            rows.push({ MaterialID: "", MaterialName: "", Quantity: "", UnitCost: "", Remark: "", PackageId: "" });
+            rows.push({ MaterialID: "", MaterialName: "", Quantity: "", UnitCost: "", Remark: "", PackageId: "", SubFormulaId: "" });
             renderRows();
             dom.detailList.querySelector("tr:last-child [data-f=MaterialName]")?.focus();
         });
@@ -166,6 +171,8 @@ Pages.Formula = (() => {
             if (!b) return;
             const i = Number(b.dataset.i);
             if (b.dataset.act === "matadd" || b.dataset.act === "matedit") return editMaterial(i, b.dataset.act === "matedit");
+            if (b.dataset.act === "semimake") return makeSemi(i);
+            if (b.dataset.act === "semiopen") return openSemi(i);
             if (b.dataset.act === "remove") rows.splice(i, 1);
             if (b.dataset.act === "up" && i > 0) [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
             if (b.dataset.act === "down" && i < rows.length - 1) [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]];
@@ -306,7 +313,9 @@ Pages.Formula = (() => {
 
     function refreshCosts() {
         let n = 0;
+        refreshSubCosts();
         rows.forEach(r => {
+            if (r.SubFormulaId) return;
             const m = materialById(r.MaterialID);
             if (m && Cost.optionPrice(m, r.PackageId) === null) r.PackageId = "";       // 指定的規格已經刪除 → 跟著原料預設
             const price = m ? Cost.detailPrice(r, m) : 0;
@@ -364,7 +373,99 @@ Pages.Formula = (() => {
     function renderMaterialNames() {
         dom.materialNames.innerHTML = materials
             .map(m => `<option value="${App.esc(m.MaterialName)}">${m.CostPrice !== null && m.CostPrice !== undefined ? `$${m.CostPrice}/${App.esc(m.Unit || "g")}` : ""}</option>`)
+            .join("") + semiFormulas()
+            .map(f => `<option value="${App.esc(f.FormulaName)}">🍳 再製品 $${round(Cost.subGramCost(f.FormulaID, formulas, allDetails, materials).price, 4)}/g</option>`)
             .join("");
+    }
+
+    // =========================
+    // 再製品（自己泡製 / 煮的伯爵茶、焦糖醬、濃縮咖啡…）：做成配方，成本自動算出、自動寫回使用它的配方
+    // =========================
+    const semiFormulas = () => formulas.filter(f => f.IsSemi === true && f.IsActive !== false && (!current || f.FormulaID !== current.FormulaID));
+    const semiByName = name => { const n = String(name || "").trim(); return n ? semiFormulas().find(f => String(f.FormulaName).trim() === n) : null; };
+
+    // 食材列連到再製品的每公克成本（配方裡改了就即時反映）
+    function refreshSubCosts() {
+        rows.forEach(r => {
+            if (!r.SubFormulaId) return;
+            const sub = formulas.find(f => String(f.FormulaID) === String(r.SubFormulaId));
+            if (!sub) return;
+            r.MaterialName = sub.FormulaName || r.MaterialName;
+            r.UnitCost = round(Cost.subGramCost(sub.FormulaID, formulas, allDetails, materials).price, 6);
+        });
+    }
+
+    // 把目前這個食材做成新的再製品配方（已經有同名配方就直接連上）
+    async function makeSemi(i) {
+
+        const r = rows[i];
+        const name = String(r && r.MaterialName || "").trim();
+        if (!name || formMode === "view") return;
+
+        let sub = formulas.find(f => String(f.FormulaName).trim() === name);
+
+        if (sub && sub.IsSemi !== true) {
+            if (!confirm(`已經有一個配方叫「${name}」，要把它當作這個食材的再製品嗎？`)) return;
+        } else if (!sub) {
+            if (!confirm(`「${name}」是自己做的（泡製 / 熬煮）嗎？\n\n會新增一個配方「${name}」，你再到那個配方登入它的食材與用量，成本會自動算出並寫回這裡。`)) return;
+        }
+
+        try {
+            if (!sub) {
+                sub = await API.insert("Formula", { FormulaName: name, YieldQty: 1, YieldUnit: "g", UnitWeight: 1000, YieldRate: 100, IsActive: true, IsSemi: true });
+                formulas.push(sub);
+            } else if (sub.IsSemi !== true) {
+                sub = Object.assign(sub, await API.update("Formula", sub.FormulaID, { IsSemi: true }));
+            }
+
+            r.SubFormulaId = String(sub.FormulaID);
+            r.MaterialID = "";
+            r.PackageId = "";
+            r.Remark = "";
+            refreshSubCosts();
+            renderMaterialNames();
+            renderRows();
+            renderList();
+            alert(`✅ 已建立再製品配方「${name}」。\n\n請先儲存目前這個配方，再按這一列的「開啟」到「${name}」登入食材與用量；儲存後成本會自動寫回。`);
+        } catch (err) {
+            App.error(err, "建立失敗");
+        }
+    }
+
+    // 開啟再製品配方（直接進入編輯）
+    function openSemi(i) {
+        const sub = formulas.find(f => String(f.FormulaID) === String(rows[i] && rows[i].SubFormulaId));
+        if (!sub) return;
+        if (formMode !== "view" && !confirm("離開目前這個配方？沒有儲存的修改會消失。")) return;
+        loadDetail(sub);
+        setMode("edit");
+    }
+
+    // 配方儲存後：把新的成本自動寫回「用到它當食材」的配方（再往上一層一層更新）
+    async function propagateSemi(formulaId, depth = 0) {
+
+        if (depth > 4) return;
+
+        const used = allDetails.filter(d => String(d.SubFormulaId) === String(formulaId));
+        if (!used.length) return;
+
+        const gram = Cost.subGramCost(formulaId, formulas, allDetails, materials).price;
+        const ops = [];
+        const parents = new Set();
+
+        used.forEach(d => { d.UnitCost = round(gram, 6); ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { UnitCost: d.UnitCost } }); parents.add(String(d.FormulaID)); });
+
+        parents.forEach(pid => {
+            const pf = formulas.find(f => String(f.FormulaID) === pid);
+            if (!pf) return;
+            const costs = Cost.formulaCosts(pf, allDetails.filter(d => String(d.FormulaID) === pid), materials, { formulas, allDetails, materials, seen: new Set([pid]) });
+            Object.assign(pf, costs);
+            ops.push({ action: "update", table: "Formula", id: pf.FormulaID, data: costs });
+        });
+
+        await API.batch(ops, { silent: true });
+
+        for (const pid of parents) await propagateSemi(pid, depth + 1);
     }
 
     function renderRows() {
@@ -380,9 +481,12 @@ Pages.Formula = (() => {
     <td class="ing">
         <div class="input-group input-group-sm">
             <input class="form-control" list="materialNames" data-f="MaterialName" value="${esc(r.MaterialName || "")}" placeholder="原料名稱" ${dis}>
+            ${r.SubFormulaId ? `<span class="input-group-text link-badge" title="再製品：成本自動來自「${esc(r.MaterialName || "")}」這個配方">🍳</span>
+            <button type="button" class="btn btn-outline-secondary" data-act="semiopen" data-i="${i}" title="開啟這個再製品的配方，登入它的食材與用量">開啟配方</button>` : ""}
             ${linked ? `<span class="input-group-text link-badge" title="已連結原料庫：${esc(linked.MaterialName)}（$${esc(linked.CostPrice ?? "-")}/${esc(linked.Unit || "g")}）">🔗</span>
             <button type="button" class="btn btn-outline-secondary" data-act="matedit" data-i="${i}" title="修改原料庫的名稱、產地、單價" ${dis}>✏️</button>`
-                : String(r.MaterialName || "").trim() ? `<button type="button" class="btn btn-outline-primary" data-act="matadd" data-i="${i}" title="這個原料還沒登入原料庫，點這裡新增（會自動連結並帶入單價）" ${dis}>＋ 新增原料</button>` : ""}
+                : !r.SubFormulaId && String(r.MaterialName || "").trim() ? `<button type="button" class="btn btn-outline-primary" data-act="matadd" data-i="${i}" title="這個原料還沒登入原料庫，點這裡新增（會自動連結並帶入單價）" ${dis}>＋ 新增原料</button>
+            <button type="button" class="btn btn-outline-warning" data-act="semimake" data-i="${i}" title="這是自己泡製 / 煮的（例如伯爵茶、焦糖醬）：新增成配方，在那個配方登入食材，成本自動寫回這裡" ${dis}>🍳 做成配方</button>` : ""}
             ${r.Remark ? `<span class="input-group-text link-badge text-danger" title="${esc(r.Remark)}">⚠️</span>` : ""}
         </div>
         ${linked && Cost.options(linked).length >= 2 ? `<select class="form-select form-select-sm mt-1" data-f="PackageId" title="這個原料有多種規格 / 產地 / 供應商，選這個配方用哪一種" ${dis}>
@@ -448,6 +552,7 @@ Pages.Formula = (() => {
         const m = materialByName(name);
 
         r.MaterialName = name;
+        const semi = m ? null : semiByName(name);
 
         if (m) {
             if (String(r.MaterialID) !== String(m.ID)) {
@@ -456,8 +561,16 @@ Pages.Formula = (() => {
                 r.UnitCost = m.CostPrice ?? r.UnitCost;
                 r.Remark = "";
             }
+            r.SubFormulaId = "";
+        } else if (semi) {
+            r.SubFormulaId = String(semi.FormulaID);
+            r.MaterialID = "";
+            r.PackageId = "";
+            r.Remark = "";
+            refreshSubCosts();
         } else {
             r.MaterialID = "";
+            r.SubFormulaId = "";
         }
 
         renderRows();
@@ -592,7 +705,7 @@ Pages.Formula = (() => {
     <div class="d-flex justify-content-between gap-1">
         <b>🧪 ${esc(f.FormulaName || "")}</b>
         <span class="text-nowrap">${isFavorite(f) || isVerified(f)
-                    ? `<button type="button" class="btn btn-link p-0 me-1 fav-btn" data-fav="${i}" title="${isFavorite(f) ? "移出常用" : "加入常用"}" aria-label="${isFavorite(f) ? "移出常用" : "加入常用"}">${isFavorite(f) ? "⭐" : "☆"}</button>` : ""}${isVerified(f) ? `<span class="badge bg-success" title="已確認為正確配方${f.VerifiedBy ? `（${esc(f.VerifiedBy)}）` : ""}">✅ 已確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
+                    ? `<button type="button" class="btn btn-link p-0 me-1 fav-btn" data-fav="${i}" title="${isFavorite(f) ? "移出常用" : "加入常用"}" aria-label="${isFavorite(f) ? "移出常用" : "加入常用"}">${isFavorite(f) ? "⭐" : "☆"}</button>` : ""}${f.IsSemi === true ? `<span class="badge bg-warning text-dark" title="再製品（半成品），可當作其他配方的食材">🍳 再製品</span> ` : ""}${isVerified(f) ? `<span class="badge bg-success" title="已確認為正確配方${f.VerifiedBy ? `（${esc(f.VerifiedBy)}）` : ""}">✅ 已確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
     </div>
     <div class="small text-muted">${esc(f.YieldUnit || "")}${f.UnitWeight ? `（${g(f.UnitWeight)}g）` : ""} × ${f.YieldQty ?? "-"}</div>
     <div class="small">單位成本 <b>${unit ? money(unit, 2) : "-"}</b>
@@ -670,6 +783,7 @@ Pages.Formula = (() => {
     function startReview(formulaId) {
         CostReview.open({
             formulaId,
+            openFormula: id => { const f = formulas.find(x => String(x.FormulaID) === String(id)); if (f) { loadDetail(f); setMode("edit"); } },
             onDone: async () => {
                 const d = await API.getMany(["Formula", "FormulaDetail", "Material"]);
                 formulas = d.Formula || formulas;
@@ -716,8 +830,10 @@ Pages.Formula = (() => {
             Quantity: d.Quantity ?? "",
             UnitCost: d.UnitCost ?? materialById(d.MaterialID)?.CostPrice ?? "",
             Remark: d.Remark || "",
-            PackageId: d.PackageId || ""
+            PackageId: d.PackageId || "",
+            SubFormulaId: d.SubFormulaId || ""
         }));
+        refreshSubCosts();
 
         // 先進入瀏覽（唯讀），避免不小心改到配方上方的數字；要修改請按「編輯配方」
         setMode("view");
@@ -767,15 +883,17 @@ Pages.Formula = (() => {
                     LineCost: round(c.lines[rows.indexOf(r)]?.cost, 3),
                     Remark: r.Remark || "",
                     PackageId: r.PackageId || "",
+                    SubFormulaId: r.SubFormulaId ? String(r.SubFormulaId) : "",
                     SortOrder: i + 1
                 }))
         };
     }
 
     async function reload() {
-        const data = await API.getMany(["Formula", "FormulaDetail"]);
+        const data = await API.getMany(["Formula", "FormulaDetail", "Material"]);
         formulas = data.Formula || formulas;
         allDetails = data.FormulaDetail || allDetails;
+        if (data.Material) { materials = data.Material.filter(m => m.IsActive !== false); renderMaterialNames(); }
     }
 
     async function save(isCreate, overrideName) {
@@ -835,6 +953,7 @@ Pages.Formula = (() => {
             alert(`${isCreate ? "🎉 配方已建立" : "✅ 配方已更新"}\n預設 ${formula.YieldQty} × ${formula.YieldUnit || "單位"}，單位成本 ${money(formula.UnitCost, 2)}`);
 
             await reload();
+            await propagateSemi(id);          // 這個配方是別人的再製品 → 成本自動寫回
             loadDetail(formulas.find(f => f.FormulaID === id));
 
         } catch (err) {
