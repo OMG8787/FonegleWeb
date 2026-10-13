@@ -22,6 +22,25 @@ window.Cost = {
         }
     },
 
+    // 原料的規格選項（規格 / 產地 / 供應商 / 價格）：[{ id, label, weight, price, origin, supplier, def }]
+    options(m) {
+        try { const a = JSON.parse((m && m.PackagesJson) || "[]"); return Array.isArray(a) ? a.filter(x => x && typeof x === "object") : []; } catch { return []; }
+    },
+
+    // 指定的規格選項的每單位單價；找不到（沒指定 / 選項已刪除）→ null
+    optionPrice(m, id) {
+        if (!id || !m) return null;
+        const o = this.options(m).find(x => String(x.id) === String(id));
+        return o && this.num(o.weight) > 0 && this.num(o.price) > 0 ? this.num(o.price) / this.num(o.weight) : null;
+    },
+
+    // 配方食材的單價：指定了規格選項 → 該選項；否則原料目前的單價；沒連原料 → 配方裡記的單價
+    detailPrice(d, m) {
+        const o = this.optionPrice(m, d.PackageId);
+        if (o !== null) return o;
+        return m && m.CostPrice !== null && m.CostPrice !== undefined && m.CostPrice !== "" ? this.num(m.CostPrice) : this.num(d.UnitCost);
+    },
+
     // 配方每份重量（沒填就用「原料總重 ÷ 預設倍數」）
     unitWeight(f, details) {
         const base = details.reduce((s, d) => s + this.num(d.Quantity), 0);
@@ -41,7 +60,7 @@ window.Cost = {
 
         details.forEach(d => {
             const m = d.MaterialID ? (materials || []).find(x => String(x.ID) === String(d.MaterialID)) : null;
-            const price = m && m.CostPrice !== null && m.CostPrice !== undefined && m.CostPrice !== "" ? this.num(m.CostPrice) : this.num(d.UnitCost);
+            const price = this.detailPrice(d, m);
             if (!price && this.num(d.Quantity) > 0) missing.push((m && m.MaterialName) || d.MaterialName || "（未命名原料）");
             sum += this.num(d.Quantity) * price;
         });

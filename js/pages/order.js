@@ -979,7 +979,7 @@ class="btn btn-danger btn-sm">
             Qty: App.numOrNull(tr.querySelector(".qty").value),
             Unit: tr.querySelector(".unit").value.trim(),
             UnitPrice: App.numOrNull(tr.querySelector(".price").value),
-            UnitCost: App.numOrNull(tr.dataset.unitCost),
+            UnitCost: currentOrder && currentOrder.PaymentStatus === "已付款" && dom.PaymentStatus.value === "已付款" ? App.numOrNull(tr.dataset.unitCost) : null,
 
             // ===== 其它資料 =====
             DiscountAmount: App.numOrNull(dom.DiscountAmount.value),

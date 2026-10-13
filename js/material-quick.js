@@ -17,6 +17,7 @@ window.MaterialQuick = (() => {
     const n = v => { const x = Number(String(v ?? "").replace(/,/g, "")); return isNaN(x) ? 0 : x; };
     const unitOf = p => (n(p.weight) > 0 && n(p.price) > 0 ? n(p.price) / n(p.weight) : 0);
     const money4 = v => "$" + (Math.round(v * 10000) / 10000).toLocaleString();
+    const newId = () => "p" + Math.random().toString(36).slice(2, 8);
 
     // =========================
     // 包裝規格與價格（共用工具）
@@ -24,9 +25,9 @@ window.MaterialQuick = (() => {
     function parsePackages(m) {
         let list = [];
         try { const a = JSON.parse((m && m.PackagesJson) || "[]"); if (Array.isArray(a)) list = a.filter(x => x && typeof x === "object"); } catch { }
-        list = list.map(x => ({ label: String(x.label || ""), weight: x.weight ?? "", price: x.price ?? "", def: x.def === true }));
+        list = list.map(x => ({ id: String(x.id || newId()), label: String(x.label || ""), weight: x.weight ?? "", price: x.price ?? "", origin: String(x.origin || ""), supplier: String(x.supplier || ""), def: x.def === true }));
         // 舊資料只有單一包裝重量 / 價格
-        if (!list.length && m && n(m.PackageWeight) > 0 && n(m.PackagePrice) > 0) list = [{ label: m.Specification || "", weight: m.PackageWeight, price: m.PackagePrice, def: true }];
+        if (!list.length && m && n(m.PackageWeight) > 0 && n(m.PackagePrice) > 0) list = [{ id: newId(), label: m.Specification || "", weight: m.PackageWeight, price: m.PackagePrice, origin: m.OriginCountry || "", supplier: "", def: true }];
         return list;
     }
 
@@ -41,10 +42,20 @@ window.MaterialQuick = (() => {
         const c = chosen(list);
         if (!c) return null;
         const keep = list.filter(p => unitOf(p) > 0 || String(p.label || "").trim());
-        return {
+        return Object.assign({
             CostPrice: Math.round(unitOf(c) * 1e6) / 1e6, PackageWeight: n(c.weight), PackagePrice: n(c.price),
-            PackagesJson: JSON.stringify(keep.map(p => ({ label: String(p.label || "").trim(), weight: n(p.weight), price: n(p.price), def: p === c })))
-        };
+            PackagesJson: JSON.stringify(keep.map(p => ({
+                id: p.id || newId(), label: String(p.label || "").trim(), weight: n(p.weight), price: n(p.price),
+                origin: String(p.origin || "").trim(), supplier: String(p.supplier || "").trim(), def: p === c
+            })))
+        }, String(c.origin || "").trim() ? { OriginCountry: String(c.origin).trim() } : {});
+    }
+
+    // 一個選項的文字說明：1000g｜紐西蘭｜ABC｜$200（$0.2/g）
+    function optionLabel(p, unit) {
+        const u = unit || "g";
+        return [p.label || (n(p.weight) ? n(p.weight) + u : ""), p.origin, p.supplier, n(p.price) ? "$" + n(p.price) : ""].filter(Boolean).join("｜") +
+            (unitOf(p) ? `（${money4(unitOf(p))}/${u}）` : "");
     }
 
     function noteHtml(list, u) {
@@ -60,14 +71,16 @@ window.MaterialQuick = (() => {
         const c = chosen(list);
 
         return `<div class="small fw-bold mb-1">包裝規格與價格（同一個原料可以有多種包裝）</div>
-<table class="table table-sm align-middle mb-1"><thead><tr><th>規格名稱</th><th style="width:110px" class="text-end">內容量（${u}）</th><th style="width:100px" class="text-end">價格 $</th><th style="width:100px" class="text-end">每 ${u}</th><th style="width:60px" class="text-center">計價用</th><th style="width:30px"></th></tr></thead><tbody>
+<div class="table-responsive"><table class="table table-sm align-middle mb-1"><thead><tr><th style="min-width:110px">規格名稱</th><th style="width:100px" class="text-end">內容量（${u}）</th><th style="width:90px" class="text-end">價格 $</th><th style="min-width:90px">產地</th><th style="min-width:90px">供應商</th><th style="width:90px" class="text-end">每 ${u}</th><th style="width:56px" class="text-center">計價用</th><th style="width:30px"></th></tr></thead><tbody>
 ${list.map((p, i) => `<tr>
     <td><input class="form-control form-control-sm" data-pk="label" data-i="${i}" value="${E(p.label)}" placeholder="例如 1L 瓶 / 4L 桶"></td>
     <td><input type="number" min="0" step="any" class="form-control form-control-sm text-end" data-pk="weight" data-i="${i}" value="${E(p.weight)}"></td>
     <td><input type="number" min="0" step="any" class="form-control form-control-sm text-end" data-pk="price" data-i="${i}" value="${E(p.price)}"></td>
+    <td><input class="form-control form-control-sm" data-pk="origin" data-i="${i}" value="${E(p.origin)}" placeholder="紐西蘭"></td>
+    <td><input class="form-control form-control-sm" data-pk="supplier" data-i="${i}" value="${E(p.supplier)}" placeholder="ABC"></td>
     <td class="text-end small" data-u="${i}">${unitOf(p) ? money4(unitOf(p)) : "-"}</td>
     <td class="text-center"><input type="radio" name="pkdef" data-pk="def" data-i="${i}" ${c === p ? "checked" : ""}></td>
-    <td><button type="button" class="btn btn-sm btn-link text-danger p-0" data-pk="del" data-i="${i}" title="刪除這個規格">✕</button></td></tr>`).join("")}</tbody></table>
+    <td><button type="button" class="btn btn-sm btn-link text-danger p-0" data-pk="del" data-i="${i}" title="刪除這個規格">✕</button></td></tr>`).join("")}</tbody></table></div>
 <button type="button" class="btn btn-sm btn-outline-primary" data-pk="add">＋ 新增規格</button>
 <span class="small text-muted ms-2" data-pk-note>${noteHtml(list, unit || "g")}</span>`;
     }
@@ -96,7 +109,7 @@ ${list.map((p, i) => `<tr>
             if (!b) return;
             const k = b.dataset.pk;
             if (k === "def") { const i = Number(b.dataset.i); list.forEach((p, j) => { p.def = j === i; }); refresh(); onChange(); }
-            else if (k === "add") { list.push({ label: "", weight: "", price: "", def: false }); root.innerHTML = packagesHtml(list, unit()); onChange(); }
+            else if (k === "add") { list.push({ id: newId(), label: "", weight: "", price: "", origin: "", supplier: "", def: false }); root.innerHTML = packagesHtml(list, unit()); onChange(); }
             else if (k === "del") { list.splice(Number(b.dataset.i), 1); root.innerHTML = packagesHtml(list, unit()); onChange(); }
         });
     }
@@ -122,7 +135,7 @@ ${list.map((p, i) => `<tr>
         el.className = "modal fade";
         el.tabIndex = -1;
         el.innerHTML = `
-<div class="modal-dialog modal-lg"><div class="modal-content">
+<div class="modal-dialog modal-xl"><div class="modal-content">
     <div class="modal-header"><h5 class="modal-title" id="mqTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body"><div class="row g-2">${FIELDS.map(([k, l, c]) => `
         <div class="${c}"><label class="form-label small mb-0">${l}</label><input id="mq_${k}" class="form-control form-control-sm" ${k === "CostPrice" ? 'type="number" step="any" min="0"' : ""} ${k === "Category" ? 'list="mqCats"' : ""}></div>`).join("")}
@@ -158,7 +171,7 @@ ${list.map((p, i) => `<tr>
         FIELDS.forEach(([k]) => { el.querySelector("#mq_" + k).value = src[k] ?? ""; });
 
         pkgs = parsePackages(current);
-        if (!pkgs.length) pkgs = [{ label: "", weight: "", price: "", def: false }];
+        if (!pkgs.length) pkgs = [{ id: newId(), label: "", weight: "", price: "", origin: "", supplier: "", def: false }];
 
         // 換掉容器（清掉上一次綁定的事件）
         const old = el.querySelector("#mqPk");
@@ -205,6 +218,6 @@ ${list.map((p, i) => `<tr>
         }
     }
 
-    return { open, parsePackages, packagesHtml, bindPackages, packageFields, chosen, unitOf };
+    return { open, parsePackages, packagesHtml, bindPackages, packageFields, chosen, unitOf, optionLabel, newId };
 
 })();

@@ -263,7 +263,7 @@ Pages.Material = (() => {
     function renderPackages(material) {
 
         pkgs = MaterialQuick.parsePackages(material);
-        if (!pkgs.length) pkgs = [{ label: "", weight: "", price: "", def: false }];
+        if (!pkgs.length) pkgs = [{ id: MaterialQuick.newId(), label: "", weight: "", price: "", origin: "", supplier: "", def: false }];
 
         const old = document.getElementById("pkBox");
         const box = old.cloneNode(false);        // 換掉容器，清掉上一次綁定的事件

@@ -104,7 +104,7 @@ Pages.Formula = (() => {
         document.getElementById("btnReviewThis").addEventListener("click", () => current && startReview(current.FormulaID));
 
         dom.btnAddMaterial.addEventListener("click", () => {
-            rows.push({ MaterialID: "", MaterialName: "", Quantity: "", UnitCost: "", Remark: "" });
+            rows.push({ MaterialID: "", MaterialName: "", Quantity: "", UnitCost: "", Remark: "", PackageId: "" });
             renderRows();
             dom.detailList.querySelector("tr:last-child [data-f=MaterialName]")?.focus();
         });
@@ -308,8 +308,10 @@ Pages.Formula = (() => {
         let n = 0;
         rows.forEach(r => {
             const m = materialById(r.MaterialID);
-            if (m && m.CostPrice !== null && m.CostPrice !== undefined && num(m.CostPrice) !== num(r.UnitCost)) {
-                r.UnitCost = m.CostPrice;
+            if (m && Cost.optionPrice(m, r.PackageId) === null) r.PackageId = "";       // 指定的規格已經刪除 → 跟著原料預設
+            const price = m ? Cost.detailPrice(r, m) : 0;
+            if (m && price && num(price) !== num(r.UnitCost)) {
+                r.UnitCost = price;
                 r.Remark = "";
                 n++;
             }
@@ -349,7 +351,9 @@ Pages.Formula = (() => {
                     if (String(x.MaterialID) === String(m.ID) || x === r) {
                         x.MaterialID = m.ID;
                         x.MaterialName = m.MaterialName;
-                        if (m.CostPrice !== null && m.CostPrice !== undefined && m.CostPrice !== "") { x.UnitCost = m.CostPrice; x.Remark = ""; }
+                        if (Cost.optionPrice(m, x.PackageId) === null) x.PackageId = "";
+                        const price = Cost.detailPrice(x, m);
+                        if (price) { x.UnitCost = price; x.Remark = ""; }
                     }
                 });
                 renderRows();
@@ -381,6 +385,10 @@ Pages.Formula = (() => {
                 : String(r.MaterialName || "").trim() ? `<button type="button" class="btn btn-outline-primary" data-act="matadd" data-i="${i}" title="這個原料還沒登入原料庫，點這裡新增（會自動連結並帶入單價）" ${dis}>＋ 新增原料</button>` : ""}
             ${r.Remark ? `<span class="input-group-text link-badge text-danger" title="${esc(r.Remark)}">⚠️</span>` : ""}
         </div>
+        ${linked && Cost.options(linked).length >= 2 ? `<select class="form-select form-select-sm mt-1" data-f="PackageId" title="這個原料有多種規格 / 產地 / 供應商，選這個配方用哪一種" ${dis}>
+            <option value="">跟著原料的計價用規格${linked.CostPrice ? `（$${esc(linked.CostPrice)}/${esc(linked.Unit || "g")}）` : ""}</option>
+            ${Cost.options(linked).map(o => `<option value="${esc(o.id)}" ${String(r.PackageId) === String(o.id) ? "selected" : ""}>${esc(MaterialQuick.optionLabel(o, linked.Unit))}</option>`).join("")}
+        </select>` : ""}
     </td>
     <td class="text-end scaled"><input type="number" min="0" step="any" class="form-control form-control-sm num" data-f="Scaled" ${dis}></td>
     <td class="text-end small" data-c="pct"></td>
@@ -424,6 +432,15 @@ Pages.Formula = (() => {
 
     function onDetailChange(e) {
 
+        if (e.target.dataset.f === "PackageId") {
+            const r0 = rows[Number(e.target.closest("tr").dataset.i)];
+            r0.PackageId = e.target.value;
+            r0.UnitCost = Cost.detailPrice(r0, materialById(r0.MaterialID)) || r0.UnitCost;
+            r0.Remark = "";
+            renderRows();
+            return;
+        }
+
         if (e.target.dataset.f !== "MaterialName") return;
 
         const r = rows[Number(e.target.closest("tr").dataset.i)];
@@ -435,6 +452,7 @@ Pages.Formula = (() => {
         if (m) {
             if (String(r.MaterialID) !== String(m.ID)) {
                 r.MaterialID = m.ID;
+                r.PackageId = "";
                 r.UnitCost = m.CostPrice ?? r.UnitCost;
                 r.Remark = "";
             }
@@ -697,7 +715,8 @@ Pages.Formula = (() => {
             MaterialName: materialById(d.MaterialID)?.MaterialName || d.MaterialName || "",
             Quantity: d.Quantity ?? "",
             UnitCost: d.UnitCost ?? materialById(d.MaterialID)?.CostPrice ?? "",
-            Remark: d.Remark || ""
+            Remark: d.Remark || "",
+            PackageId: d.PackageId || ""
         }));
 
         // 先進入瀏覽（唯讀），避免不小心改到配方上方的數字；要修改請按「編輯配方」
@@ -747,6 +766,7 @@ Pages.Formula = (() => {
                     UnitCost: App.numOrNull(r.UnitCost),
                     LineCost: round(c.lines[rows.indexOf(r)]?.cost, 3),
                     Remark: r.Remark || "",
+                    PackageId: r.PackageId || "",
                     SortOrder: i + 1
                 }))
         };
