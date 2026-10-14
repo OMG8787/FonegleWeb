@@ -7,6 +7,7 @@
 //   1. 重複的原料        名稱寫法不同的同一種原料（匯入來源不同）→ 選一個保留，其他合併（配方改指向保留的、其餘停用）
 //   2. 食材對應原料庫    配方裡的食材沒有連到原料庫，或原料沒有單價 → 選原料庫既有的 / 新增，填包裝重量與價格自動算每克單價
 //   3. 配方確認          檢視每個食材成本、成品率、每份重量 → 核可
+//   3.5 重複的配方       同一個配方有多個規格的產品：比對食材，選一個為主，其他併入（產品改連到主配方、刪除）或保留
 //   4. 產品對上配方      選配方、用多少公克（預設用產品的重量）、包材 → 算出成本 → 核可
 //   成本單價（每 g）= 包裝價格 ÷ 包裝重量；產品成本 = 用量 g × 配方每克成本 + 包材
 // =========================================================
@@ -130,6 +131,9 @@ window.CostReview = (() => {
         // 3) 配方確認（還沒核可的）
         scopeFormulas.filter(f => f.IsVerified !== true).forEach(f => q.push({ type: "formula", title: "配方：" + formulaName(f), f, st: null }));
 
+        // 3.5) 重複的配方（同一個配方有多個規格的產品：先整合，產品才能對上同一個配方）
+        if (!fid) findFormulaGroups().forEach(g => q.push({ type: "fdupes", title: "重複的配方：" + g.slice(0, 3).map(formulaName).join("、") + (g.length > 3 ? "…" : ""), group: g, st: null }));
+
         // 4) 產品對上配方（還沒確認成本的）
         if (!fid) data.products.filter(p => p.IsActive !== false && p.CostVerified !== true).forEach(p => q.push({ type: "product", title: "產品：" + (p.ProductName || p.ID), p, st: null }));
 
@@ -191,9 +195,9 @@ window.CostReview = (() => {
         }
 
         const s = queue[idx];
-        $("#crTitle").textContent = ({ dupes: "🧩 ", autolink: "🔗 ", ingredient: "🧂 ", formula: "🧪 ", product: "📦 " })[s.type] + s.title;
-        $("#crOk").textContent = s.type === "autolink" ? "✅ 全部核可" : s.type === "dupes" ? "✅ 合併" : "✅ 核可";
-        ({ dupes: rDupes, autolink: rAuto, ingredient: rIngredient, formula: rFormula, product: rProduct })[s.type](s);
+        $("#crTitle").textContent = ({ dupes: "🧩 ", autolink: "🔗 ", ingredient: "🧂 ", formula: "🧪 ", fdupes: "🧬 ", product: "📦 " })[s.type] + s.title;
+        $("#crOk").textContent = s.type === "autolink" ? "✅ 全部核可" : s.type === "dupes" ? "✅ 合併" : s.type === "fdupes" ? "✅ 確定" : "✅ 核可";
+        ({ dupes: rDupes, autolink: rAuto, ingredient: rIngredient, formula: rFormula, fdupes: rFDupes, product: rProduct })[s.type](s);
     }
 
     async function approve() {
@@ -204,7 +208,7 @@ window.CostReview = (() => {
         try {
             busy = true;
             $("#crOk").disabled = true;
-            const ok = await ({ dupes: aDupes, autolink: aAuto, ingredient: aIngredient, formula: aFormula, product: aProduct })[s.type](s);
+            const ok = await ({ dupes: aDupes, autolink: aAuto, ingredient: aIngredient, formula: aFormula, fdupes: aFDupes, product: aProduct })[s.type](s);
             if (ok === false) return;
             approved++;
             changed = true;
@@ -626,6 +630,158 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
         // 還有 ⚠️ 待確認備註的食材（沒改到的）一併清掉
         const rest = detailsOf(f.FormulaID).filter(d => d.Remark);
         if (rest.length) { await API.batch(rest.map(d => ({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { Remark: "" } })), { silent: true }); rest.forEach(d => { d.Remark = ""; }); }
+    }
+
+    // =========================
+    // 3.5 重複的配方：同一個配方有多個規格的產品（名稱或食材相同）→ 比對、選一個為主，其他併入（產品改連到主配方）或保留
+    // =========================
+    const FKEEP = "cr_fkeep";
+    const pairKey = (a, b) => [Number(a), Number(b)].sort((x, y) => x - y).join("-");
+    const loadKept = () => { try { return new Set(JSON.parse(localStorage.getItem(FKEEP) || "[]")); } catch { return new Set(); } };
+    const saveKept = keys => { try { const s = loadKept(); keys.forEach(k => s.add(k)); localStorage.setItem(FKEEP, JSON.stringify([...s])); } catch { } };
+
+    // 配方的食材：key（名稱 / 再製品）→ { label, qty }
+    function formulaItems(f) {
+        const map = new Map();
+        detailsOf(f.FormulaID).forEach(d => {
+            const m = matById(d.MaterialID);
+            const label = d.SubFormulaId ? (d.MaterialName || "再製品") : (m ? m.MaterialName : d.MaterialName) || "";
+            const key = d.SubFormulaId ? "f:" + d.SubFormulaId : "n:" + norm(label);
+            const cur = map.get(key) || { label, qty: 0 };
+            cur.qty += num(d.Quantity);
+            map.set(key, cur);
+        });
+        return map;
+    }
+
+    const formulaProducts = f => data.products.filter(p => String(p.FormulaID) === String(f.FormulaID) || (has(f.ProductID) && String(p.ID) === String(f.ProductID)))
+        .filter((p, i, a) => a.indexOf(p) === i);
+
+    function findFormulaGroups() {
+        const kept = loadKept();
+        const fs = data.formulas.filter(f => f.IsActive !== false);
+        const items = new Map(fs.map(f => [String(f.FormulaID), formulaItems(f)]));
+        const parent = new Map(fs.map(f => [String(f.FormulaID), String(f.FormulaID)]));
+        const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+
+        for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) {
+            const a = fs[i], b = fs[j];
+            if (kept.has(pairKey(a.FormulaID, b.FormulaID))) continue;
+            const A = items.get(String(a.FormulaID)), B = items.get(String(b.FormulaID));
+            const both = [...A.keys()].filter(k => B.has(k)).length;
+            const jacc = both / (A.size + B.size - both || 1);
+            if (similarity(formulaName(a), formulaName(b)) >= .75 || (A.size >= 3 && B.size >= 3 && jacc >= .8))
+                parent.set(find(String(a.FormulaID)), find(String(b.FormulaID)));
+        }
+
+        const groups = new Map();
+        fs.forEach(f => { const r = find(String(f.FormulaID)); (groups.get(r) || groups.set(r, []).get(r)).push(f); });
+
+        return [...groups.values()].filter(g => g.length >= 2).map(g => {
+            const rank = f => [f.IsVerified === true ? 1 : 0, formulaProducts(f).length, detailsOf(f.FormulaID).length];
+            const sorted = g.slice().sort((x, y) => { const a = rank(x), b = rank(y); return (b[0] - a[0]) || (b[1] - a[1]) || (b[2] - a[2]) || (formulaName(x).length - formulaName(y).length); });
+            return sorted;
+        });
+    }
+
+    function rFDupes(s) {
+
+        const group = s.group;
+        if (!s.st) s.st = { primary: String(group[0].FormulaID), merge: {} };
+        const st = s.st;
+        group.forEach(f => { if (!(String(f.FormulaID) in st.merge)) st.merge[String(f.FormulaID)] = true; });
+
+        const items = group.map(f => formulaItems(f));
+        const totals = items.map(m => [...m.values()].reduce((t, x) => t + x.qty, 0));
+        const keys = [];
+        const labels = new Map();
+        items.forEach(m => m.forEach((v, k) => { if (!labels.has(k)) { labels.set(k, v.label); keys.push(k); } }));
+        keys.sort((a, b) => Math.max(...items.map(m => (m.get(b) || { qty: 0 }).qty)) - Math.max(...items.map(m => (m.get(a) || { qty: 0 }).qty)));
+
+        const head = group.map((f, i) => {
+            const pg = Cost.perGram(f, detailsOf(f.FormulaID), data.materials, { formulas: data.formulas, allDetails: data.details, materials: data.materials, seen: new Set([String(f.FormulaID)]) });
+            const prods = formulaProducts(f);
+            return `<th class="text-center" style="min-width:150px"><label class="d-block"><input type="radio" name="fdPrimary" value="${f.FormulaID}" ${st.primary === String(f.FormulaID) ? "checked" : ""}> <b>以此為主</b></label>
+                <div class="fw-bold">${E(formulaName(f))}</div>
+                <div class="text-muted fw-normal">${f.IsVerified === true ? "✅ 已核可" : "尚未核可"}　成品率 ${has(f.YieldRate) ? E(f.YieldRate) + "%" : "100%"}</div>
+                <div class="text-muted fw-normal">每 g 成本 ${pg.value ? money(pg.value, 4) : "-"}</div>
+                <div class="fw-normal mt-1">${prods.length ? prods.map(p => `<span class="badge text-bg-light border">${E(p.ProductName || p.ID)}</span>`).join(" ") : '<span class="text-muted">沒有連到產品</span>'}</div></th>`;
+        }).join("");
+
+        const rows = keys.map(k => {
+            const pcts = items.map((m, i) => (m.has(k) && totals[i] > 0 ? m.get(k).qty / totals[i] * 100 : null));
+            const present = pcts.filter(x => x !== null);
+            const diff = present.length < pcts.length || Math.max(...present) - Math.min(...present) > 2;
+            return `<tr class="${diff ? "table-warning" : ""}"><td>${E(labels.get(k))}</td>${items.map((m, i) => m.has(k)
+                ? `<td class="text-center">${Math.round(m.get(k).qty * 10) / 10} g <span class="text-muted">(${(pcts[i] || 0).toFixed(1)}%)</span></td>`
+                : `<td class="text-center text-danger">— 沒有</td>`).join("")}</tr>`;
+        }).join("");
+
+        const foot = group.map(f => String(f.FormulaID) === st.primary
+            ? `<td class="text-center text-success fw-bold">✔ 保留（主配方）</td>`
+            : `<td class="text-center"><label><input type="checkbox" data-fm="${f.FormulaID}" ${st.merge[String(f.FormulaID)] ? "checked" : ""}> 併入主配方並刪除</label><div class="text-muted small">不勾 = 保留這個配方</div></td>`).join("");
+
+        $("#crBody").innerHTML = `
+<div class="small text-muted mb-2">這幾個配方的名稱或食材很像，可能是同一個配方（例如同一種冰淇淋有不同規格的產品）。先比對下方的食材（黃色列 = 用量比例不同或缺少），再選<b>以哪一個為主</b>：打勾的配方會<b>併入主配方並刪除</b>，原本連到它的產品與再製品都會改連到主配方；不打勾就保留。</div>
+<div class="table-responsive"><table class="table table-sm table-bordered align-middle small mb-2">
+<thead><tr><th>食材</th>${head}</tr></thead>
+<tbody>${rows || `<tr><td colspan="${group.length + 1}" class="text-muted">這些配方都還沒有食材</td></tr>`}</tbody>
+<tfoot><tr><th>處理方式</th>${foot}</tfoot></table></div>
+<div class="alert alert-light border small mb-0">要保留所有配方：把「併入」都取消勾選再按「確定」，之後就不會再提醒這幾個配方。還沒決定可以按「略過」。</div>`;
+
+        el.querySelectorAll("[name=fdPrimary]").forEach(r => r.addEventListener("change", () => { st.primary = r.value; rFDupes(s); }));
+        el.querySelectorAll("[data-fm]").forEach(c => c.addEventListener("change", () => { st.merge[c.dataset.fm] = c.checked; }));
+    }
+
+    async function aFDupes(s) {
+
+        const st = s.st, group = s.group;
+        const primary = group.find(f => String(f.FormulaID) === st.primary);
+        const gone = group.filter(f => String(f.FormulaID) !== st.primary && st.merge[String(f.FormulaID)]);
+        const stay = group.filter(f => !gone.includes(f));
+
+        if (gone.length) {
+            const nProd = gone.reduce((t, f) => t + formulaProducts(f).filter(p => String(p.FormulaID) === String(f.FormulaID)).length, 0);
+            if (!confirm(`以「${formulaName(primary)}」為主，刪除 ${gone.length} 個配方（${gone.map(formulaName).join("、")}）？\n${nProd} 個產品會改連到主配方；被刪除配方的食材明細也會一併刪除，無法復原。`)) return false;
+
+            const goneIds = new Set(gone.map(f => String(f.FormulaID)));
+            const ops = [];
+
+            data.products.filter(p => goneIds.has(String(p.FormulaID))).forEach(p => ops.push({ action: "update", table: "Products", id: p.ID, data: { FormulaID: String(primary.FormulaID) } }));
+
+            // 別的配方裡把被刪除的配方當再製品用 → 改連到主配方（主配方自己用到的就移除，避免自己包含自己）
+            data.details.filter(d => d.SubFormulaId && goneIds.has(String(d.SubFormulaId)) && !goneIds.has(String(d.FormulaID))).forEach(d => {
+                if (String(d.FormulaID) === String(primary.FormulaID)) ops.push({ action: "remove", table: "FormulaDetail", id: d.FormulaDetailID });
+                else ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { SubFormulaId: String(primary.FormulaID) } });
+            });
+
+            gone.forEach(f => {
+                ops.push({ action: "removeWhere", table: "FormulaDetail", where: { FormulaID: f.FormulaID } });
+                ops.push({ action: "remove", table: "Formula", id: f.FormulaID });
+            });
+
+            for (let i = 0; i < ops.length; i += 40) await API.batch(ops.slice(i, i + 40), { loadingText: "整合配方中…" });
+
+            // 更新本機資料
+            data.products.forEach(p => { if (goneIds.has(String(p.FormulaID))) p.FormulaID = String(primary.FormulaID); });
+            ops.filter(o => o.table === "FormulaDetail" && o.action !== "removeWhere").forEach(o => {
+                const at = data.details.findIndex(d => String(d.FormulaDetailID) === String(o.id));
+                if (at < 0) return;
+                if (o.action === "remove") data.details.splice(at, 1); else Object.assign(data.details[at], o.data);
+            });
+            data.details = data.details.filter(d => !goneIds.has(String(d.FormulaID)));
+            data.formulas = data.formulas.filter(f => !goneIds.has(String(f.FormulaID)));
+
+            // 清單裡這些配方的確認項目不需要了
+            const before = queue.slice(0, idx + 1).filter(x => x.type === "formula" && goneIds.has(String(x.f.FormulaID))).length;
+            queue = queue.filter(x => !(x.type === "formula" && goneIds.has(String(x.f.FormulaID))));
+            idx -= before;
+        }
+
+        // 選擇保留的配方：記住，不再提醒
+        const keys = [];
+        stay.forEach(a => stay.forEach(b => { if (String(a.FormulaID) < String(b.FormulaID)) keys.push(pairKey(a.FormulaID, b.FormulaID)); }));
+        saveKept(keys);
     }
 
     // =========================
