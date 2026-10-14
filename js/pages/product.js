@@ -38,7 +38,7 @@ Pages.Product = (() => {
         dom.qBrand = document.getElementById("qBrand");
         dom.qCategory = document.getElementById("qCategory");
         dom.qStatus = document.getElementById("qStatus");
-        ["FormulaUseMode", "FormulaUseQty", "formulaInfo", "packList", "packNames", "costBox", "btnAddPack", "btnApplyCost", "useQtyLabel", "btnRecalcAll"]
+        ["FormulaUseMode", "FormulaUseQty", "formulaInfo", "packList", "packNames", "decorList", "decorNames", "btnAddDecor", "costBox", "btnAddPack", "btnApplyCost", "useQtyLabel", "btnRecalcAll"]
             .forEach(id => dom[id] = document.getElementById(id));
         dom.qBrand = document.getElementById("qBrand");
         dom.qCategory = document.getElementById("qCategory");
@@ -146,9 +146,14 @@ Pages.Product = (() => {
         document.getElementById("btnReview").addEventListener("click", () => CostReview.open({ onDone: async () => { await loadInit(); if (currentDetail) { const f = allProducts.find(p => p.ID === currentDetail.ID); if (f) { currentDetail = f; fillForm(f); } } } }));
         dom.btnApplyCost.addEventListener("click", () => recalc(true));
         dom.btnAddPack.addEventListener("click", () => {
-            packRows.push({ MaterialID: "", Name: "", Qty: 1, UnitCost: "" });
+            packRows.push({ MaterialID: "", Name: "", Qty: 1, UnitCost: "", Kind: "" });
             renderPack();
             dom.packList.querySelector("tr:last-child [data-f=Name]")?.focus();
+        });
+        dom.btnAddDecor.addEventListener("click", () => {
+            packRows.push({ MaterialID: "", Name: "", Qty: 1, UnitCost: "", Kind: "decor" });
+            renderPack();
+            dom.decorList.querySelector("tr:last-child [data-f=Name]")?.focus();
         });
         ["FormulaID", "FormulaUseMode", "FormulaUseQty"].forEach(id => {
             dom[id].addEventListener("input", () => recalc(true));
@@ -158,6 +163,9 @@ Pages.Product = (() => {
         dom.packList.addEventListener("input", onPackInput);
         dom.packList.addEventListener("change", onPackChange);
         dom.packList.addEventListener("click", onPackClick);
+        dom.decorList.addEventListener("input", onPackInput);
+        dom.decorList.addEventListener("change", onPackChange);
+        dom.decorList.addEventListener("click", onPackClick);
     }
 
     async function loadInit() {
@@ -358,7 +366,7 @@ ${App.esc(x.Status || "未知")}
                     }
                 }
             });
-        packRows = Cost.parsePackaging(d && d.PackagingJson).map(x => ({ MaterialID: x.MaterialID ?? "", Name: x.Name || "", Qty: x.Qty ?? "", UnitCost: x.UnitCost ?? "" }));
+        packRows = Cost.parsePackaging(d && d.PackagingJson).map(x => ({ MaterialID: x.MaterialID ?? "", Name: x.Name || "", Qty: x.Qty ?? "", UnitCost: x.UnitCost ?? "", Kind: x.Kind === "decor" ? "decor" : "" }));
         if (!dom.FormulaUseMode.value) dom.FormulaUseMode.value = "portion";
         renderPack();
         updateUseLabel();
@@ -452,9 +460,11 @@ ${App.esc(x.Status || "未知")}
     }
 
     function renderPackNames() {
+        const opt = m => `<option value="${App.esc(m.MaterialName)}">${m.CostPrice !== null && m.CostPrice !== undefined ? `$${m.CostPrice}/${App.esc(m.Unit || "個")}` : ""}</option>`;
         const pack = materials.filter(m => /包/.test(m.Category || ""));
-        dom.packNames.innerHTML = (pack.length ? pack : materials)
-            .map(m => `<option value="${App.esc(m.MaterialName)}">${m.CostPrice !== null && m.CostPrice !== undefined ? `$${m.CostPrice}/${App.esc(m.Unit || "個")}` : ""}</option>`).join("");
+        dom.packNames.innerHTML = (pack.length ? pack : materials).map(opt).join("");
+        const food = materials.filter(m => !/包/.test(m.Category || ""));
+        dom.decorNames.innerHTML = (food.length ? food : materials).map(opt).join("");
     }
 
     function updateUseLabel() {
@@ -466,19 +476,24 @@ ${App.esc(x.Status || "未知")}
 
     function renderPack() {
 
-        dom.packList.innerHTML = packRows.map((r, i) => {
+        const rowHtml = (r, i) => {
+            const decor = r.Kind === "decor";
             const m = matById(r.MaterialID);
             const price = m && m.CostPrice !== null && m.CostPrice !== undefined && m.CostPrice !== "" ? Number(m.CostPrice) : Number(r.UnitCost) || 0;
             const btn = m ? `<button type="button" class="btn btn-outline-secondary" data-act="edit" data-i="${i}" title="修改原料庫的名稱、單價">✏️</button>`
-                : String(r.Name || "").trim() ? `<button type="button" class="btn btn-outline-primary" data-act="add" data-i="${i}" title="這個包材還沒登入原料庫，點這裡新增">＋ 新增</button>` : "";
+                : String(r.Name || "").trim() ? `<button type="button" class="btn btn-outline-primary" data-act="add" data-i="${i}" title="這個${decor ? "裝飾 / 配料" : "包材"}還沒登入原料庫，點這裡新增">＋ 新增</button>` : "";
             return `<tr data-i="${i}">
-    <td><div class="input-group input-group-sm"><input class="form-control" list="packNames" data-f="Name" value="${App.esc(m ? m.MaterialName : r.Name || "")}" placeholder="包材名稱">${btn}</div></td>
+    <td><div class="input-group input-group-sm"><input class="form-control" list="${decor ? "decorNames" : "packNames"}" data-f="Name" value="${App.esc(m ? m.MaterialName : r.Name || "")}" placeholder="${decor ? "裝飾 / 配料名稱" : "包材名稱"}">${btn}</div></td>
     <td><input type="number" min="0" step="any" class="form-control form-control-sm text-end" data-f="Qty" value="${App.esc(r.Qty ?? "")}"></td>
     <td class="text-end small">${m || r.UnitCost !== "" ? money(price, 4) + (m && m.Unit ? "/" + App.esc(m.Unit) : "") : `<span class="text-danger">無單價</span>`}</td>
     <td class="text-end small" data-c="sub">${money(price * (Number(r.Qty) || 0))}</td>
     <td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0" data-act="remove" data-i="${i}" title="移除">✕</button></td>
 </tr>`;
-        }).join("") || `<tr><td colspan="5" class="text-muted small">還沒有包材</td></tr>`;
+        };
+
+        const html = decor => packRows.map((r, i) => ((r.Kind === "decor") === decor ? rowHtml(r, i) : "")).join("");
+        dom.packList.innerHTML = html(false) || `<tr><td colspan="5" class="text-muted small">還沒有包材</td></tr>`;
+        dom.decorList.innerHTML = html(true) || `<tr><td colspan="5" class="text-muted small">還沒有裝飾 / 配料</td></tr>`;
     }
 
     function onPackInput(e) {
@@ -522,7 +537,7 @@ ${App.esc(x.Status || "未知")}
 
         MaterialQuick.open({
             material: b.dataset.act === "edit" ? matById(r.MaterialID) : null,
-            name: r.Name, category: "包材", unit: "個",
+            name: r.Name, category: r.Kind === "decor" ? "裝飾配料" : "包材", unit: r.Kind === "decor" ? "g" : "個",
             onSaved(m) {
                 const k = materials.findIndex(x => String(x.ID) === String(m.ID));
                 if (k >= 0) materials[k] = m; else materials.push(m);
@@ -559,9 +574,9 @@ ${App.esc(x.Status || "未知")}
         } else dom.formulaInfo.textContent = "";
 
         dom.costBox.innerHTML = used ? `
-<div>配方原料：<b>${money(c.formula)}</b>　配方人工 / 其他：<b>${money(c.extra)}</b>　包材：<b>${money(c.packaging)}</b></div>
+<div>配方原料：<b>${money(c.formula)}</b>　配方人工 / 其他：<b>${money(c.extra)}</b>　包材：<b>${money(c.packaging)}</b>${c.decor || packRows.some(r => r.Kind === "decor") ? `　裝飾 / 配料：<b>${money(c.decor)}</b>` : ""}</div>
 <div class="mt-1">每個產品成本：<b class="text-success fs-6">${money(c.total)}</b></div>
-${c.missing.length ? `<div class="text-danger mt-1">⚠️ 這些沒有單價，成本會偏低：${App.esc([...new Set(c.missing)].join("、"))}</div>` : ""}` : `<span class="text-muted">還沒選配方或包材：成本欄請手動填寫。</span>`;
+${c.missing.length ? `<div class="text-danger mt-1">⚠️ 這些沒有單價，成本會偏低：${App.esc([...new Set(c.missing)].join("、"))}</div>` : ""}` : `<span class="text-muted">還沒選配方、包材或裝飾：成本欄請手動填寫。</span>`;
 
         if (apply && used) {
             dom.CostPrice.value = Math.round(c.total * 100) / 100;
@@ -709,7 +724,8 @@ ${c.missing.length ? `<div class="text-danger mt-1">⚠️ 這些沒有單價，
             FormulaUseMode: dom.FormulaUseMode.value || "portion",
             FormulaUseQty: App.numOrNull(dom.FormulaUseQty.value),
             PackagingJson: JSON.stringify(packRows.filter(r => String(r.Name || "").trim() || r.MaterialID).map(r => ({
-                MaterialID: r.MaterialID ? String(r.MaterialID) : "", Name: String(r.Name || "").trim(), Qty: Number(r.Qty) || 0, UnitCost: r.UnitCost === "" ? "" : Number(r.UnitCost) || 0
+                MaterialID: r.MaterialID ? String(r.MaterialID) : "", Name: String(r.Name || "").trim(), Qty: Number(r.Qty) || 0, UnitCost: r.UnitCost === "" ? "" : Number(r.UnitCost) || 0,
+                ...(r.Kind === "decor" ? { Kind: "decor" } : {})
             }))),
             MinStock: App.numOrNull(dom.MinStock.value),
             CurrentStock: App.numOrNull(dom.CurrentStock.value),

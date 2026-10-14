@@ -802,13 +802,15 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             .filter(x => x.s >= .4).sort((a, b) => b.s - a.s).slice(0, 5);
 
         const fid = p.FormulaID || (cand[0] && cand[0].s >= .6 ? String(cand[0].f.FormulaID) : "");
-        const pack = Cost.parsePackaging(p.PackagingJson).map(x => ({ MaterialID: String(x.MaterialID ?? ""), Qty: x.Qty ?? 1 }));
+        const all = Cost.parsePackaging(p.PackagingJson);
+        const pack = all.filter(x => x.Kind !== "decor").map(x => ({ MaterialID: String(x.MaterialID ?? ""), Qty: x.Qty ?? 1 }));
+        const decor = all.filter(x => x.Kind === "decor");      // 裝飾 / 配料：在產品頁編輯，精靈只保留並計入成本
 
         s.cand = cand;
         s.st = {
             useFormula: !(p.CostVerified === true && !p.FormulaID && has(p.CostPrice)), formulaId: fid ? String(fid) : "",
             mode: p.FormulaUseMode === "portion" ? "portion" : "weight",
-            qty: has(p.FormulaUseQty) ? p.FormulaUseQty : (weightGuess(p) || ""), pack, manual: has(p.CostPrice) ? p.CostPrice : ""
+            qty: has(p.FormulaUseQty) ? p.FormulaUseQty : (weightGuess(p) || ""), pack, decor, manual: has(p.CostPrice) ? p.CostPrice : ""
         };
     }
 
@@ -817,7 +819,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
     function productCalc(s) {
         const st = s.st;
         return Cost.product({ FormulaID: st.useFormula ? st.formulaId : "", FormulaUseMode: st.mode, FormulaUseQty: st.qty,
-            PackagingJson: JSON.stringify(st.useFormula ? st.pack.filter(x => x.MaterialID) : []) }, data.formulas, data.details, data.materials);
+            PackagingJson: JSON.stringify(st.useFormula ? st.pack.filter(x => x.MaterialID).concat((st.decor || []).map(x => Object.assign({}, x))) : []) }, data.formulas, data.details, data.materials);
     }
 
     function rProduct(s) {
@@ -894,7 +896,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             const c = productCalc(s);
             if (c.missing.length && !confirm(`這些項目沒有單價，成本會偏低：${[...new Set(c.missing)].slice(0, 6).join("、")}。仍要核可嗎？`)) return false;
             const pack = st.pack.filter(x => x.MaterialID).map(x => { const m = matById(x.MaterialID); return { MaterialID: String(x.MaterialID), Name: m ? m.MaterialName : "", Qty: num(x.Qty), UnitCost: m && has(m.CostPrice) ? num(m.CostPrice) : "" }; });
-            body = { FormulaID: String(st.formulaId), FormulaUseMode: st.mode, FormulaUseQty: num(st.qty), PackagingJson: JSON.stringify(pack), CostPrice: r2(c.total), CostVerified: true };
+            body = { FormulaID: String(st.formulaId), FormulaUseMode: st.mode, FormulaUseQty: num(st.qty), PackagingJson: JSON.stringify(pack.concat(st.decor || [])), CostPrice: r2(c.total), CostVerified: true };
         }
 
         Object.assign(p, await API.update("Products", p.ID, body));

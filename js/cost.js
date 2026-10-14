@@ -5,6 +5,7 @@
 //     例：配方一份 5000 g，產品只用 1000 g → 用量選「重量」填 1000
 //   原料單價優先用原料庫目前的價格（有連結的原料），沒有連結才用配方裡記的單價
 //   包材：產品記錄 [{ MaterialID, Name, Qty, UnitCost }]，單價優先用原料庫目前的價格
+//   裝飾 / 配料：同一個清單，多一個 Kind: "decor"（不是包材的食材），成本另外顯示
 // =========================================================
 window.Cost = {
 
@@ -121,7 +122,7 @@ window.Cost = {
     // p：{ FormulaID, FormulaUseMode, FormulaUseQty, PackagingJson }
     product(p, formulas, allDetails, materials) {
 
-        const out = { formula: 0, extra: 0, packaging: 0, total: 0, grams: 0, formulaName: "", lines: [], missing: [], hasFormula: false };
+        const out = { formula: 0, extra: 0, packaging: 0, decor: 0, total: 0, grams: 0, formulaName: "", lines: [], missing: [], hasFormula: false };
 
         const f = p.FormulaID ? (formulas || []).find(x => String(x.FormulaID) === String(p.FormulaID)) : null;
 
@@ -147,12 +148,13 @@ window.Cost = {
             const m = x.MaterialID ? (materials || []).find(y => String(y.ID) === String(x.MaterialID)) : null;
             const price = m && m.CostPrice !== null && m.CostPrice !== undefined && m.CostPrice !== "" ? this.num(m.CostPrice) : this.num(x.UnitCost);
             const cost = this.num(x.Qty) * price;
-            if (!price && this.num(x.Qty) > 0) out.missing.push((m && m.MaterialName) || x.Name || "（未命名包材）");
-            out.packaging += cost;
-            out.lines.push({ name: (m && m.MaterialName) || x.Name || "", qty: this.num(x.Qty), price, cost, unit: (m && m.Unit) || x.Unit || "" });
+            const decor = x.Kind === "decor";          // 裝飾 / 配料：不是包材的食材（例如餅乾、水果、巧克力片）
+            if (!price && this.num(x.Qty) > 0) out.missing.push((m && m.MaterialName) || x.Name || (decor ? "（未命名裝飾）" : "（未命名包材）"));
+            if (decor) out.decor += cost; else out.packaging += cost;
+            out.lines.push({ name: (m && m.MaterialName) || x.Name || "", qty: this.num(x.Qty), price, cost, unit: (m && m.Unit) || x.Unit || "", kind: decor ? "decor" : "pack" });
         });
 
-        out.total = out.formula + out.extra + out.packaging;
+        out.total = out.formula + out.extra + out.packaging + out.decor;
         return out;
     }
 };
