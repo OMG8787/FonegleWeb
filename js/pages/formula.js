@@ -692,7 +692,8 @@ Pages.Formula = (() => {
         // 目前有幾個已確認 / 待確認
         const ok = formulas.filter(f => isVerified(f) && isActive(f)).length;
         const all = formulas.filter(isActive).length;
-        dom.verifyStat.textContent = all ? `已確認 ${ok} / ${all}` : "";
+        dom.verifyStat.textContent = !all ? "" : ok < all ? `⏳ 待確認 ${all - ok} 個` : "全部已確認";
+        dom.verifyStat.className = "badge border ms-1 " + (ok < all ? "bg-danger-subtle text-danger" : "bg-light text-success");
 
         dom.formulaList.innerHTML = listCache.map((f, i) => {
 
@@ -705,7 +706,7 @@ Pages.Formula = (() => {
     <div class="d-flex justify-content-between gap-1">
         <b>🧪 ${esc(f.FormulaName || "")}</b>
         <span class="text-nowrap">${isFavorite(f) || isVerified(f)
-                    ? `<button type="button" class="btn btn-link p-0 me-1 fav-btn" data-fav="${i}" title="${isFavorite(f) ? "移出常用" : "加入常用"}" aria-label="${isFavorite(f) ? "移出常用" : "加入常用"}">${isFavorite(f) ? "⭐" : "☆"}</button>` : ""}${f.IsSemi === true ? `<span class="badge bg-warning text-dark" title="再製品（半成品），可當作其他配方的食材">🍳 再製品</span> ` : ""}${isVerified(f) ? `<span class="badge bg-success" title="已確認為正確配方${f.VerifiedBy ? `（${esc(f.VerifiedBy)}）` : ""}">✅ 已確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
+                    ? `<button type="button" class="btn btn-link p-0 me-1 fav-btn" data-fav="${i}" title="${isFavorite(f) ? "移出常用" : "加入常用"}" aria-label="${isFavorite(f) ? "移出常用" : "加入常用"}">${isFavorite(f) ? "⭐" : "☆"}</button>` : ""}${f.IsSemi === true ? `<span class="badge bg-warning text-dark" title="再製品（半成品），可當作其他配方的食材">🍳 再製品</span> ` : ""}${!isVerified(f) && isActive(f) ? `<span class="badge bg-danger" title="還沒確認為正確配方（可到成本確認精靈核可）">⏳ 待確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
     </div>
     <div class="small text-muted">${esc(f.YieldUnit || "")}${f.UnitWeight ? `（${g(f.UnitWeight)}g）` : ""} × ${f.YieldQty ?? "-"}</div>
     <div class="small">單位成本 <b>${unit ? money(unit, 2) : "-"}</b>
