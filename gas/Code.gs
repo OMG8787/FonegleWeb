@@ -1958,11 +1958,13 @@ function syncOrderMemos_(orderNo) {
     const only = orderNo === undefined || orderNo === null || orderNo === '' ? null : String(orderNo);
     const mt = tbl_('Memos');
     const groups = new Map();
+    const rowsByNo = new Map();
 
     readRows_(tbl_('Orders')).forEach(x => {
         const k = String(x.obj.OrderNo || '');
         if (!k || (only && k !== only)) return;
         if (!groups.has(k)) groups.set(k, x.obj);
+        (rowsByNo.get(k) || rowsByNo.set(k, []).get(k)).push(x);
     });
 
     const memos = readRows_(mt).filter(x => x.obj.LinkType === 'orderTodo' && (!only || String(x.obj.LinkId) === only));
@@ -1971,11 +1973,17 @@ function syncOrderMemos_(orderNo) {
     const ts = now_();
 
     // 還在待處理 → 沒有備忘錄就建立
+    //   全部掃描時（定時補齊）只處理最近 60 天的訂單、一次最多 30 張，避免舊資料一次湧進備忘錄
+    const since = only ? '' : ymdAdd_(ts.slice(0, 10), -60);
+    let made = 0;
     groups.forEach((o, no) => {
         const reasons = orderTodoReasons_(o);
         if (!reasons.length || byNo.has(no)) return;
+        if (since && String(o.OrderDate || o.CreatedAt || '').slice(0, 10) < since) return;
+        if (!only && made >= 30) return;
+        made++;
 
-        const rows = readRows_(tbl_('Orders')).filter(x => String(x.obj.OrderNo) === no);
+        const rows = rowsByNo.get(no) || [];
         const total = Number(o.TotalAmount) || rows.reduce((s, r) => s + (Number(r.obj.Qty) || 0) * (Number(r.obj.UnitPrice) || 0), 0);
         const ship = String(o.ExpectedShippingDate || '').slice(0, 10);
 
