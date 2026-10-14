@@ -24,6 +24,9 @@ Pages.Permission = (() => {
 
         bindEvents();
 
+        if (isAdmin()) Pages.DbAdmin?.init();
+        else document.getElementById("dbItem")?.remove();
+
         // 一次取回所有需要的資料表
         try {
             preload = await API.getMany(["Users", "ID_Permission", "ID_UserRoles"]);

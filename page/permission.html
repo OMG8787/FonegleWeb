@@ -8,15 +8,15 @@
     <link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
     <link rel="manifest" href="../manifest.webmanifest">
     <meta name="theme-color" content="#c48b6a">
-    <script src="../js/theme.js?v=202610131810"></script>
-    <link href="../css/dark.css?v=202610131810" rel="stylesheet">
+    <script src="../js/theme.js?v=202610140936"></script>
+    <link href="../css/dark.css?v=202610140936" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- 共用樣式 -->
-    <link href="../css/layout.css?v=202610131810" rel="stylesheet">
+    <link href="../css/layout.css?v=202610140936" rel="stylesheet">
 
     <style>
         #profileArea .form-control {
@@ -367,6 +367,111 @@
 
                             </div>
 
+                            <!-- 資料庫管理（容量 / 封存） -->
+                            <div class="list-group-item" id="dbItem">
+
+                                <div class="setting-header d-flex justify-content-between align-items-center">
+
+                                    <div>
+
+                                        <div class="fw-bold">
+                                            🗄️ 資料庫管理
+                                        </div>
+
+                                        <small class="text-muted">
+                                            查看資料庫使用量；舊的流水帳封存成每月結論，避免試算表額滿
+                                        </small>
+
+                                    </div>
+
+                                    <span id="dbToggle" class="toggle-arrow">
+                                        ▶
+                                    </span>
+
+                                </div>
+
+                                <div id="dbArea" class="d-none mt-3">
+
+                                    <div class="fw-bold mb-1">📊 使用量</div>
+                                    <div class="progress" style="height: 22px">
+                                        <div id="dbBar" class="progress-bar bg-success" role="progressbar" style="width:1%">0%</div>
+                                    </div>
+                                    <div id="dbUsage" class="small mt-1"></div>
+                                    <div id="dbHint" class="small mt-1 text-muted"></div>
+                                    <div class="small text-muted mt-1">
+                                        Google 試算表的上限是<b>每個檔案 1,000 萬個儲存格</b>（列 × 欄，空白的也算），不是 100 萬列；而且資料越多，系統讀寫越慢，建議在 50% 左右就開始規劃封存。
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2 my-2">
+                                        <button id="btnDbRefresh" type="button" class="btn btn-sm btn-outline-secondary">🔄 重新整理</button>
+                                        <button id="btnDbTrim" type="button" class="btn btn-sm btn-outline-primary">🧹 釋放空白儲存格</button>
+                                    </div>
+
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-3">
+                                            <thead class="table-light"><tr><th>工作表（前 12 大）</th><th class="text-end">資料列數</th><th class="text-end">配置儲存格</th><th class="text-end">佔比</th></tr></thead>
+                                            <tbody id="dbSheets"></tbody>
+                                        </table>
+                                    </div>
+
+                                    <div id="dbArchiveBox">
+
+                                        <hr>
+                                        <div class="fw-bold mb-1">📦 封存舊資料</div>
+                                        <div class="small text-muted mb-3">
+                                            舊的流水帳（帳款、支出、出攤紀錄、訂單、市集點餐…）換算成<b>每月結論</b>，明細從目前的資料庫移除。
+                                            配方、原料、產品、客戶、帳號等重要資料與登入紀錄<b>不動</b>；財務總表、首頁損益會把結論加回去，總金額不會變少。
+                                            只封存截止日以前、<b>已經結清</b>的明細。完整的舊資料保存在封存備份檔（你的雲端硬碟）。
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <div class="small fw-bold">① 先建立封存備份</div>
+                                            <button id="btnDbBackup" type="button" class="btn btn-sm btn-outline-success mt-1">📦 建立封存備份（完整複製試算表）</button>
+                                            <div id="dbBackupInfo" class="small mt-1"></div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <div class="small fw-bold">② 選擇截止日並預覽</div>
+                                            <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+                                                <input id="dbCutoff" type="date" class="form-control form-control-sm" style="width:170px">
+                                                <span class="small text-muted">以前（不含）</span>
+                                                <button id="btnDbPreview" type="button" class="btn btn-sm btn-outline-primary">預覽會封存什麼</button>
+                                            </div>
+                                            <div id="dbPlan" class="mt-2"></div>
+                                        </div>
+
+                                        <div class="mb-2">
+                                            <div class="small fw-bold">③ 確認封存</div>
+                                            <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+                                                <input id="dbConfirm" class="form-control form-control-sm" style="width:200px" placeholder="輸入「封存」兩個字">
+                                                <button id="btnDbArchive" type="button" class="btn btn-sm btn-danger" disabled>封存</button>
+                                            </div>
+                                            <div id="dbProgress"></div>
+                                        </div>
+
+                                    </div>
+
+                                    <hr>
+                                    <div class="fw-bold mb-1">🧾 封存紀錄</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-3">
+                                            <thead class="table-light"><tr><th>時間</th><th>資料表</th><th class="text-end">封存列數</th><th>說明</th></tr></thead>
+                                            <tbody id="dbHistory"></tbody>
+                                        </table>
+                                    </div>
+
+                                    <div class="fw-bold mb-1">📅 已封存的每月結論</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead class="table-light"><tr><th>月份</th><th class="text-end">帳款收款</th><th class="text-end">出攤營業額</th><th class="text-end">支出</th><th class="text-end">出攤費用</th><th class="text-end">訂單營收</th></tr></thead>
+                                            <tbody id="dbMonthly"></tbody>
+                                        </table>
+                                    </div>
+                                    <div class="small text-muted mt-1">訂單營收已不含運費；訂單與帳款的收款是同一筆錢，請不要把兩欄相加。</div>
+
+                                </div>
+
+                            </div>
 
                         </div>
 
@@ -387,20 +492,21 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@7.7.0/build/index.js"></script>
 
     <!-- 共用 layout -->
-    <script src="../js/settings.js?v=202610131810"></script>
-    <script src="../js/site.js?v=202610131810"></script>
-    <script src="../js/auth.js?v=202610131810"></script>
+    <script src="../js/settings.js?v=202610140936"></script>
+    <script src="../js/site.js?v=202610140936"></script>
+    <script src="../js/auth.js?v=202610140936"></script>
     <script>
         Auth.checkLogin();
     </script>
-    <script src="../js/config.js?v=202610131810"></script>
-    <script src="../js/api.js?v=202610131810"></script>
-    <script src="../js/layout.js?v=202610131810"></script>
-    <script src="../js/core.js?v=202610131810"></script>
-    <script src="../js/ai-chat.js?v=202610131810"></script>
-    <script src="../js/favorite.js?v=202610131810"></script>
+    <script src="../js/config.js?v=202610140936"></script>
+    <script src="../js/api.js?v=202610140936"></script>
+    <script src="../js/layout.js?v=202610140936"></script>
+    <script src="../js/core.js?v=202610140936"></script>
+    <script src="../js/ai-chat.js?v=202610140936"></script>
+    <script src="../js/favorite.js?v=202610140936"></script>
 
-    <script src="../js/pages/permission.js?v=202610131810"></script>
+    <script src="../js/pages/db-admin.js?v=202610140936"></script>
+    <script src="../js/pages/permission.js?v=202610140936"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             App.init("Permission");

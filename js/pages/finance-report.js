@@ -14,7 +14,7 @@ Pages.FinanceReport = (() => {
 
     const dom = {};
 
-    let receivables = [], expenses = [], stalls = [], brand = [], orderRows = [], products = [];
+    let receivables = [], expenses = [], stalls = [], brand = [], orderRows = [], products = [], archive = [];
     let trendChart = null;
 
     async function init() {
@@ -31,7 +31,7 @@ Pages.FinanceReport = (() => {
 
         try {
 
-            const data = await API.getMany(["Receivable", "Expenses", "StallRecords", "BrandCosts", "Orders", "Products"]);
+            const data = await API.getMany(["Receivable", "Expenses", "StallRecords", "BrandCosts", "Orders", "Products", "ArchiveSummary"]);
 
             receivables = data.Receivable || [];
             expenses = data.Expenses || [];
@@ -39,6 +39,7 @@ Pages.FinanceReport = (() => {
             brand = data.BrandCosts || [];
             orderRows = data.Orders || [];
             products = data.Products || [];
+            archive = data.ArchiveSummary || [];      // 封存結論：舊流水帳封存後留下的每月總數，加回去所以總金額不變
 
             renderYearOptions();
             renderReport();
@@ -99,6 +100,7 @@ Pages.FinanceReport = (() => {
         stalls.forEach(r => add(App.toDateInput(r.StallDate)));
         expenses.forEach(r => add(App.toDateInput(r.ExpenseDate)));
         brand.forEach(r => add(App.toDateInput(r.RecordDate)));
+        archive.forEach(a => { if (a.Label !== "archive_log") add(a.Period + "-01"); });
         set.add(String(new Date().getFullYear()));
 
         return [...set].sort();
@@ -160,12 +162,14 @@ Pages.FinanceReport = (() => {
             const d = App.toDateInput(r.PaymentDate) || "";
             if (d) return matchFn(d) ? t + paid : t;
             return includeNoDateAR ? t + paid : t;
-        }, 0);
+        }, 0) + archive.reduce((t, a) => (a.Label === "ar_income" && matchFn(a.Period + "-15") ? t + App.num(a.Amount) : t), 0);
 
-        const stallIncome = sum(stalls, "StallDate", r => App.num(r.Revenue), matchFn);
+        const arc = label => archive.reduce((t, a) => (a.Label === label && matchFn(a.Period + "-15") ? t + App.num(a.Amount) : t), 0);
+
+        const stallIncome = sum(stalls, "StallDate", r => App.num(r.Revenue), matchFn) + arc("stall_income");
         // 出攤費用不含「食材成本估算」，實際食材採購記在支出表，避免重複計算
-        const stallCost = sum(stalls, "StallDate", r => App.num(r.TotalCost) - App.num(r.FoodCost), matchFn);
-        const expense = sum(expenses, "ExpenseDate", r => App.num(r.Amount), matchFn);
+        const stallCost = sum(stalls, "StallDate", r => App.num(r.TotalCost) - App.num(r.FoodCost), matchFn) + arc("stall_cost");
+        const expense = sum(expenses, "ExpenseDate", r => App.num(r.Amount), matchFn) + arc("expense");
         const brandCost = sum(brandOutOnly, "RecordDate", r => App.num(r.Amount), matchFn);
         const brandIncome = sum(brandIn, "RecordDate", r => App.num(r.Amount), matchFn);
 
@@ -229,11 +233,16 @@ ${t.useBrand ? `<tr><td>🔴 品牌攤提表「支出」</td><td class="text-end
             return d && matchFn(d);
         });
         const st = stallList.reduce((t, r) => ({ n: t.n + 1, p: t.p + App.num(r.ProfitLoss), r: t.r + App.num(r.Revenue) }), { n: 0, p: 0, r: 0 });
+        archive.forEach(a => {
+            if (!matchFn(a.Period + "-15")) return;
+            if (a.Label === "stall_income") { st.n += App.num(a.Count); st.r += App.num(a.Amount); }
+            else if (a.Label === "stall_profit") st.p += App.num(a.Amount);
+        });
         set(dom.chStall, dom.chStallSub, st.p, `${st.n} 場 · 營業額 ${money(st.r)}`);
 
         const orders = OrderStats.group(orderRows, products).filter(o => o.date && matchFn(o.date));
-        const on = OrderStats.summarize(orders.filter(o => !o.b2b));
-        const b2b = OrderStats.summarize(orders.filter(o => o.b2b));
+        const on = OrderStats.merge(OrderStats.summarize(orders.filter(o => !o.b2b)), OrderStats.archived(archive, "online", matchFn));
+        const b2b = OrderStats.merge(OrderStats.summarize(orders.filter(o => o.b2b)), OrderStats.archived(archive, "b2b", matchFn));
         const sub = s => `${s.count} 筆 · 營收 ${money(s.revenue)} · 成本 ${money(s.cost)}`;
         set(dom.chOnline, dom.chOnlineSub, on.profit, sub(on));
         set(dom.chB2b, dom.chB2bSub, b2b.profit, sub(b2b));

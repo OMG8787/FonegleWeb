@@ -236,7 +236,13 @@ const SCHEMA = {
         key: 'OrderKey',
         cols: 'OrderKey Time Items Total:n Received:n Change:n Payment CreatedBy CreatedAt'
     },
-    MailLog: { key: 'ID', seq: 'ID', internal: true, cols: 'ID:n Subject Recipients Attachments SentBy CreatedAt' }
+    MailLog: { key: 'ID', seq: 'ID', internal: true, cols: 'ID:n Subject Recipients Attachments SentBy CreatedAt' },
+    // 封存結論：舊的流水帳（帳款、支出、出攤、訂單…）封存後留下的每月總數；財務總表會把它加回去，總金額不變
+    ArchiveSummary: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n ArchiveId Period Source Label Key Count:n Amount:n Note ArchivedAt',
+        money: 'Amount'
+    }
 };
 
 // ============================================================
@@ -290,6 +296,7 @@ const TABLE_INFO = {
     Receivable: ['finance', '帳務（應收帳款）'],
     Expenses: ['finance', '支出'],
     BrandCosts: ['finance', '品牌攤提（投入 / 回收）'],
+    ArchiveSummary: ['finance', '封存結論（舊流水帳封存後留下的每月總數；由「權限管理 → 資料庫管理」產生，請勿手動修改）'],
     AiDrafts: ['ai', 'AI 文案（個人，可共享）'],
     AiChats: ['ai', 'AI 助理對話紀錄（個人）'],
     AgentConfig: ['agent', '代理人設定'],
@@ -332,7 +339,7 @@ const COLUMN_LABELS = {
     // 商品與生產
     SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
     Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
-    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', PackagesJson: '規格 / 產地 / 供應商 / 價格選項（JSON，同一原料可有多種）', PackageId: '指定使用的規格選項（空白 = 跟著原料的計價用規格）', SubFormulaId: '這個食材是自己做的再製品：連到的配方編號（成本自動來自那個配方）', IsSemi: '再製品（半成品，可當作其他配方的食材）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', ArchiveId: '封存批次', Period: '期間（yyyy-MM）', Label: '項目', Count: '筆數', ArchivedAt: '封存時間', PackagesJson: '規格 / 產地 / 供應商 / 價格選項（JSON，同一原料可有多種）', PackageId: '指定使用的規格選項（空白 = 跟著原料的計價用規格）', SubFormulaId: '這個食材是自己做的再製品：連到的配方編號（成本自動來自那個配方）', IsSemi: '再製品（半成品，可當作其他配方的食材）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
     MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
     CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
@@ -449,6 +456,7 @@ const TABLE_PERMS = {
     Receivable: { read: FINANCE, write: FINANCE },
     Expenses: { read: FINANCE, write: FINANCE },
     BrandCosts: { read: FINANCE, write: FINANCE },
+    ArchiveSummary: { read: FINANCE.concat([3]), write: [] },
     AgentConfig: { read: [3].concat(AGENT), write: [3].concat(AGENT) },
     ID_AgentTool: { read: [3].concat(AGENT), write: [3].concat(AGENT) },
     AgentToolPermissions: { read: [3].concat(AGENT), write: [3].concat(AGENT) }
@@ -530,11 +538,15 @@ const PRIVATE_ACTIONS = {
     accessList: accessList_,
     setUserAccess: setUserAccess_,
     approveUser: approveUser_,
-    resetUserPassword: resetUserPassword_
+    resetUserPassword: resetUserPassword_,
+    dbStatus: dbStatus_,
+    dbBackup: dbBackup_,
+    dbTrim: dbTrim_,
+    dbArchive: dbArchive_
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
-const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary'];
+const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary', 'dbStatus'];
 // loginLogConfig 不帶 keep 時只是讀取；帶 keep 會修改（由 reqId 防重複）
 
 function handle_(req) {
@@ -1459,7 +1471,8 @@ function financeSummary_(req, ctx) {
         StallRecords: pick('StallRecords', ['StallDate', 'Revenue', 'TotalCost', 'FoodCost', 'ProfitLoss']),
         BrandCosts: pick('BrandCosts', ['RecordDate', 'Type', 'Amount']),
         Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'ShippingFee', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate', 'UnitCost']),
-        Products: pick('Products', ['ID', 'CostPrice'])
+        Products: pick('Products', ['ID', 'CostPrice']),
+        ArchiveSummary: pick('ArchiveSummary', ['Period', 'Source', 'Label', 'Key', 'Count', 'Amount'])
     };
 }
 
@@ -2481,6 +2494,251 @@ function callAI_(ctx, system, messages) {
     }
 
     return String(pick(body) || '').trim() || '（AI 沒有回應內容）';
+}
+
+// ============================================================
+// 資料庫管理：容量、封存備份、封存瘦身（舊的流水帳只留結論）
+//   Google 試算表每個檔案最多 1,000 萬個儲存格（含空白儲存格，不是 100 萬列）；資料越多系統也越慢
+//   流程：① 建立封存備份（完整複製整個試算表，舊資料原封不動留在備份檔）
+//         ② 預覽 → 封存：把「截止日以前、已經結清」的帳款 / 支出 / 出攤 / 訂單… 換算成每月結論（ArchiveSummary），
+//            再從目前的資料庫移除明細。配方、原料、產品、客戶、帳號等重要資料原封不動；登入紀錄等 log 不動
+//   財務總表、首頁損益會把 ArchiveSummary 的結論加回去，所以總金額不會因為封存而變少
+// ============================================================
+const DB = {
+    CELL_LIMIT: 10000000,
+    // 處理順序：帳款要先於訂單（計算帳款收款要扣運費，要用訂單的運費）
+    ARCHIVE_TABLES: ['Receivable', 'Expenses', 'StallRecords', 'Deposits', 'MarketOrders', 'Orders'],
+    BACKUP_MAX_AGE_HOURS: 48
+};
+
+function lastBackup_() {
+    try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('LAST_BACKUP') || 'null'); } catch (e) { return null; }
+}
+
+// 沒有資料的空白列也算在 1000 萬個儲存格裡：每個工作表保留「最後一筆資料 + 20 列」，其餘空白列可以釋放（新增資料時系統會自動補列）
+function dbTrimPlan_() {
+    return SpreadsheetApp.getActiveSpreadsheet().getSheets().map(sh => {
+        const keep = Math.max(sh.getLastRow() + 20, 21);
+        const extra = Math.max(0, sh.getMaxRows() - keep);
+        return { sh, name: sh.getName(), extra, cells: extra * sh.getMaxColumns() };
+    }).filter(x => x.extra > 0);
+}
+
+function dbTrim_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    return withLock_(() => {
+        const plan = dbTrimPlan_();
+        let freed = 0;
+
+        plan.forEach(p => { p.sh.deleteRows(p.sh.getMaxRows() - p.extra + 1, p.extra); freed += p.cells; });
+        Object.keys(SCHEMA).forEach(n => touchTable_(n));
+
+        return { sheets: plan.length, freedCells: freed };
+    });
+}
+
+// 容量：每個工作表的列數、已配置的儲存格數
+function dbStatus_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets().map(sh => {
+        const name = sh.getName();
+        const maxRows = sh.getMaxRows(), maxCols = sh.getMaxColumns();
+        return { name, rows: Math.max(0, sh.getLastRow() - 1), maxRows, maxCols, cells: maxRows * maxCols, schema: !!SCHEMA[name] };
+    }).sort((a, b) => b.cells - a.cells);
+
+    const used = sheets.reduce((t, s) => t + s.cells, 0);
+    const b = lastBackup_();
+
+    return {
+        limit: DB.CELL_LIMIT,
+        usedCells: used,
+        percent: Math.round(used / DB.CELL_LIMIT * 10000) / 100,
+        sheets,
+        archiveTables: DB.ARCHIVE_TABLES,
+        reclaimable: dbTrimPlan_().reduce((t, p) => t + p.cells, 0),
+        lastBackup: b ? { name: b.name, url: b.url, at: b.at, atText: b.atText } : null,
+        backupMaxAgeHours: DB.BACKUP_MAX_AGE_HOURS
+    };
+}
+
+// 打包舊資料庫：把整個試算表（含所有資料與程式）完整複製一份到雲端硬碟，舊資料原封不動留在備份檔
+function dbBackup_(req, ctx) {
+    requirePerm_(ctx, [PERM.ADMIN]);
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const name = '封存備份_' + appName_() + '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmm');
+    const copy = DriveApp.getFileById(ss.getId()).makeCopy(name);
+    const info = { id: copy.getId(), url: copy.getUrl(), name, at: Date.now(), atText: now_() };
+
+    PropertiesService.getScriptProperties().setProperty('LAST_BACKUP', JSON.stringify(info));
+
+    return { name: info.name, url: info.url, at: info.at, atText: info.atText };
+}
+
+const dbDay_ = v => String(v === null || v === undefined ? '' : v).slice(0, 10);
+const dbMon_ = v => dbDay_(v).slice(0, 7);
+const dbNum_ = v => Number(v) || 0;
+
+// 封存截止日（含當天以前的結清資料）：不能晚於本月 1 日（本月的資料不封存）
+function archiveCut_(cutoff) {
+    const c = String(cutoff || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(c)) fail_('請選擇封存截止日');
+    if (c > now_().slice(0, 8) + '01') fail_('封存截止日不能晚於本月 1 日（本月的資料不封存）');
+    return c;
+}
+
+// 單一資料表的封存計畫：{ arch: 要移除的列, keep: 留下的列, summary: 每月結論 }
+function archivePlan_(table, cutoff) {
+    const t = tbl_(table);
+    const objs = readRows_(t).map(x => x.obj);
+    const sums = new Map();
+    const add = (period, label, key, count, amount) => {
+        if (!period) return;
+        const k = period + '|' + label + '|' + key;
+        const s = sums.get(k) || { Period: period, Label: label, Key: key, Count: 0, Amount: 0 };
+        s.Count += count;
+        s.Amount += amount;
+        sums.set(k, s);
+    };
+    const arch = [], keep = [];
+
+    if (table === 'Receivable') {
+        // 已收齊、收款日（沒有就用帳單日）在截止日以前
+        const ship = {};
+        readRows_(tbl_('Orders')).forEach(x => { const k = String(x.obj.OrderNo); if (k && !(k in ship)) ship[k] = dbNum_(x.obj.ShippingFee); });
+
+        objs.forEach(r => {
+            const amount = dbNum_(r.Amount), paid = dbNum_(r.PaidAmount);
+            const date = dbDay_(r.PaymentDate) || dbDay_(r.BillDate);
+            if (amount > 0 && paid >= amount && date && date < cutoff) {
+                arch.push(r);
+                const fee = r.OrderID ? dbNum_(ship[String(r.OrderID)]) : 0;
+                const part = fee ? Math.min(fee, amount) * Math.min(1, paid / amount) : 0;     // 運費是支出，不算營收
+                add(dbMon_(date), 'ar_income', '', 1, paid - part);
+                if (part) add(dbMon_(date), 'ar_shipping', '', 0, part);
+            } else keep.push(r);
+        });
+    } else if (table === 'Expenses') {
+        objs.forEach(r => {
+            const date = dbDay_(r.ExpenseDate);
+            if (date && date < cutoff) { arch.push(r); add(dbMon_(date), 'expense', String(r.Category || ''), 1, dbNum_(r.Amount)); } else keep.push(r);
+        });
+    } else if (table === 'StallRecords') {
+        objs.forEach(r => {
+            const date = dbDay_(r.StallDate);
+            if (date && date < cutoff) {
+                arch.push(r);
+                add(dbMon_(date), 'stall_income', '', 1, dbNum_(r.Revenue));
+                add(dbMon_(date), 'stall_cost', '', 0, dbNum_(r.TotalCost) - dbNum_(r.FoodCost));
+                add(dbMon_(date), 'stall_profit', '', 0, dbNum_(r.ProfitLoss));
+            } else keep.push(r);
+        });
+    } else if (table === 'Deposits') {
+        objs.forEach(r => {
+            const done = r.Status === '已退還' || !!dbDay_(r.ReturnedDate);
+            const date = dbDay_(r.ReturnedDate) || dbDay_(r.EventDate);
+            if (done && date && date < cutoff) { arch.push(r); add(dbMon_(date), 'deposit_returned', '', 1, dbNum_(r.ReturnedAmount) || dbNum_(r.Amount)); } else keep.push(r);
+        });
+    } else if (table === 'MarketOrders') {
+        objs.forEach(r => {
+            const date = dbDay_(r.CreatedAt);
+            if (date && date < cutoff) { arch.push(r); add(dbMon_(date), 'market_orders', String(r.Payment || ''), 1, dbNum_(r.Total)); } else keep.push(r);
+        });
+    } else if (table === 'Orders') {
+        // 一張訂單的每個品項一起處理：全部結清（已付款 / 退款 / 取消）而且下單日在截止日以前才封存
+        const cost = {};
+        cachedObjs_(tbl_('Products')).forEach(p => { cost[String(p.ID)] = dbNum_(p.CostPrice); });
+
+        const groups = new Map();
+        objs.forEach(o => { const k = String(o.OrderNo || '#' + o.OrderID); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(o); });
+
+        const gone = new Set();
+        groups.forEach((rows, k) => {
+            const f = rows[0], date = dbDay_(f.OrderDate);
+            if (!(date && date < cutoff && rows.every(r => r.PaymentStatus === '已付款' || r.PaymentStatus === '退款' || r.OrderStatus === '取消'))) return;
+            gone.add(k);
+
+            const channel = f.SalesChannel === 'B2B' ? 'b2b' : 'online';
+            const refunded = rows.some(r => r.PaymentStatus === '退款');
+            const ship = dbNum_(f.ShippingFee);
+
+            if (refunded) { add(dbMon_(date), 'order_refunded', channel, 1, dbNum_(f.TotalAmount)); return; }
+
+            let c = 0;
+            rows.forEach(r => {
+                const snap = r.PaymentStatus === '已付款' && r.UnitCost !== null && r.UnitCost !== '' ? dbNum_(r.UnitCost) : dbNum_(cost[String(r.ProductID)]);
+                c += dbNum_(r.Qty) * snap;
+            });
+
+            add(dbMon_(date), 'order', channel, 1, Math.max(0, dbNum_(f.TotalAmount) - ship));     // 營收不含運費
+            add(dbMon_(date), 'order_cost', channel, 0, c);
+            add(dbMon_(date), 'order_shipping', channel, 0, ship);
+            if (f.CompanyId !== null && f.CompanyId !== '') add(dbMon_(date), 'order_company', String(f.CompanyId), 1, Math.max(0, dbNum_(f.TotalAmount) - ship));
+        });
+
+        objs.forEach(o => (gone.has(String(o.OrderNo || '#' + o.OrderID)) ? arch : keep).push(o));
+    } else fail_('不支援封存的資料表：' + table);
+
+    return { arch, keep, summary: Array.from(sums.values()), headers: t.headers.length };
+}
+
+// 寫入結論（同一批次、同一張表重跑會先移除舊的，不會重複累加）
+function writeArchiveSummary_(archiveId, source, rows) {
+    const t = tbl_('ArchiveSummary');
+    const all = readRows_(t).map(x => x.obj).filter(o => !(o.ArchiveId === archiveId && o.Source === source));
+    let id = all.reduce((m, o) => Math.max(m, Number(o.ID) || 0), 0);
+    const ts = now_();
+
+    const add = rows.map(r => ({
+        ID: ++id, ArchiveId: archiveId, Period: r.Period, Source: source, Label: r.Label, Key: r.Key || '',
+        Count: r.Count || 0, Amount: Math.round((r.Amount || 0) * 100) / 100, Note: r.Note || '', ArchivedAt: ts
+    }));
+
+    rewriteRows_(t, all.concat(add));
+}
+
+// 封存單一資料表：{ table, cutoff, dryRun, confirm: '封存', archiveId }
+function dbArchive_(req, ctx) {
+    requirePerm_(ctx, [PERM.ADMIN]);
+
+    const table = String(req.table || '');
+    if (DB.ARCHIVE_TABLES.indexOf(table) < 0) fail_('不支援封存的資料表：' + table);
+
+    const cutoff = archiveCut_(req.cutoff);
+
+    return withLock_(() => {
+        const plan = archivePlan_(table, cutoff);
+        const result = {
+            table, cutoff, archived: plan.arch.length, kept: plan.keep.length, months: new Set(plan.summary.map(s => s.Period)).size,
+            summaryRows: plan.summary.length, cellsFreed: plan.arch.length * plan.headers, done: false
+        };
+
+        if (req.dryRun === true || !plan.arch.length) return result;
+
+        const b = lastBackup_();
+        if (!b || Date.now() - b.at > DB.BACKUP_MAX_AGE_HOURS * 3600 * 1000) fail_('請先建立封存備份（' + DB.BACKUP_MAX_AGE_HOURS + ' 小時內）');
+        if (String(req.confirm || '') !== '封存') fail_('請輸入「封存」確認');
+
+        const archiveId = String(req.archiveId || '').replace(/[^\w-]/g, '').slice(0, 40) || 'A' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMddHHmmss');
+
+        writeArchiveSummary_(archiveId, table, plan.summary);
+        rewriteRows_(tbl_(table), plan.keep);
+
+        // 封存紀錄（流水帳：做了什麼、封存多少、備份在哪）
+        const t = tbl_('ArchiveSummary');
+        const all = readRows_(t).map(x => x.obj);
+        all.push({
+            ID: all.reduce((m, o) => Math.max(m, Number(o.ID) || 0), 0) + 1, ArchiveId: archiveId, Period: cutoff, Source: 'ARCHIVE', Label: 'archive_log', Key: table,
+            Count: plan.arch.length, Amount: 0, Note: '封存 ' + cutoff + ' 以前；留下 ' + plan.keep.length + ' 列；備份：' + b.url, ArchivedAt: now_()
+        });
+        rewriteRows_(t, all);
+
+        result.done = true;
+        result.archiveId = archiveId;
+        return result;
+    });
 }
 
 // ============================================================

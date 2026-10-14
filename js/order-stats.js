@@ -76,6 +76,30 @@ window.OrderStats = {
             .map(o => Object.assign(o, { profit: o.revenue - o.cost, b2b: o.channel === "B2B" }));
     },
 
+    // 封存結論（ArchiveSummary）：舊的已結清訂單封存後留下的每月總數，channel = "b2b" | "online"
+    //   inRange(日期字串)：判斷這個月份在不在目前要看的期間內
+    archived(archive, channel, inRange) {
+        const s = { count: 0, revenue: 0, cost: 0, profit: 0, missing: 0, shipping: 0, last: "" };
+        (archive || []).forEach(a => {
+            if (a.Key !== channel || !inRange(a.Period + "-15")) return;
+            const v = App.num(a.Amount);
+            if (a.Label === "order") { s.count += App.num(a.Count); s.revenue += v; }
+            else if (a.Label === "order_cost") s.cost += v;
+            else if (a.Label === "order_shipping") s.shipping += v;
+        });
+        s.profit = s.revenue - s.cost;
+        s.avg = s.count ? s.revenue / s.count : 0;
+        return s;
+    },
+
+    // 把兩份統計加起來（目前的訂單 + 封存結論）
+    merge(a, b) {
+        const s = { count: a.count + b.count, revenue: a.revenue + b.revenue, cost: a.cost + b.cost, shipping: (a.shipping || 0) + (b.shipping || 0), missing: a.missing + b.missing, last: a.last > b.last ? a.last : b.last };
+        s.profit = s.revenue - s.cost;
+        s.avg = s.count ? s.revenue / s.count : 0;
+        return s;
+    },
+
     // { count, revenue, cost, profit, avg, missing }
     summarize(list) {
         const s = { count: 0, revenue: 0, shipping: 0, cost: 0, profit: 0, missing: 0, last: "" };
