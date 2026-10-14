@@ -108,3 +108,4 @@ html[data-bs-theme="dark"] .btn-light { --bs-btn-bg: #2b3137; --bs-btn-color: va
 html[data-bs-theme="dark"] .text-dark:not(.badge) { color: var(--bs-body-color) !important; }
 html[data-bs-theme="dark"] .text-black { color: var(--bs-body-color) !important; }
 body > .ts-dropdown { z-index: 2000 !important; }
+body > .ts-dropdown.product-dd { min-width: 380px; }

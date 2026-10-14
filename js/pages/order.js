@@ -534,14 +534,17 @@ Pages.Order = (() => {
                 name: p.ProductName || String(p.ID),
                 unit: p.Unit || "",
                 price: p.SalePrice ?? "",
-                cost: p.CostPrice
+                cost: p.CostPrice,
+                // 同名產品的不同規格：選單要看得出是哪一個
+                spec: [p.Specification, p.Capacity ? p.Capacity + (p.Unit || "") : ""].filter(Boolean).join(" "),
+                sku: p.SKU || ""
             }));
 
         // 已經加入的商品列補上產品選項
         document.querySelectorAll("#orderDetailList .productSelect").forEach(sel => {
             const ts = sel.tomselect;
             if (!ts) return;
-            productOptions.forEach(p => { if (!ts.options[p.id]) ts.addOption({ value: p.id, text: p.name }); });
+            productOptions.forEach(p => { if (!ts.options[p.id]) ts.addOption({ value: p.id, text: p.name, spec: p.spec, sku: p.sku, price: p.price }); });
             ts.refreshOptions(false);
         });
     }
@@ -690,7 +693,7 @@ ${x.CompanyId ? "🏢" : "👤"} ${App.esc(x.MemberName || "未知")}
             `<option value="">請選擇產品</option>`;
         productOptions.forEach(p => {
             html +=
-                `<option value="${App.esc(p.id)}">${App.esc(p.name)}</option>`;
+                `<option value="${App.esc(p.id)}" data-spec="${App.esc(p.spec)}" data-sku="${App.esc(p.sku)}" data-price="${App.esc(p.price)}">${App.esc(p.name)}</option>`;
         });
         tr.innerHTML = `
 <td>
@@ -752,12 +755,19 @@ class="btn btn-danger btn-sm">
                 createOnBlur: true,
                 createFilter: input => input.trim().length > 0,
                 dropdownParent: "body",
+                dropdownClass: "ts-dropdown product-dd",
                 placeholder: "搜尋產品，或直接輸入自訂品名",
-                searchField: ["text"],
+                searchField: ["text", "spec", "sku"],
                 valueField: "value",
                 labelField: "text",
-                sortField: "text",
+                sortField: [{ field: "text" }, { field: "spec" }],
                 render: {
+                    // 滑鼠移上去顯示規格、SKU、售價（同名多規格才分得出來）
+                    option: (d, esc) => {
+                        const tip = [d.text, d.spec && "規格：" + d.spec, d.sku && "SKU：" + d.sku, d.price !== undefined && d.price !== "" && "售價：$" + d.price].filter(Boolean).join("\n");
+                        return `<div title="${esc(tip)}">${esc(d.text)}${d.spec ? ` <span class="text-primary small">【${esc(d.spec)}】</span>` : ""}<span class="text-muted small">${d.sku ? "　" + esc(d.sku) : ""}${d.price !== undefined && d.price !== "" ? "　$" + esc(d.price) : ""}</span></div>`;
+                    },
+                    item: (d, esc) => `<div title="${esc([d.text, d.spec && "規格：" + d.spec, d.sku && "SKU：" + d.sku].filter(Boolean).join("\n"))}">${esc(d.text)}${d.spec ? ` <span class="text-primary small">【${esc(d.spec)}】</span>` : ""}</div>`,
                     option_create: (data, escape) => `<div class="create">＋ 使用自訂品名「<b>${escape(data.input)}</b>」</div>`,
                     no_results: () => `<div class="no-results">找不到產品，輸入完整品名後按 Enter 加入自訂品項</div>`
                 }
@@ -811,6 +821,9 @@ class="btn btn-danger btn-sm">
             dom.OrderNo.value = generateOrderNo();
         try {
             const cust = customerOps();
+            // 沒有連到客戶：不會建立應收帳款，也就不會有「開發票」「收帳」提醒
+            if (!cust.ref && !confirm("這張訂單沒有連到客戶資料（沒有選擇客戶，或沒勾「存成新客戶」）。\n\n沒有連到客戶的訂單不會建立應收帳款，也不會出現在待辦的「開發票」「收帳」提醒。\n\n仍要這樣建立嗎？\n（按「取消」回去選擇或建立客戶）"))
+                return;
             await API.batch([
                 ...cust.ops,
                 ...rows.map(tr => ({

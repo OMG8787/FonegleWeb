@@ -225,7 +225,7 @@ Pages.Home = (() => {
         <div class="memo-title">${m.Priority === "高" ? "❗ " : ""}${esc(m.Title || "")}</div>
         ${notice && m.Content ? `<div class="small text-muted" style="white-space:pre-line">${esc(m.Content)}</div>` : ""}
         <div class="small">${notice ? `<span class="badge bg-warning text-dark">系統通知</span>` : ""} ${dueBadge} ${m.IsShared ? `<span class="badge bg-info">${m.CreatedBy === me ? "已共享" : "同事共享"}</span>` : ""}
-        ${["approveUser", "resetPassword"].includes(m.LinkType) && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往處理</a>` : ""}</div>
+        ${["approveUser", "resetPassword"].includes(m.LinkType) && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往處理</a>` : ""}${m.LinkType === "orderTodo" && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/order.html">前往訂單</a>` : ""}</div>
     </div>
     ${mine ? `<div class="memo-actions"><button class="btn btn-sm btn-link text-danger p-0" data-delete="${m.ID}">刪除</button></div>` : ""}
 </div>`;

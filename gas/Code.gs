@@ -1717,7 +1717,7 @@ function doRemoveWhere_(name, where, ctx, isReplace) {
 
     rows.reverse().forEach(x => deleteRow_(t, x.row));
 
-    if (name === 'Orders' && !isReplace && where.OrderNo) removeOrderReceivable_(where.OrderNo);
+    if (name === 'Orders' && !isReplace && where.OrderNo) { removeOrderReceivable_(where.OrderNo); syncOrderMemos_(where.OrderNo); }
 
     return rows.length;
 }
@@ -1748,7 +1748,7 @@ const HOOKS = {
                 snapshotOrderCost_(patch, old);                                    // 剛結清：記下當下成本
             else if (!nowPaid && patch.UnitCost === undefined && hasOld) patch.UnitCost = '';   // 退款 / 改回未付款：解除鎖定
         },
-        afterWrite(obj, ctx) { syncOrderReceivable_(obj.OrderNo, ctx); }
+        afterWrite(obj, ctx) { syncOrderReceivable_(obj.OrderNo, ctx); syncOrderMemos_(obj.OrderNo); }
     },
     Roles: {
         beforeInsert(obj, ctx) { normalizeRolePerms_(obj, null, ctx); },
@@ -1937,6 +1937,78 @@ function syncCalendarDeposit_(cal, ctx) {
         patch.ExpectReturnDate = due;
     }
     writeRow_(dt, found, patch);
+}
+
+// ------------------------------------------------------------
+// 訂單待處理提醒（備忘錄）：尚未確認（訂單狀態「待確認」）或尚未出貨（出貨狀態「未配送」）的訂單，
+// 放進備忘錄（銷售與客戶權限的人都看得到），處理完（確認並出貨、完成、取消、刪除）就自動關閉
+//   orderNo 不帶 = 全部訂單
+// ------------------------------------------------------------
+function orderTodoReasons_(o) {
+    const st = String(o.OrderStatus || ''), ship = String(o.ShippingStatus || '');
+    if (st === '取消' || o.PaymentStatus === '退款') return [];
+
+    const out = [];
+    if (st === '待確認') out.push('尚未確認');
+    if ((!ship || ship === '未配送') && st !== '已出貨' && st !== '完成') out.push('尚未出貨');
+    return out;
+}
+
+function syncOrderMemos_(orderNo) {
+    const only = orderNo === undefined || orderNo === null || orderNo === '' ? null : String(orderNo);
+    const mt = tbl_('Memos');
+    const groups = new Map();
+
+    readRows_(tbl_('Orders')).forEach(x => {
+        const k = String(x.obj.OrderNo || '');
+        if (!k || (only && k !== only)) return;
+        if (!groups.has(k)) groups.set(k, x.obj);
+    });
+
+    const memos = readRows_(mt).filter(x => x.obj.LinkType === 'orderTodo' && (!only || String(x.obj.LinkId) === only));
+    const byNo = new Map();
+    memos.forEach(x => { if (!byNo.has(String(x.obj.LinkId))) byNo.set(String(x.obj.LinkId), x); });
+    const ts = now_();
+
+    // 還在待處理 → 沒有備忘錄就建立
+    groups.forEach((o, no) => {
+        const reasons = orderTodoReasons_(o);
+        if (!reasons.length || byNo.has(no)) return;
+
+        const rows = readRows_(tbl_('Orders')).filter(x => String(x.obj.OrderNo) === no);
+        const total = Number(o.TotalAmount) || rows.reduce((s, r) => s + (Number(r.obj.Qty) || 0) * (Number(r.obj.UnitPrice) || 0), 0);
+        const ship = String(o.ExpectedShippingDate || '').slice(0, 10);
+
+        appendRow_(mt, {
+            ID: nextSeq_(mt),
+            Title: '📦 訂單待處理：' + (o.MemberName || '（未填客戶）') + '　' + no,
+            Content: reasons.join('、') + '\n品項 ' + rows.map(r => (r.obj.ProductName || '') + (r.obj.Qty ? '×' + r.obj.Qty : '')).join('、').slice(0, 120) +
+                '　金額 $' + total + (ship ? '　預計出貨 ' + ship : ''),
+            DueDate: ship,
+            Priority: '中',
+            IsDone: false,
+            IsShared: false,
+            Audience: 'perm:' + SALES[0],
+            LinkType: 'orderTodo',
+            LinkId: no,
+            CreatedBy: 'SYSTEM',
+            CreatedAt: ts
+        });
+    });
+
+    // 已經處理完（或訂單已刪除）→ 自動關閉
+    memos.forEach(x => {
+        const no = String(x.obj.LinkId);
+        if (x.obj.IsDone === true) return;
+        const o = groups.get(no);
+        if (o && orderTodoReasons_(o).length) return;
+        writeRow_(mt, x, {
+            IsDone: true,
+            Content: (x.obj.Content || '') + '\n→ ' + (o ? '已處理完畢（自動關閉）' : '訂單已刪除（自動關閉）') + '　' + ts,
+            UpdatedAt: ts,
+            UpdatedBy: 'SYSTEM'
+        });
+    });
 }
 
 function removeOrderReceivable_(orderNo) {
@@ -2948,6 +3020,9 @@ function keepWarm() {
     CONFIG.WARM_TABLES.forEach(name => {
         try { cachedObjs_(tbl_(name)); } catch (e) { }
     });
+
+    // 補齊 / 關閉「訂單待處理」備忘錄（舊訂單、在試算表直接修改的訂單）
+    try { withLock_(() => syncOrderMemos_()); } catch (e) { console.warn('同步訂單提醒失敗', e); }
 }
 
 function installWarmTrigger() {
