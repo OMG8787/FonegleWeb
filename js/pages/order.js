@@ -38,6 +38,178 @@ Pages.Order = (() => {
         }
     }
 
+    // =========================
+    // 確認訂單：把「待確認」的訂單依產品整理，批次確認
+    // =========================
+    let confirmModal = null, confirmEl = null, confirmGroups = [], confirmSelected = new Set();
+
+    function pendingRows(rows) {
+        return (rows || []).filter(r => r.OrderNo && r.OrderStatus === "待確認");
+    }
+
+    function updateConfirmBadge(rows) {
+        const badge = document.getElementById("confirmBadge");
+        if (!badge) return;
+        const n = new Set(pendingRows(rows).map(r => r.OrderNo)).size;
+        badge.textContent = n;
+        badge.classList.toggle("d-none", !n);
+    }
+
+    function ensureConfirmModal() {
+
+        if (confirmEl) return;
+
+        confirmEl = document.createElement("div");
+        confirmEl.className = "modal fade";
+        confirmEl.tabIndex = -1;
+        confirmEl.innerHTML = `
+<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title">✅ 確認訂單</h5><div class="small text-muted">狀態是「待確認」的訂單，依產品整理；勾選後一次確認</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body" id="cfBody"></div>
+    <div class="modal-footer justify-content-between">
+        <div class="d-flex align-items-center gap-2">
+            <label class="small mb-0" for="cfTarget">確認後狀態</label>
+            <select id="cfTarget" class="form-select form-select-sm" style="width:auto"><option>製作中</option><option>待出貨</option><option>已出貨</option></select>
+        </div>
+        <div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">關閉</button><button type="button" class="btn btn-success" id="cfOk">✅ 確認選取的訂單</button></div>
+    </div>
+</div></div>`;
+        document.body.appendChild(confirmEl);
+        confirmModal = new bootstrap.Modal(confirmEl);
+
+        confirmEl.addEventListener("change", e => {
+            const t = e.target;
+            if (t.matches("[data-cf-order]")) {
+                if (t.checked) confirmSelected.add(t.dataset.cfOrder); else confirmSelected.delete(t.dataset.cfOrder);
+                renderConfirm();
+            } else if (t.matches("[data-cf-group]")) {
+                const g = confirmGroups[Number(t.dataset.cfGroup)];
+                g.orders.forEach(o => { if (t.checked) confirmSelected.add(o.no); else confirmSelected.delete(o.no); });
+                renderConfirm();
+            } else if (t.matches("#cfAll")) {
+                confirmGroups.forEach(g => g.orders.forEach(o => { if (t.checked) confirmSelected.add(o.no); else confirmSelected.delete(o.no); }));
+                renderConfirm();
+            }
+        });
+        confirmEl.querySelector("#cfOk").addEventListener("click", submitConfirm);
+    }
+
+    function buildConfirmGroups(rows) {
+
+        const pend = pendingRows(rows);
+        const lines = new Map();     // OrderNo → 這張訂單的品項數
+        pend.forEach(r => lines.set(r.OrderNo, (lines.get(r.OrderNo) || 0) + 1));
+
+        const map = new Map();
+        pend.forEach(r => {
+            const key = r.ProductID ? "p:" + r.ProductID : "n:" + String(r.ProductName || "").trim();
+            const g = map.get(key) || { name: r.ProductName || "（未填品名）", unit: r.Unit || "", qty: 0, orders: [] };
+            g.qty += Number(r.Qty) || 0;
+            g.orders.push({
+                no: r.OrderNo, customer: r.MemberName || "", qty: Number(r.Qty) || 0, unit: r.Unit || "", date: App.toDateInput(r.OrderDate) || "",
+                ship: App.toDateInput(r.ExpectedShippingDate) || "", note: r.Note || "", otherLines: lines.get(r.OrderNo) - 1
+            });
+            map.set(key, g);
+        });
+
+        return [...map.values()].sort((a, b) => b.orders.length - a.orders.length || String(a.name).localeCompare(String(b.name), "zh-Hant"));
+    }
+
+    function renderConfirm() {
+
+        const esc = App.esc;
+        const all = new Set(confirmGroups.flatMap(g => g.orders.map(o => o.no)));
+        const body = confirmEl.querySelector("#cfBody");
+
+        if (!confirmGroups.length) {
+            body.innerHTML = `<div class="text-center text-muted py-5">🎉 沒有待確認的訂單</div>`;
+            confirmEl.querySelector("#cfOk").disabled = true;
+            confirmEl.querySelector("#cfOk").textContent = "✅ 確認選取的訂單";
+            return;
+        }
+
+        body.innerHTML = `
+<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+    <label class="mb-0"><input type="checkbox" class="form-check-input me-1" id="cfAll" ${confirmSelected.size === all.size && all.size ? "checked" : ""}>全選（${all.size} 張訂單、${confirmGroups.length} 種產品）</label>
+    <span class="text-muted small">已選 ${confirmSelected.size} 張</span>
+</div>` + confirmGroups.map((g, gi) => {
+            const sel = g.orders.filter(o => confirmSelected.has(o.no)).length;
+            return `<div class="border rounded mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center px-3 py-2 bg-body-tertiary rounded-top">
+        <label class="mb-0 fw-bold"><input type="checkbox" class="form-check-input me-2" data-cf-group="${gi}" ${sel === g.orders.length ? "checked" : ""}>${esc(g.name)}</label>
+        <span class="small text-muted">${g.orders.length} 張訂單 ・ 數量合計 <b class="text-body">${Math.round(g.qty * 100) / 100}</b> ${esc(g.unit)}</span>
+    </div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th style="width:36px"></th><th>訂單編號</th><th>客戶</th><th class="text-end">數量</th><th>下單日</th><th>預計出貨</th><th>備註</th></tr></thead>
+        <tbody>${g.orders.map(o => `<tr>
+            <td><input type="checkbox" class="form-check-input" data-cf-order="${esc(o.no)}" ${confirmSelected.has(o.no) ? "checked" : ""}></td>
+            <td class="text-nowrap">${esc(o.no)}${o.otherLines ? ` <span class="badge text-bg-light border" title="這張訂單還有其他品項，確認時整張一起確認">另 ${o.otherLines} 項</span>` : ""}</td>
+            <td>${esc(o.customer)}</td><td class="text-end">${o.qty} ${esc(o.unit)}</td><td class="text-nowrap">${esc(o.date)}</td><td class="text-nowrap">${esc(o.ship)}</td><td class="small text-muted">${esc(o.note)}</td></tr>`).join("")}</tbody>
+    </table></div>
+</div>`;
+        }).join("");
+
+        const ok = confirmEl.querySelector("#cfOk");
+        ok.disabled = !confirmSelected.size;
+        ok.textContent = `✅ 確認選取的訂單（${confirmSelected.size}）`;
+    }
+
+    async function openConfirmOrders() {
+
+        ensureConfirmModal();
+
+        let rows;
+        try {
+            API.cacheClear();
+            rows = await API.list("Orders");
+        } catch (err) {
+            App.error(err, "讀取訂單失敗");
+            return;
+        }
+
+        confirmRows = rows;
+        confirmGroups = buildConfirmGroups(rows);
+        confirmSelected = new Set();
+        renderConfirm();
+        confirmModal.show();
+    }
+
+    let confirmRows = [];
+
+    async function submitConfirm() {
+
+        if (!confirmSelected.size) return;
+
+        const target = confirmEl.querySelector("#cfTarget").value;
+        const ops = pendingRows(confirmRows).filter(r => confirmSelected.has(r.OrderNo))
+            .map(r => ({ action: "update", table: "Orders", id: r.OrderID, data: { OrderStatus: target } }));
+
+        if (!confirm(`確認這 ${confirmSelected.size} 張訂單（${ops.length} 個品項），狀態改為「${target}」？`)) return;
+
+        const btn = confirmEl.querySelector("#cfOk");
+        btn.disabled = true;
+
+        try {
+            for (let i = 0; i < ops.length; i += 40)
+                await API.batch(ops.slice(i, i + 40), { loadingText: "確認訂單中…" });
+
+            alert(`✅ 已確認 ${confirmSelected.size} 張訂單，狀態：${target}`);
+
+            API.cacheClear();
+            confirmRows = await API.list("Orders");
+            confirmGroups = buildConfirmGroups(confirmRows);
+            confirmSelected = new Set();
+            renderConfirm();
+            updateConfirmBadge(confirmRows);
+            if (typeof searchOrder === "function") await searchOrder();
+
+        } catch (err) {
+            App.error(err, "確認失敗");
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     // 已付款、但還沒記成本的舊訂單：用產品目前的成本記下來並鎖定（只處理一次，之後食材漲跌不再影響）
     async function lockOldOrders() {
 
@@ -184,6 +356,7 @@ Pages.Order = (() => {
             addDetailRow
         );
         document.getElementById("btnLockOld")?.addEventListener("click", lockOldOrders);
+        document.getElementById("btnConfirmOrders")?.addEventListener("click", openConfirmOrders);
         document.getElementById("orderCostInfo")?.addEventListener("click", e => {
             if (!e.target.closest("#btnUnlockCost")) return;
             document.querySelectorAll("#orderDetailList tr").forEach(tr => { tr.dataset.unitCost = ""; });
@@ -257,6 +430,8 @@ Pages.Order = (() => {
     }
 
     function applySearch(rows) {
+
+        updateConfirmBadge(rows);
 
         const q = {
             member: dom.qMemberID.value,
