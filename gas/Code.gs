@@ -127,7 +127,7 @@ const SCHEMA = {
         key: 'ID', seq: 'ID',
         cols: 'ID:n SKU Barcode ProductName ShortName CategoryID:n Brand Specification Flavor Capacity Weight:n Color Material Unit ' +
             'SalePrice:n MemberPrice:n CostPrice:n ShelfLifeDays:n FormulaID MinStock:n CurrentStock:n Status IsB2B:b IsB2C:b IsActive:b ' +
-            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson CostVerified:b'
+            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson CostVerified:b ExpDate'
     },
     Material: {
         key: 'ID', seq: 'ID',

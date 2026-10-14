@@ -1110,7 +1110,7 @@ ${saveBtns}`;
 
         const rows = [["產品名稱", p.ProductName], ["品牌", p.Brand], ["規格", p.Specification], ["口味", p.Flavor], ["容量", p.Capacity],
             ["單位", p.Unit], ["建議售價", p.SalePrice ? "$" + p.SalePrice : ""], ["會員價", p.MemberPrice ? "$" + p.MemberPrice : ""],
-            ["保存天數", p.ShelfLifeDays ? p.ShelfLifeDays + " 天" : ""]].filter(r => r[1]);
+            ["保存期限", p.ExpDate ? String(p.ExpDate).slice(0, 10) : (p.ShelfLifeDays ? p.ShelfLifeDays + " 天" : "")]].filter(r => r[1]);
 
         return [
             { type: "cover", auto: "cover", kicker: "產品介紹", title: p.ProductName || "", subtitle: [p.Flavor, p.Specification].filter(Boolean).join("｜"), customer: "", image: "" },
