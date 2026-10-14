@@ -97,6 +97,14 @@ const StockAlert = (() => {
             list.push({ pid: x.ProductID, date, qty: num(x.ProducedQty), batch: x.BatchNo || "", source: "生產批次" });
         });
 
+        // 產品自己填的保存期限（到期日）：還有庫存、同一天沒有批次已列出
+        products.forEach(p => {
+            const date = App.toDateInput(p.ExpDate);
+            if (!date || date > limit || stockOf(p.ID) <= 0) return;
+            if (list.some(y => String(y.pid) === String(p.ID) && y.date === date)) return;
+            list.push({ pid: p.ID, date, qty: stockOf(p.ID), batch: "", source: "產品保存期限" });
+        });
+
         return list
             .map(x => ({ ...x, name: productOf(x.pid)?.ProductName || `產品 ${x.pid}`, unit: productOf(x.pid)?.Unit || "", left: daysLeft(x.date) }))
             .sort((a, b) => a.date.localeCompare(b.date));

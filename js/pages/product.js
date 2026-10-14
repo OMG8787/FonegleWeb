@@ -307,7 +307,7 @@ ${(() => {
                     const sale = Number(x.SalePrice) || 0, hasCost = x.CostPrice !== null && x.CostPrice !== undefined && x.CostPrice !== "", cost = Number(x.CostPrice) || 0;
                     const profit = sale - cost, rate = sale > 0 && hasCost ? profit / sale * 100 : null;
                     return `<div class="product-info">🧾 成本：${hasCost ? "$" + Math.round(cost * 100) / 100 : "-"}</div>
-<div class="product-info">📈 利潤：${hasCost && sale > 0 ? `<b class="${profit >= 0 ? "text-success" : "text-danger"}">$${Math.round(profit * 100) / 100}（${rate.toFixed(1)}%）</b>` : "-"}</div>${x.ExpDate ? `<div class="product-info">⏳ 保存期限：${App.esc(String(x.ExpDate).slice(0, 10))}</div>` : ""}`;
+<div class="product-info">📈 利潤：${hasCost && sale > 0 ? `<b class="${profit >= 0 ? "text-success" : "text-danger"}">$${Math.round(profit * 100) / 100}（${rate.toFixed(1)}%）</b>` : "-"}</div>${x.ExpDate ? `<div class="product-info">⏳ 保存期限：${window.StockUtil ? StockUtil.expireBadge(String(x.ExpDate).slice(0, 10)) : App.esc(String(x.ExpDate).slice(0, 10))}</div>` : ""}`;
                 })()}
 <div class="mt-2">
 <span class="badge bg-light text-dark">

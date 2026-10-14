@@ -101,7 +101,8 @@ Pages.ProductCount = (() => {
 
             // 最近製造日（月底前）、最近到期日（月初後仍有效的批次）
             const mfgDates = prods.map(prodDate).filter(d => d && d <= end).sort();
-            const expDates = prods.filter(x => prodDate(x) <= end).map(x => U.date(x.ExpDate)).filter(d => d && d >= start).sort();
+            // 產品自己填的保存期限（到期日）也算：還有庫存、月初後仍有效
+            const expDates = prods.filter(x => prodDate(x) <= end).map(x => U.date(x.ExpDate)).concat(p.ExpDate && (Number(p.CurrentStock) || 0) > 0 ? [U.date(p.ExpDate)] : []).filter(d => d && d >= start).sort();
 
             const auto = {
                 OpeningQty: saved?.OpeningQty ?? prevSaved?.CountedQty ?? prevSaved?.ExpectedQty ?? 0,
