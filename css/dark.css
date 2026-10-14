@@ -107,4 +107,4 @@ html[data-bs-theme="dark"] .table-light { --bs-table-bg: #2b3137; --bs-table-col
 html[data-bs-theme="dark"] .btn-light { --bs-btn-bg: #2b3137; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); --bs-btn-hover-bg: #343a40; --bs-btn-hover-color: #fff; }
 html[data-bs-theme="dark"] .text-dark:not(.badge) { color: var(--bs-body-color) !important; }
 html[data-bs-theme="dark"] .text-black { color: var(--bs-body-color) !important; }
-.ts-dropdown { z-index: 2000; }
+body > .ts-dropdown { z-index: 2000 !important; }
