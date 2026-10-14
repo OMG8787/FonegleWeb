@@ -362,18 +362,66 @@ Pages.Material = (() => {
         }
     }
 
+    // 這個原料被哪些配方、產品用到（再製品：用到它的配方的配方也算；產品的包材也算）
+    async function usageOf(id) {
+        const d = await API.getMany(["Formula", "FormulaDetail", "Products"]);
+        const formulas = d.Formula || [], details = d.FormulaDetail || [], products = d.Products || [];
+        const direct = details.filter(x => String(x.MaterialID) === String(id));
+        const fids = new Set(direct.map(x => String(x.FormulaID)));
+        for (let grow = true; grow;) {
+            grow = false;
+            details.forEach(x => { if (x.SubFormulaId && fids.has(String(x.SubFormulaId)) && !fids.has(String(x.FormulaID))) { fids.add(String(x.FormulaID)); grow = true; } });
+        }
+        const usesPack = p => { try { return JSON.parse(p.PackagingJson || "[]").some(x => String(x.MaterialID) === String(id)); } catch { return false; } };
+        return {
+            direct,
+            formulas: formulas.filter(f => fids.has(String(f.FormulaID))),
+            products: products.filter(p => fids.has(String(p.FormulaID)) || usesPack(p))
+        };
+    }
+
     async function removeMaterial() {
         if (
             !dom.ID.value
         )
             return;
-        if (
-            !confirm("確認刪除此原料資料？")
-        )
-            return;
+
+        let use;
         try {
+            use = await usageOf(dom.ID.value);
+        }
+        catch (err) {
+            App.error(err, "檢查使用狀況失敗");
+            return;
+        }
+
+        const names = (list, f) => list.slice(0, 5).map(f).join("、") + (list.length > 5 ? " 等" : "");
+        const msg = use.formulas.length || use.products.length
+            ? `「${dom.MaterialName.value}」有 ${use.formulas.length} 個配方、${use.products.length} 個產品在使用，確定要刪嗎？
+
+` +
+            (use.formulas.length ? `配方：${names(use.formulas, f => f.FormulaName || f.FormulaCode)}
+` : "") +
+            (use.products.length ? `產品：${names(use.products, p => p.ProductName || p.ID)}
+` : "") +
+            `
+刪除後，這些配方會取消「已核可」、產品退回「待確認成本」，並重新排進成本確認精靈。`
+            : "確認刪除此原料資料？（沒有配方或產品在使用）";
+
+        if (!confirm(msg))
+            return;
+
+        try {
+            const ops = [];
+            use.formulas.forEach(f => ops.push({ action: "update", table: "Formula", id: f.FormulaID, data: { IsVerified: false, VerifiedBy: "", VerifiedAt: "" } }));
+            use.direct.forEach(x => ops.push({ action: "update", table: "FormulaDetail", id: x.FormulaDetailID, data: { Remark: "原料已刪除，請重新對應" } }));
+            use.products.forEach(p => ops.push({ action: "update", table: "Products", id: p.ID, data: { CostVerified: false } }));
+            for (let i = 0; i < ops.length; i += 40)
+                await API.batch(ops.slice(i, i + 40), { loadingText: "更新使用它的配方與產品…" });
+
             await API.remove("Material", dom.ID.value);
-            alert("🗑️ 刪除完成");
+            alert("🗑️ 刪除完成" + (ops.length ? `
+已將 ${use.formulas.length} 個配方、${use.products.length} 個產品列入待確認` : ""));
             hideForm();
             currentDetail = null;
             setModeUI("view");
