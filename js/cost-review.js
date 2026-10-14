@@ -340,7 +340,7 @@ ${s.cands.map(c => `<label class="d-block border rounded px-2 py-1 mb-1"><input 
     ${E(c.m.MaterialName)}　<span class="small ${priced(c.m) ? "" : "text-danger"}">${priced(c.m) ? money(c.m.CostPrice, 4) + "/" + E(c.m.Unit || "g") : "沒有單價"}</span>
     <span class="small text-muted">相似 ${Math.round(c.s * 100)}%　${[c.m.OriginCountry, c.m.Specification].filter(Boolean).map(E).join("・")}</span></label>`).join("")}
 <div class="d-flex gap-2 align-items-center mb-1"><label class="border rounded px-2 py-1 flex-shrink-0"><input type="radio" name="pick" value="other" ${st.pick === "other" ? "checked" : ""}> 從全部原料選</label>
-    <select class="form-select form-select-sm" id="crOther"><option value="">選擇…</option>${others.map(m => `<option value="${m.ID}" ${String(st.pick) === String(m.ID) && !s.cands.some(c => String(c.m.ID) === String(m.ID)) ? "selected" : ""}>${E(m.MaterialName)}</option>`).join("")}</select></div>
+    <select class="form-select form-select-sm" id="crOther"><option value="">選擇…</option>${others.map(m => `<option value="${m.ID}" data-cat="${E(m.Category || "")}" ${String(st.pick) === String(m.ID) && !s.cands.some(c => String(c.m.ID) === String(m.ID)) ? "selected" : ""}>${E(m.MaterialName)}</option>`).join("")}</select></div>
 <label class="d-block border rounded px-2 py-1 mb-3"><input type="radio" name="pick" value="new" ${st.pick === "new" ? "checked" : ""}> ＋ 新增為新原料</label>
 <div class="row g-2">
     <div class="col-md-6"><label class="form-label small mb-0">原料名稱</label><input class="form-control form-control-sm" data-k="name" value="${E(st.name)}"></div>
@@ -385,7 +385,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             if (r.value !== "other") fillIng(s); else if (st.pick !== "other") fillIng(s);
             rIngredient(s);
         }));
-        if (window.TomSelect) new TomSelect(el.querySelector("#crOther"), { maxOptions: null, score: MaterialQuick.fuzzy.score, dropdownParent: "body", placeholder: "輸入關鍵字搜尋原料…" });
+        if (window.TomSelect) new TomSelect(el.querySelector("#crOther"), { maxOptions: null, score: MaterialQuick.fuzzy.score, dropdownParent: "body", render: { no_results: (d, esc) => `<div class="no-results px-2 py-1 text-muted">原料庫沒有符合「${esc(d.input)}」的原料（可改選「＋ 新增為新原料」）</div>` }, placeholder: "輸入關鍵字搜尋原料…" });
         el.querySelector("#crOther").addEventListener("change", e => {
             if (!e.target.value) return;
             st.pick = e.target.value;

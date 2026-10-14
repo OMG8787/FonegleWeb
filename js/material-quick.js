@@ -223,7 +223,7 @@ ${list.map((p, i) => `<tr>
         score(search) {
             const words = String(search || "").toLowerCase().split(/\s+/).filter(Boolean);
             return item => {
-                const text = String(item.text || "").toLowerCase();
+                const text = (String(item.text || "") + " " + String(item.cat || "")).toLowerCase();
                 if (!words.length) return 1;
                 let total = 0;
                 for (const w of words) {
