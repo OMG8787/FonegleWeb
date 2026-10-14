@@ -9,6 +9,14 @@ Pages.Product = (() => {
     let mode = "view";
     let formulas = [], details = [], materials = [];     // 計算成本用（沒有讀取權限就是空的）
     let packRows = [];                                    // 目前產品的包材 [{ MaterialID, Name, Qty, UnitCost }]
+    let specBase = null;                                  // 正在「新增規格」：以哪個產品為範本
+    let groupsCache = [];                                 // 清單分組（同名產品 = 同一個產品的不同規格）
+
+    // 同名 = 同一個產品、不同規格（每個規格仍是一筆獨立的產品資料：各自的 SKU、售價、成本、庫存、配方用量）
+    const keyOf = p => { const n = String(p.ProductName || "").trim().toLowerCase(); return n || "#" + p.ID; };
+    const siblingsOf = p => (p ? allProducts.filter(x => keyOf(x) === keyOf(p)).sort((a, b) => a.ID - b.ID) : []);
+    const specLabel = (p, i) => [p.Specification, p.Capacity ? p.Capacity + (p.Unit || "") : ""].filter(Boolean).join(" ") || p.SKU || `規格 ${i + 1}`;
+    const SHARED_FIELDS = ["ProductName", "ShortName", "Brand", "CategoryID", "Description"];     // 改了會同步到其他規格
 
     function init() {
         cacheDom();
@@ -24,6 +32,7 @@ Pages.Product = (() => {
         dom.editHint = document.getElementById("editHint");
         dom.productList = document.getElementById("productList");
         dom.emptyHint = document.getElementById("emptyHint");
+        dom.specBar = document.getElementById("specBar");
         dom.searchTitle = document.getElementById("searchTitle");
         dom.searchCount = document.getElementById("searchCount");
         dom.btnSearch = document.getElementById("btnSearch");
@@ -112,9 +121,24 @@ Pages.Product = (() => {
             "click",
             clearForm
         );
+        dom.specBar.addEventListener("click", e => {
+            const b = e.target.closest("button");
+            if (!b) return;
+            if (b.dataset.addspec !== undefined) return openAddSpec();
+            if (b.dataset.spec) {
+                const p = allProducts.find(x => String(x.ID) === b.dataset.spec);
+                if (p) loadDetail(p);
+            }
+        });
         dom.productList.addEventListener(
             "click",
             async e => {
+                const chip = e.target.closest("[data-spec-id]");
+                if (chip) {
+                    const p = allProducts.find(x => String(x.ID) === chip.dataset.specId);
+                    if (p) await loadDetail(p);
+                    return;
+                }
                 const card =
                     e.target.closest(".product-card");
                 if (!card)
@@ -192,6 +216,7 @@ Pages.Product = (() => {
 
     function openCreate() {
         currentDetail = null;
+        specBase = null;
         mode = "create";
         dom.form.reset();
         dom.ID.value = "";
@@ -240,20 +265,26 @@ Pages.Product = (() => {
                 App.like(x.Status, q.status))
             .sort((a, b) => a.ID - b.ID);
 
-        listCache = list;
+        // 同名的規格歸成一張卡片
+        const groups = new Map();
+        list.forEach(x => { const k = keyOf(x); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); });
+        groupsCache = [...groups.values()];
+        listCache = groupsCache.map(g => g[0]);
 
         renderList({
             title: "📦 產品列表",
-            count: list.length,
-            list
+            count: groupsCache.length,
+            specs: list.length,
+            list: listCache
         });
+        renderSpecBar();
     }
 
     function renderList(result) {
         dom.searchTitle.textContent =
             result.title;
         dom.searchCount.textContent =
-            `共 ${result.count} 筆`;
+            `共 ${result.count} 筆` + (result.specs && result.specs !== result.count ? `（${result.specs} 種規格）` : "");
         dom.productList.innerHTML =
             "";
         if (!result.list.length) {
@@ -273,6 +304,23 @@ Pages.Product = (() => {
                     "product-card";
                 div.dataset.index =
                     index;
+                const group = groupsCache[index] || [x];
+                if (group.length > 1) {
+                    const money2 = v => "$" + Math.round((Number(v) || 0) * 100) / 100;
+                    const low = group.some(p => Number(p.CurrentStock) <= Number(p.MinStock));
+                    div.innerHTML = `
+<div class="product-name">${App.esc(x.ProductName || "未命名產品")} <span class="badge bg-info text-dark">${group.length} 種規格</span></div>
+<div class="product-info">🏷品牌：${App.esc(x.Brand || "-")}　📦 庫存合計：${group.reduce((t, p) => t + (Number(p.CurrentStock) || 0), 0)}</div>
+${group.map((p, i) => {
+                        const sale = Number(p.SalePrice) || 0, hasCost = p.CostPrice !== null && p.CostPrice !== undefined && p.CostPrice !== "", cost = Number(p.CostPrice) || 0;
+                        const profit = sale - cost;
+                        return `<div class="d-flex flex-wrap align-items-center gap-2 small mt-1"><button type="button" class="btn btn-sm btn-outline-secondary py-0" data-spec-id="${p.ID}">${App.esc(specLabel(p, i))}</button>
+<span>💰 ${money2(sale)}</span><span>🧾 ${hasCost ? money2(cost) : "-"}</span>${hasCost && sale > 0 ? `<span class="${profit >= 0 ? "text-success" : "text-danger"}">📈 ${money2(profit)}（${(profit / sale * 100).toFixed(1)}%）</span>` : ""}<span>📦 ${p.CurrentStock ?? 0}</span></div>`;
+                    }).join("")}
+<div class="mt-2"><span class="badge bg-light text-dark">${low ? "🔴 有規格庫存不足" : "🟢 正常"}</span></div>`;
+                    dom.productList.appendChild(div);
+                    return;
+                }
                 let stockStatus =
                     "🟢 正常";
                 if (
@@ -326,6 +374,7 @@ ${App.esc(x.Status || "未知")}
         if (!item?.ID)
             return;
         currentDetail = item;
+        specBase = null;
         fillForm(item);
         showForm();
         setModeUI("edit");
@@ -679,22 +728,35 @@ ${c.missing.length ? `<div class="text-danger mt-1">⚠️ 這些沒有單價，
             return;
         }
         try {
+            let synced = 0;
             if (mode === "create") {
                 const created = await API.insert("Products", data);
                 currentDetail = created;
+                specBase = null;
                 alert(`🎉 產品建立成功\n🆔 ID：${created.ID}`);
             }
             else {
-                currentDetail = await API.update("Products", currentDetail.ID, data);
-                alert("✅ 產品資料修改成功");
+                // 改了名稱 / 品牌 / 分類 / 說明 → 同名的其他規格一起改（不然會被拆成不同產品）
+                const old = currentDetail;
+                const others = siblingsOf(old).filter(x => x.ID !== old.ID);
+                const patch = {};
+                SHARED_FIELDS.forEach(k => { if (String(old[k] ?? "") !== String(data[k] ?? "")) patch[k] = data[k]; });
+                currentDetail = await API.update("Products", old.ID, data);
+                if (others.length && Object.keys(patch).length) {
+                    await API.batch(others.map(x => ({ action: "update", table: "Products", id: x.ID, data: patch })), { loadingText: "同步其他規格…" });
+                    synced = others.length;
+                }
+                alert("✅ 產品資料修改成功" + (synced ? `\n已同步 ${synced} 個其他規格的名稱 / 品牌 / 分類 / 說明` : ""));
             }
             // 重新整理左側清單
             await searchProducts();
             // 保持目前畫面，不要關閉
             showForm();
             if (mode === "create") {
-                // 新增模式維持新增模式
-                setModeUI("create");
+                // 新增完成 → 切換成修改這一筆（規格列會多出新的規格）
+                currentDetail = allProducts.find(x => x.ID === currentDetail.ID) || currentDetail;
+                fillForm(currentDetail);
+                setModeUI("edit");
             }
             else {
                 // 修改模式維持修改模式
@@ -795,8 +857,38 @@ ${currentDetail.ProductName}
         }
     }
 
+    // 規格列：同一個產品的各個規格（切換、新增規格）
+    function renderSpecBar() {
+        const base = specBase || currentDetail;
+        const show = !!base && (mode === "edit" || (mode === "create" && specBase));
+        dom.specBar.classList.toggle("d-none", !show);
+        if (!show) { dom.specBar.innerHTML = ""; return; }
+        const sibs = siblingsOf(base);
+        dom.specBar.innerHTML = `<span class="small text-muted me-1">📐 規格：</span>` +
+            sibs.map((p, i) => `<button type="button" class="btn btn-sm ${mode === "edit" && currentDetail && currentDetail.ID === p.ID ? "btn-primary" : "btn-outline-primary"}" data-spec="${p.ID}">${App.esc(specLabel(p, i))}</button>`).join("") +
+            (mode === "create" ? `<span class="btn btn-sm btn-success disabled">新規格（尚未儲存）</span>` : `<button type="button" class="btn btn-sm btn-outline-success" data-addspec>＋ 新增規格</button>`);
+    }
+
+    // 新增規格：複製目前產品的名稱、品牌、分類、配方、包材，規格 / 售價 / 成本 / 庫存留白重填
+    function openAddSpec() {
+        const base = currentDetail;
+        if (!base) return;
+        fillForm(base);
+        ["ID", "SKU", "Barcode", "Specification", "Capacity", "Weight", "SalePrice", "MemberPrice", "CostPrice", "ExpDate", "FormulaUseQty", "MinStock", "CurrentStock", "Remark", "CreatedBy", "CreatedAt", "UpdatedBy", "UpdatedAt"]
+            .forEach(k => { if (dom[k]) dom[k].value = ""; });
+        currentDetail = null;
+        specBase = base;
+        recalc(false);
+        calculateProfit();
+        updateStockWarning();
+        showForm();
+        setModeUI("create");
+        dom.Specification.focus();
+    }
+
     function setModeUI(newMode) {
         mode = newMode;
+        renderSpecBar();
         if (mode === "create") {
             dom.editHint.classList.add("d-none");
             dom.btnCreate.disabled = false;
