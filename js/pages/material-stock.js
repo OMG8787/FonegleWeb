@@ -168,7 +168,7 @@ Pages.MaterialStock = (() => {
         // 下拉選單加上打字搜尋（TomSelect）
         [dom.MaterialID, dom.qMaterial].forEach(sel => {
             if (!window.TomSelect) return;
-            if (!sel.tomselect) new TomSelect(sel, { maxOptions: 2000, allowEmptyOption: true, placeholder: "打字搜尋原料" });
+            if (!sel.tomselect) new TomSelect(sel, { maxOptions: 2000, score: MaterialQuick.fuzzy.score, allowEmptyOption: true, placeholder: "打字搜尋原料" });
             else { sel.tomselect.sync(); sel.tomselect.setValue(sel.value, true); }
         });
     }

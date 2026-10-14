@@ -218,6 +218,26 @@ ${list.map((p, i) => `<tr>
         }
     }
 
-    return { open, parsePackages, packagesHtml, bindPackages, packageFields, chosen, unitOf, optionLabel, newId };
+    // 模糊搜尋（給 TomSelect 用）：連續包含分數最高；其次是「字依序出現」（例如「鮮油」找得到「鮮奶油」）；空白分隔的多個關鍵字都要符合
+    const fuzzy = {
+        score(search) {
+            const words = String(search || "").toLowerCase().split(/\s+/).filter(Boolean);
+            return item => {
+                const text = String(item.text || "").toLowerCase();
+                if (!words.length) return 1;
+                let total = 0;
+                for (const w of words) {
+                    const at = text.indexOf(w);
+                    if (at >= 0) { total += 10 + (at === 0 ? 3 : 0) + w.length / text.length; continue; }
+                    let i = 0, first = -1, last = -1;
+                    for (const ch of w) { const j = text.indexOf(ch, i); if (j < 0) return 0; if (first < 0) first = j; last = j; i = j + 1; }
+                    total += 1 + w.length / (last - first + 1);
+                }
+                return total;
+            };
+        }
+    };
+
+    return { fuzzy, open, parsePackages, packagesHtml, bindPackages, packageFields, chosen, unitOf, optionLabel, newId };
 
 })();

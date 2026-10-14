@@ -385,7 +385,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             if (r.value !== "other") fillIng(s); else if (st.pick !== "other") fillIng(s);
             rIngredient(s);
         }));
-        if (window.TomSelect) new TomSelect(el.querySelector("#crOther"), { maxOptions: null, dropdownParent: "body", placeholder: "輸入關鍵字搜尋原料…" });
+        if (window.TomSelect) new TomSelect(el.querySelector("#crOther"), { maxOptions: null, score: MaterialQuick.fuzzy.score, dropdownParent: "body", placeholder: "輸入關鍵字搜尋原料…" });
         el.querySelector("#crOther").addEventListener("change", e => {
             if (!e.target.value) return;
             st.pick = e.target.value;
