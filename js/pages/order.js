@@ -536,8 +536,9 @@ Pages.Order = (() => {
                 price: p.SalePrice ?? "",
                 cost: p.CostPrice,
                 // 同名產品的不同規格：選單要看得出是哪一個
-                spec: [p.Specification, p.Capacity ? p.Capacity + (p.Unit || "") : ""].filter(Boolean).join(" "),
-                sku: p.SKU || ""
+                spec: [p.Specification, p.Flavor, p.Capacity ? p.Capacity + (p.Unit || "") : "", p.Weight ? p.Weight + "g" : "", p.Color].filter(Boolean).join(" ")
+                    || (p.SKU || p.Barcode ? "" : "編號 " + p.ID),     // 什麼規格資料都沒填：至少顯示產品編號，才分得出同名的是哪一個
+                sku: p.SKU || p.Barcode || ""
             }));
 
         // 已經加入的商品列補上產品選項
