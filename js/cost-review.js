@@ -464,7 +464,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
     // 3. 配方
     // =========================
     function formulaCalc(f, st) {
-        const details = detailsOf(f.FormulaID);
+        const details = (st.rows || detailsOf(f.FormulaID)).filter(d => String(d.MaterialName || "").trim() || d.SubFormulaId);
         const view = Object.assign({}, f, { YieldRate: has(st.yieldRate) ? st.yieldRate : f.YieldRate, UnitWeight: has(st.unitWeight) ? st.unitWeight : f.UnitWeight });
         const pg = Cost.perGram(view, details, data.materials, { formulas: data.formulas, allDetails: data.details, materials: data.materials, seen: new Set([String(f.FormulaID)]) });
         const uw = Cost.unitWeight(view, details);
@@ -472,25 +472,52 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
         return { details, pg, uw, perPortion: pg.value * uw + extra, extra };
     }
 
+    const normName = v => String(v || "").normalize("NFKC").trim().toLowerCase();
+
+    // 食材這一列的單價 / 狀態欄
+    function formulaRowStatus(d) {
+        const m = matById(d.MaterialID);
+        const subF = d.SubFormulaId ? data.formulas.find(f => String(f.FormulaID) === String(d.SubFormulaId)) : null;
+        const price = subF ? Cost.subGramCost(subF.FormulaID, data.formulas, data.details, data.materials).price : Cost.detailPrice(d, m);
+        const opt = m && d.PackageId ? Cost.options(m).find(o => String(o.id) === String(d.PackageId)) : null;
+        return `<td class="text-end">${price ? money(price, 4) : "-"}</td>
+            <td class="small">${!price ? '<span class="text-danger">沒有單價</span>' : subF ? '<span class="text-success">🍳 再製品</span>' : !m ? '<span class="text-warning">未連到原料庫</span>' : '<span class="text-success">已連結</span>'}${opt ? `<div class="text-muted">${E(MaterialQuick.optionLabel(opt, m.Unit))}</div>` : ""}${d.Remark ? ` <span class="text-danger">⚠️ ${E(d.Remark)}</span>` : ""}</td>`;
+    }
+
+    // 改了食材名稱：對得上原料庫就連結並帶入單價，對不上就當作還沒連結的食材
+    function setFormulaRowName(d, name) {
+        const prevMat = String(d.MaterialID || "");
+        d.MaterialName = String(name || "").trim();
+        const m = mats().find(x => normName(x.MaterialName) === normName(d.MaterialName));
+        if (m) {
+            if (String(m.ID) !== prevMat) d.PackageId = "";
+            d.MaterialID = String(m.ID);
+            d.MaterialName = m.MaterialName;
+            d.UnitCost = Cost.detailPrice(d, m);
+            d.Remark = "";
+        } else {
+            d.MaterialID = "";
+            d.PackageId = "";
+            d.UnitCost = 0;
+        }
+    }
+
     function rFormula(s) {
 
         const f = s.f;
-        if (!s.st) s.st = { yieldRate: f.YieldRate ?? "", unitWeight: f.UnitWeight ?? "", pack: f.PackagingCost ?? "", labor: f.LaborCost ?? "", other: f.OtherCost ?? "" };
+        if (!s.st) s.st = { name: f.FormulaName || "", yieldRate: f.YieldRate ?? "", unitWeight: f.UnitWeight ?? "", pack: f.PackagingCost ?? "", labor: f.LaborCost ?? "", other: f.OtherCost ?? "", rows: detailsOf(f.FormulaID).map(d => Object.assign({}, d)) };
         const st = s.st;
-        const c = formulaCalc(f, st);
-        const base = c.details.reduce((t, d) => t + num(d.Quantity), 0);
 
         $("#crBody").innerHTML = `
-<table class="table table-sm align-middle">
-<thead><tr><th>食材</th><th class="text-end">基準 g</th><th class="text-end">單價/g</th><th>狀態</th></tr></thead>
-<tbody>${c.details.map(d => {
-            const m = matById(d.MaterialID);
-            const subF = d.SubFormulaId ? data.formulas.find(f => String(f.FormulaID) === String(d.SubFormulaId)) : null;
-            const price = subF ? Cost.subGramCost(subF.FormulaID, data.formulas, data.details, data.materials).price : Cost.detailPrice(d, m);
-            const opt = m && d.PackageId ? Cost.options(m).find(o => String(o.id) === String(d.PackageId)) : null;
-            return `<tr><td>${E((m && m.MaterialName) || d.MaterialName || "")}${opt ? `<div class="small text-muted">${E(MaterialQuick.optionLabel(opt, m.Unit))}</div>` : ""}</td><td class="text-end">${num(d.Quantity)}</td><td class="text-end">${price ? money(price, 4) : "-"}</td>
-                <td class="small">${!price ? '<span class="text-danger">沒有單價</span>' : subF ? '<span class="text-success">🍳 再製品</span>' : !m ? '<span class="text-warning">未連到原料庫</span>' : '<span class="text-success">已連結</span>'}${d.Remark ? ` <span class="text-danger">⚠️ ${E(d.Remark)}</span>` : ""}</td></tr>`;
-        }).join("") || `<tr><td colspan="4" class="text-muted">這個配方還沒有食材</td></tr>`}</tbody></table>
+<div class="mb-2"><label class="form-label small mb-0">配方名稱</label><input class="form-control form-control-sm" data-k="name" value="${E(st.name)}"></div>
+<table class="table table-sm align-middle mb-1">
+<thead><tr><th style="min-width:200px">食材（可打字搜尋原料庫）</th><th class="text-end" style="width:110px">基準 g</th><th class="text-end">單價/g</th><th>狀態</th><th style="width:36px"></th></tr></thead>
+<tbody id="crRows">${st.rows.map((d, i) => `<tr data-i="${i}">
+    <td>${d.SubFormulaId ? `${E(d.MaterialName || "")} <span class="badge text-bg-light border">🍳 再製品</span>` : `<select data-r="name"></select>`}</td>
+    <td><input type="number" min="0" step="any" class="form-control form-control-sm text-end" data-r="qty" value="${E(d.Quantity ?? "")}"></td>
+    ${formulaRowStatus(d).replace("<td class=\"text-end\">", "<td class=\"text-end\" data-pr>").replace("<td class=\"small\">", "<td class=\"small\" data-st>")}
+    <td><button type="button" class="btn btn-sm btn-outline-danger py-0" data-r="del" title="刪除這個食材">✕</button></td></tr>`).join("") || `<tr><td colspan="5" class="text-muted">這個配方還沒有食材，請按下方「＋ 新增食材」</td></tr>`}</tbody></table>
+<button type="button" class="btn btn-sm btn-outline-primary mb-3" id="crAddRow">＋ 新增食材</button>
 <div class="row g-2 mb-2">
     <div class="col-md-3"><label class="form-label small mb-0">成品率 %（選填）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="yieldRate" value="${E(st.yieldRate)}" placeholder="100"></div>
     <div class="col-md-3"><label class="form-label small mb-0">每份重量 g（選填）</label><input type="number" min="0" step="any" class="form-control form-control-sm" data-k="unitWeight" value="${E(st.unitWeight)}"></div>
@@ -502,16 +529,57 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
 
         const calc = () => {
             const k = formulaCalc(f, st);
+            const base = k.details.reduce((t, d) => t + num(d.Quantity), 0);
             el.querySelector("#crCalc").innerHTML = `原料總重 ${Math.round(base * 10) / 10} g　每公克成本 <b>${money(k.pg.value, 4)}</b>　每份（${Math.round(k.uw * 10) / 10} g）成本 <b class="text-success">${money(k.perPortion)}</b>` +
                 (k.pg.missing.length ? `<div class="text-danger mt-1">⚠️ 沒有單價（成本會偏低）：${E([...new Set(k.pg.missing)].join("、"))}。請先按「略過」，重新開啟精靈從食材開始確認。</div>` : "");
         };
         calc();
+
+        // 食材名稱：可打字搜尋原料庫，也可以直接輸入新的名稱
+        el.querySelectorAll("#crRows [data-r=name]").forEach(sel => {
+            const tr = sel.closest("tr"), d = st.rows[Number(tr.dataset.i)];
+            const names = mats().map(m => m.MaterialName);
+            if (d.MaterialName && names.indexOf(d.MaterialName) < 0) names.unshift(d.MaterialName);
+            sel.innerHTML = `<option value=""></option>` + names.map(n => `<option value="${E(n)}">${E(n)}</option>`).join("");
+            sel.value = d.MaterialName || "";
+            if (!window.TomSelect) { sel.addEventListener("change", () => { setFormulaRowName(d, sel.value); refreshRow(tr, d); calc(); }); return; }
+            new TomSelect(sel, {
+                maxOptions: null, create: true, createOnBlur: true, persist: false, score: MaterialQuick.fuzzy.score, dropdownParent: "body", placeholder: "輸入關鍵字搜尋原料…",
+                render: { option_create: (dd, esc) => `<div class="create">使用新名稱「${esc(dd.input)}」</div>`, no_results: () => `<div class="no-results px-2 py-1 text-muted">原料庫沒有符合的原料，可直接輸入新名稱</div>` },
+                onChange: v => { setFormulaRowName(d, v); refreshRow(tr, d); calc(); }
+            });
+        });
+        const refreshRow = (tr, d) => {
+            const t = document.createElement("tr");
+            t.innerHTML = formulaRowStatus(d);
+            tr.querySelector("[data-pr]").innerHTML = t.children[0].innerHTML;
+            tr.querySelector("[data-st]").innerHTML = t.children[1].innerHTML;
+        };
+        el.querySelectorAll("#crRows [data-r=qty]").forEach(inp => inp.addEventListener("input", () => { st.rows[Number(inp.closest("tr").dataset.i)].Quantity = inp.value; calc(); }));
+        el.querySelectorAll("#crRows [data-r=del]").forEach(b => b.addEventListener("click", () => {
+            const d = st.rows[Number(b.closest("tr").dataset.i)];
+            if (!confirm(`從這個配方移除「${d.MaterialName || "（空白）"}」？（按「核可」後才會真正儲存）`)) return;
+            st.rows.splice(st.rows.indexOf(d), 1);
+            rFormula(s);
+        }));
+        el.querySelector("#crAddRow").addEventListener("click", () => {
+            st.rows.push({ FormulaDetailID: null, FormulaID: f.FormulaID, MaterialID: "", MaterialName: "", Quantity: "", UnitCost: 0, PackageId: "", SubFormulaId: "", Remark: "" });
+            rFormula(s);
+            setTimeout(() => { const t = el.querySelectorAll("#crRows tr:last-child .ts-control input"); if (t.length) t[t.length - 1].focus(); }, 50);
+        });
         el.querySelectorAll("[data-k]").forEach(i => i.addEventListener("input", () => { st[i.dataset.k] = i.value; calc(); }));
     }
 
     async function aFormula(s) {
 
         const f = s.f, st = s.st;
+        const name = String(st.name || "").trim();
+        if (!name) { alert("請輸入配方名稱"); return false; }
+
+        // 空白的新食材不儲存
+        st.rows = st.rows.filter(d => d.FormulaDetailID || d.SubFormulaId || String(d.MaterialName || "").trim() || has(d.Quantity));
+        if (st.rows.some(d => !d.SubFormulaId && !String(d.MaterialName || "").trim())) { alert("有食材還沒有填名稱"); return false; }
+
         const c = formulaCalc(f, st);
 
         if (c.pg.missing.length && !confirm(`還有 ${new Set(c.pg.missing).size} 個食材沒有單價（${[...new Set(c.pg.missing)].slice(0, 5).join("、")}），成本會偏低。仍要核可這個配方嗎？`)) return false;
@@ -519,7 +587,34 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
         let who = "";
         try { who = (await API.me({ silent: true }))?.user?.Name || ""; } catch { }
 
+        // 食材：刪除、修改、新增（一起送出）
+        const orig = detailsOf(f.FormulaID);
+        const kept = new Set(st.rows.filter(d => d.FormulaDetailID).map(d => String(d.FormulaDetailID)));
+        const ops = [];
+        orig.filter(d => !kept.has(String(d.FormulaDetailID))).forEach(d => ops.push({ action: "remove", table: "FormulaDetail", id: d.FormulaDetailID }));
+        st.rows.forEach((d, i) => {
+            const patch = { MaterialID: String(d.MaterialID || ""), MaterialName: d.MaterialName || "", Quantity: num(d.Quantity), UnitCost: num(d.UnitCost), PackageId: d.PackageId || "", Remark: "", LineCost: r2(num(d.Quantity) * num(d.UnitCost)), SortOrder: i + 1 };
+            const old = d.FormulaDetailID ? orig.find(x => String(x.FormulaDetailID) === String(d.FormulaDetailID)) : null;
+            if (old) {
+                if (Object.keys(patch).every(k => String(old[k] ?? "") === String(patch[k] ?? ""))) return;
+                ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: patch });
+            } else {
+                ops.push({ action: "insert", table: "FormulaDetail", data: Object.assign({ FormulaID: f.FormulaID, SubFormulaId: "" }, patch) });
+            }
+        });
+
+        if (ops.length) {
+            const results = [];
+            for (let i = 0; i < ops.length; i += 40) results.push(...(await API.batch(ops.slice(i, i + 40), { loadingText: "儲存配方食材中…" }) || []));
+            ops.forEach((op, i) => {
+                if (op.action === "remove") { const at = data.details.findIndex(x => String(x.FormulaDetailID) === String(op.id)); if (at >= 0) data.details.splice(at, 1); }
+                else if (op.action === "insert") data.details.push(Object.assign({}, op.data, results[i] || {}));
+                else { const x = data.details.find(y => String(y.FormulaDetailID) === String(op.id)); if (x) Object.assign(x, op.data); }
+            });
+        }
+
         const body = {
+            FormulaName: name,
             IsVerified: true, VerifiedAt: new Date().toLocaleString("sv-SE").slice(0, 16), VerifiedBy: who,
             YieldRate: has(st.yieldRate) ? num(st.yieldRate) : null, UnitWeight: has(st.unitWeight) ? num(st.unitWeight) : null,
             PackagingCost: has(st.pack) ? num(st.pack) : null, LaborCost: has(st.labor) ? num(st.labor) : null, OtherCost: has(st.other) ? num(st.other) : null,
@@ -528,8 +623,9 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
 
         Object.assign(f, await API.update("Formula", f.FormulaID, body));
 
-        const ops = c.details.filter(d => d.Remark).map(d => ({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { Remark: "" } }));
-        if (ops.length) { await API.batch(ops, { silent: true }); c.details.forEach(d => { d.Remark = ""; }); }
+        // 還有 ⚠️ 待確認備註的食材（沒改到的）一併清掉
+        const rest = detailsOf(f.FormulaID).filter(d => d.Remark);
+        if (rest.length) { await API.batch(rest.map(d => ({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data: { Remark: "" } })), { silent: true }); rest.forEach(d => { d.Remark = ""; }); }
     }
 
     // =========================
