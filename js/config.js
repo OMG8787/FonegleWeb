@@ -71,7 +71,8 @@ const Config = {
                 { id: 14, Permission: [24], name: "💰 帳務管理（應收）", page: "page/receivable.html" },
                 { id: 36, Permission: [24], name: "💸 支出表", page: "page/expense.html" },
                 { id: 35, Permission: [24], name: "📒 品牌攤提表", page: "page/amortization.html" },
-                { id: 64, Permission: [24], name: "📊 財務總表", page: "page/finance-report.html" }
+                { id: 64, Permission: [24], name: "📊 財務總表", page: "page/finance-report.html" },
+                { id: 67, Permission: [22, 24], name: "💹 經營分析（成本 / 報廢 / 通路利潤）", page: "page/profit-analysis.html" }
             ]
         },
         {

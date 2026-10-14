@@ -188,6 +188,12 @@ const SCHEMA = {
             'BatchNo MfgDate ExpDate InvoiceNo ExpenseId:n Note CreatedBy CreatedAt UpdatedBy UpdatedAt InvoiceGroup TaxRate:n',
         money: 'UnitPrice TotalPrice'
     },
+    // 原料報廢 / 呆料：登記後才算損失（沒登記的庫存仍算資產）
+    MaterialWaste: {
+        key: 'ID', seq: 'ID',
+        cols: 'ID:n WasteDate MaterialID:n MaterialName Quantity:n Unit UnitCost:n Amount:n Reason Note CreatedBy CreatedAt UpdatedBy UpdatedAt',
+        money: 'UnitCost Amount'
+    },
     // 原物料月盤點：期初 + 本月進貨 - 實盤 = 本月用量
     MaterialCounts: {
         key: 'ID', seq: 'ID',
@@ -288,6 +294,7 @@ const TABLE_INFO = {
     ProductCounts: ['product', '產品月盤點（製作、出貨、剩餘、使用量、製造 / 到期日）'],
     MaterialPurchases: ['product', '原物料進貨（數量、金額、單價、批號、製造 / 有效日期）'],
     MaterialCounts: ['product', '原物料月盤點（期初、進貨、實盤、用量、成本）'],
+    MaterialWaste: ['product', '原料報廢 / 呆料（過期、損壞、試作、用不到；登記後才算損失）'],
     ProductionLog: ['product', '生產履歷'],
     ProductWatch: ['product', '產品追蹤清單（庫存低於提醒數量時提醒）'],
     Companies: ['sales', '客戶與合作廠商（公司 / 個人），訂單與帳務都以 ID 連到這裡'],
@@ -358,7 +365,7 @@ const COLUMN_LABELS = {
     UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
     ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
-    PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
+    WasteDate: '報廢日期', Reason: '原因', PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
     OpeningQty: '期初數量', PurchasedQty: '本月進貨量', PurchasedAmount: '本月進貨金額', CountedQty: '實盤數量',
     UsedQty: '本月使用量', AvgUnitPrice: '平均單價', UsedCost: '使用成本', StockValue: '庫存價值',
     NearestExpDate: '最近到期日', LatestMfgDate: '最近製造日', ShippedQty: '本月出貨', OtherOutQty: '其他出庫（市集 / 試吃 / 贈送）',
@@ -448,6 +455,7 @@ const TABLE_PERMS = {
     ProductCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
     MaterialPurchases: { read: PRODUCT.concat(FINANCE), write: PRODUCT.concat(FINANCE) },
     MaterialCounts: { read: PRODUCT.concat(FINANCE), write: PRODUCT },
+    MaterialWaste: { read: PRODUCT.concat(FINANCE), write: PRODUCT.concat(FINANCE) },
     Formula: { read: PRODUCT, write: PRODUCT },
     FormulaDetail: { read: PRODUCT, write: PRODUCT },
     Companies: { read: SALES.concat(FINANCE, PRODUCT), write: SALES.concat(FINANCE) },
