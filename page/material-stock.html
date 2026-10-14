@@ -8,12 +8,14 @@
     <link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
     <link rel="manifest" href="../manifest.webmanifest">
     <meta name="theme-color" content="#c48b6a">
-    <script src="../js/theme.js?v=202610140936"></script>
-    <link href="../css/dark.css?v=202610140936" rel="stylesheet">
+    <script src="../js/theme.js?v=202610141200"></script>
+    <link href="../css/dark.css?v=202610141200" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="../css/layout.css?v=202610140936" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+    <link href="../css/layout.css?v=202610141200" rel="stylesheet">
 
     <style>
         .stat-card .value {
@@ -57,6 +59,20 @@
         tr.clickable {
             cursor: pointer;
         }
+
+        .inv-table td,
+        .inv-table th {
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .inv-table input.form-control {
+            min-width: 70px;
+        }
+
+        .inv-table .inv-name { min-width: 190px; }
+        .inv-table .inv-num { width: 95px; text-align: right; }
+        .inv-table .inv-date { width: 140px; }
     </style>
 </head>
 
@@ -107,6 +123,96 @@
 
                     <!-- ============ 進貨紀錄 ============ -->
                     <div class="tab-pane fade show active" id="tabPurchase">
+
+                        <div class="d-flex flex-wrap align-items-center gap-2 pt-3">
+                            <button id="btnInvOpen" type="button" class="btn btn-success">🧾 新增進貨（一家供應商填一次）</button>
+                            <span class="small text-muted">先選供應商，再逐項輸入原料（可打字搜尋）；整張發票填完一次送出，再換下一家。</span>
+                        </div>
+
+                        <!-- ===== 整張發票進貨 ===== -->
+                        <div id="invoiceCard" class="card border-0 shadow-sm mt-3 d-none">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="mb-0">🧾 新增進貨：<span id="invCount" class="text-muted small"></span></h5>
+                                    <button id="btnInvClose" type="button" class="btn btn-sm btn-outline-secondary">收合</button>
+                                </div>
+
+                                <div class="row g-2 mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label small mb-0">① 供應商（商店）*</label>
+                                        <input id="invSupplier" class="form-control" list="supplierList" placeholder="打字搜尋，或直接輸入新的供應商" autocomplete="off">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-0">進貨日期 *</label>
+                                        <input id="invDate" type="date" class="form-control">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-0">發票 / 收據號碼</label>
+                                        <input id="invNo" class="form-control" placeholder="整張發票共用">
+                                    </div>
+                                    <div class="col-md-2 d-flex align-items-end"><span id="invSupplierHint" class="small text-muted"></span></div>
+                                </div>
+
+                                <div class="small fw-bold mb-1">② 輸入這家買的原料（單價會自動帶入上次的價格，有變動直接改）</div>
+                                <datalist id="invMatList"></datalist>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle inv-table mb-1">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>原料（打字搜尋）</th>
+                                                <th class="text-end">數量</th>
+                                                <th>單位</th>
+                                                <th class="text-end">單價</th>
+                                                <th class="text-end">總價</th>
+                                                <th>與上次比較</th>
+                                                <th>批號</th>
+                                                <th>製造日期</th>
+                                                <th>保存期限</th>
+                                                <th class="text-center" title="這一列的單價有變動時，可以直接寫入原料的成本價（成本表）">更新成本</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="invRows"></tbody>
+                                    </table>
+                                </div>
+                                <button id="btnInvAddRow" type="button" class="btn btn-sm btn-outline-primary">＋ 新增一列</button>
+
+                                <hr>
+
+                                <div class="small fw-bold mb-1">③ 整張發票</div>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-6 col-md-2">
+                                        <label class="form-label small mb-0">稅金 %（選填）</label>
+                                        <input id="invTaxRate" type="number" min="0" step="any" value="0" class="form-control" title="有些公司稅金另計 5%；預設 0%">
+                                    </div>
+                                    <div class="col-12 col-md-5">
+                                        <label class="form-label small mb-0">備註</label>
+                                        <input id="invNote" class="form-control" placeholder="整張發票共用（選填）">
+                                    </div>
+                                    <div class="col-12 col-md-5">
+                                        <div class="small text-end">未稅合計 <b id="invSub">$0</b>　稅金 <b id="invTax">$0</b>　<span class="fs-6">含稅總額 <b id="invTotal" class="text-success">$0</b></span></div>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex flex-wrap gap-3 mt-2 small">
+                                    <div class="form-check" id="invExpenseWrap">
+                                        <input id="invOptExpense" class="form-check-input" type="checkbox" checked>
+                                        <label class="form-check-label" for="invOptExpense">記入支出表（分類：食材，金額 = 含稅總額，整張發票一筆）</label>
+                                    </div>
+                                    <div class="form-check" id="invStockWrap">
+                                        <input id="invOptStock" class="form-check-input" type="checkbox" checked>
+                                        <label class="form-check-label" for="invOptStock">把數量加到原料「目前庫存」</label>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex flex-wrap gap-2 mt-3">
+                                    <button id="btnInvSubmit" type="button" class="btn btn-success">✅ 送出這家的進貨</button>
+                                    <button id="btnInvClear" type="button" class="btn btn-outline-secondary">清空重填</button>
+                                    <span id="invMsg" class="small align-self-center"></span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="row g-3 pt-3">
 
                             <div class="col-lg-8">
@@ -155,7 +261,7 @@
                                 <div id="formCard" class="card border-0 shadow-sm">
                                     <div class="card-body">
                                         <div class="d-flex justify-content-between align-items-center mb-2">
-                                            <h5 id="formTitle" class="mb-0">➕ 新增進貨</h5>
+                                            <h5 id="formTitle" class="mb-0">✏️ 修改進貨</h5>
                                             <span id="editHint" class="badge bg-warning text-dark d-none">編輯中</span>
                                         </div>
                                         <form id="purchaseForm" onsubmit="return false">
@@ -213,19 +319,11 @@
                                                     <label class="form-label small">備註</label>
                                                     <textarea id="Note" rows="2" class="form-control"></textarea>
                                                 </div>
-                                                <div class="col-12 small" id="createOptions">
-                                                    <div class="form-check">
-                                                        <input id="optUpdateMaterial" class="form-check-input" type="checkbox" checked>
-                                                        <label class="form-check-label" for="optUpdateMaterial">更新原料成本價，並把數量加到目前庫存</label>
-                                                    </div>
-                                                    <div class="form-check" id="optExpenseWrap">
-                                                        <input id="optExpense" class="form-check-input" type="checkbox" checked>
-                                                        <label class="form-check-label" for="optExpense">同時記入支出表（分類：食材）</label>
-                                                    </div>
+                                                <div class="col-12 small text-muted" id="createOptions">
+                                                    點選左側的進貨明細可以修改；要新增請按上方「🧾 新增進貨」。
                                                 </div>
                                             </div>
                                             <div class="d-flex flex-wrap gap-2 mt-3">
-                                                <button id="btnCreate" class="btn btn-success">新增</button>
                                                 <button id="btnUpdate" class="btn btn-primary">儲存修改</button>
                                                 <button id="btnDelete" class="btn btn-outline-danger">刪除</button>
                                                 <button id="btnClear" class="btn btn-outline-secondary ms-auto">清除</button>
@@ -293,20 +391,21 @@
     <div id="footerArea"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../js/settings.js?v=202610140936"></script>
-    <script src="../js/site.js?v=202610140936"></script>
-    <script src="../js/auth.js?v=202610140936"></script>
+    <script src="../js/settings.js?v=202610141200"></script>
+    <script src="../js/site.js?v=202610141200"></script>
+    <script src="../js/auth.js?v=202610141200"></script>
     <script>
         Auth.checkLogin();
     </script>
-    <script src="../js/config.js?v=202610140936"></script>
-    <script src="../js/api.js?v=202610140936"></script>
-    <script src="../js/layout.js?v=202610140936"></script>
-    <script src="../js/core.js?v=202610140936"></script>
-    <script src="../js/ai-chat.js?v=202610140936"></script>
-    <script src="../js/favorite.js?v=202610140936"></script>
-    <script src="../js/pages/stock-util.js?v=202610140936"></script>
-    <script src="../js/pages/material-stock.js?v=202610140936"></script>
+    <script src="../js/config.js?v=202610141200"></script>
+    <script src="../js/api.js?v=202610141200"></script>
+    <script src="../js/layout.js?v=202610141200"></script>
+    <script src="../js/core.js?v=202610141200"></script>
+    <script src="../js/ai-chat.js?v=202610141200"></script>
+    <script src="../js/favorite.js?v=202610141200"></script>
+    <script src="../js/pages/stock-util.js?v=202610141200"></script>
+    <script src="../js/material-quick.js?v=202610141200"></script>
+    <script src="../js/pages/material-stock.js?v=202610141200"></script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {

@@ -185,7 +185,7 @@ const SCHEMA = {
     MaterialPurchases: {
         key: 'ID', seq: 'ID',
         cols: 'ID:n PurchaseDate MaterialID:n MaterialName Category Supplier CompanyId:n Quantity:n Unit UnitPrice:n TotalPrice:n ' +
-            'BatchNo MfgDate ExpDate InvoiceNo ExpenseId:n Note CreatedBy CreatedAt UpdatedBy UpdatedAt',
+            'BatchNo MfgDate ExpDate InvoiceNo ExpenseId:n Note CreatedBy CreatedAt UpdatedBy UpdatedAt InvoiceGroup TaxRate:n',
         money: 'UnitPrice TotalPrice'
     },
     // 原物料月盤點：期初 + 本月進貨 - 實盤 = 本月用量
@@ -339,7 +339,7 @@ const COLUMN_LABELS = {
     // 商品與生產
     SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
     Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
-    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', ArchiveId: '封存批次', Period: '期間（yyyy-MM）', Label: '項目', Count: '筆數', ArchivedAt: '封存時間', PackagesJson: '規格 / 產地 / 供應商 / 價格選項（JSON，同一原料可有多種）', PackageId: '指定使用的規格選項（空白 = 跟著原料的計價用規格）', SubFormulaId: '這個食材是自己做的再製品：連到的配方編號（成本自動來自那個配方）', IsSemi: '再製品（半成品，可當作其他配方的食材）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', InvoiceGroup: '同一張發票的進貨（整張發票一起建立）', TaxRate: '稅率 %（0 = 未稅 / 免稅）', ArchiveId: '封存批次', Period: '期間（yyyy-MM）', Label: '項目', Count: '筆數', ArchivedAt: '封存時間', PackagesJson: '規格 / 產地 / 供應商 / 價格選項（JSON，同一原料可有多種）', PackageId: '指定使用的規格選項（空白 = 跟著原料的計價用規格）', SubFormulaId: '這個食材是自己做的再製品：連到的配方編號（成本自動來自那個配方）', IsSemi: '再製品（半成品，可當作其他配方的食材）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
     MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
     CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
