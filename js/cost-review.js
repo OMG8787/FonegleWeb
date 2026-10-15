@@ -389,7 +389,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             if (r.value !== "other") fillIng(s); else if (st.pick !== "other") fillIng(s);
             rIngredient(s);
         }));
-        if (window.TomSelect) new TomSelect(el.querySelector("#crOther"), { maxOptions: null, score: MaterialQuick.fuzzy.score, dropdownParent: "body", render: { no_results: (d, esc) => `<div class="no-results px-2 py-1 text-muted">原料庫沒有符合「${esc(d.input)}」的原料（可改選「＋ 新增為新原料」）</div>` }, placeholder: "輸入關鍵字搜尋原料…" });
+        if (window.TomSelect) new TomSelect(el.querySelector("#crOther"), { refreshThrottle: 0, maxOptions: null, score: MaterialQuick.fuzzy.score, dropdownParent: "body", render: { no_results: (d, esc) => `<div class="no-results px-2 py-1 text-muted">原料庫沒有符合「${esc(d.input)}」的原料（可改選「＋ 新增為新原料」）</div>` }, placeholder: "輸入關鍵字搜尋原料…" });
         el.querySelector("#crOther").addEventListener("change", e => {
             if (!e.target.value) return;
             st.pick = e.target.value;
@@ -548,7 +548,7 @@ ${valid.map(p => `<label class="d-block border rounded px-2 py-1 mb-1"><input ty
             sel.value = d.MaterialName || "";
             if (!window.TomSelect) { sel.addEventListener("change", () => { setFormulaRowName(d, sel.value); refreshRow(tr, d); calc(); }); return; }
             new TomSelect(sel, {
-                maxOptions: null, create: true, createOnBlur: true, persist: false, score: MaterialQuick.fuzzy.score, dropdownParent: "body", placeholder: "輸入關鍵字搜尋原料…",
+                refreshThrottle: 0, maxOptions: null, create: true, createOnBlur: true, persist: false, score: MaterialQuick.fuzzy.score, dropdownParent: "body", placeholder: "輸入關鍵字搜尋原料…",
                 render: { option_create: (dd, esc) => `<div class="create">使用新名稱「${esc(dd.input)}」</div>`, no_results: () => `<div class="no-results px-2 py-1 text-muted">原料庫沒有符合的原料，可直接輸入新名稱</div>` },
                 onChange: v => { setFormulaRowName(d, v); refreshRow(tr, d); calc(); }
             });

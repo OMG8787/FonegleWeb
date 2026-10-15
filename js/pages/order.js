@@ -930,6 +930,7 @@ class="btn btn-danger btn-sm">
                 create: input => ({ value: CUSTOM + input.trim(), text: input.trim() }),
                 createOnBlur: true,
                 createFilter: input => input.trim().length > 0,
+                refreshThrottle: 0,
                 dropdownParent: "body",
                 dropdownClass: "ts-dropdown product-dd",
                 placeholder: "搜尋產品，或直接輸入自訂品名",

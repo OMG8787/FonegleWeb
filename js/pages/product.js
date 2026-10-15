@@ -21,8 +21,7 @@ Pages.Product = (() => {
     function init() {
         cacheDom();
         bindEvents();
-        hideForm();
-        setModeUI("view");
+        openCreate();           // 一進來就是「新增產品」，不用再按按鈕
         loadInit();
     }
 
@@ -222,6 +221,7 @@ Pages.Product = (() => {
         dom.ID.value = "";
         currentDetail = null;
         packRows = [];
+        syncFormulaSelect();
         renderPack();
         updateUseLabel();
         calculateProfit();
@@ -423,6 +423,7 @@ ${App.esc(x.Status || "未知")}
             });
         packRows = Cost.parsePackaging(d && d.PackagingJson).map(x => ({ MaterialID: x.MaterialID ?? "", Name: x.Name || "", Qty: x.Qty ?? "", UnitCost: x.UnitCost ?? "", Kind: x.Kind === "decor" ? "decor" : "" }));
         if (!dom.FormulaUseMode.value) dom.FormulaUseMode.value = "portion";
+        syncFormulaSelect();
         renderPack();
         updateUseLabel();
         recalc(false);
@@ -505,6 +506,22 @@ ${App.esc(x.Status || "未知")}
             .map(f => `<option value="${App.esc(f.FormulaID)}">${App.esc(f.FormulaName || f.FormulaCode || f.FormulaID)}${f.VersionNo ? " " + App.esc(f.VersionNo) : ""}${f.IsActive === false ? "（停用）" : ""}</option>`).join("");
         ensureFormulaOption(keep);
         dom.FormulaID.value = keep;
+        setupFormulaSelect();
+    }
+
+    // 配方選單：可以選，也可以打字模糊搜尋（一邊打一邊縮小範圍）
+    function setupFormulaSelect() {
+        if (!window.TomSelect) return;
+        if (dom.FormulaID.tomselect) { dom.FormulaID.tomselect.sync(); return; }
+        new TomSelect(dom.FormulaID, {
+            refreshThrottle: 0, maxOptions: null, allowEmptyOption: true, score: MaterialQuick.fuzzy.score, placeholder: "輸入關鍵字搜尋配方…", dropdownParent: "body",
+            render: { no_results: () => `<div class="no-results px-2 py-1 text-muted">找不到符合的配方</div>` }
+        });
+    }
+
+    // 程式直接改了 <select> 的值（載入產品、清空表單）→ 讓搜尋選單跟著更新
+    function syncFormulaSelect() {
+        if (dom.FormulaID.tomselect) dom.FormulaID.tomselect.sync();
     }
 
     // 產品記的配方已經不在清單（刪除 / 沒有讀取權限）：補一個選項，避免儲存時被清掉
@@ -512,6 +529,7 @@ ${App.esc(x.Status || "未知")}
         id = String(id ?? "");
         if (id && ![...dom.FormulaID.options].some(o => o.value === id))
             dom.FormulaID.add(new Option(`（配方 ${id}，找不到）`, id));
+        syncFormulaSelect();
     }
 
     function renderPackNames() {
@@ -849,6 +867,7 @@ ${currentDetail.ProductName}
             dom.ID.value = "";
             currentDetail = null;
             packRows = [];
+            syncFormulaSelect();
             renderPack();
             updateUseLabel();
             recalc(false);

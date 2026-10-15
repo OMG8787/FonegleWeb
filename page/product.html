@@ -8,8 +8,8 @@
     <link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
     <link rel="manifest" href="../manifest.webmanifest">
     <meta name="theme-color" content="#c48b6a">
-    <script src="../js/theme.js?v=202610150234"></script>
-    <link href="../css/dark.css?v=202610150234" rel="stylesheet">
+    <script src="../js/theme.js?v=202610151001"></script>
+    <link href="../css/dark.css?v=202610151001" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Bootstrap -->
@@ -17,7 +17,7 @@
 
     <!-- 共用樣式 -->
     <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
-    <link href="../css/layout.css?v=202610150234" rel="stylesheet">
+    <link href="../css/layout.css?v=202610151001" rel="stylesheet">
 
     <style>
         .section-card {
@@ -49,6 +49,28 @@
             overflow-y: auto;
             overflow-x: hidden;
             padding-right: 6px;
+        }
+
+        /* 大螢幕：左側產品列表一路延伸到跟右側表單一樣高，往下捲時左邊不會空一大塊 */
+        @media (min-width: 992px) {
+            .product-side {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .product-side > .card,
+            .product-side > .card > .section-body {
+                flex: 1 1 auto;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+            }
+
+            .product-side .product-list-wrapper {
+                flex: 1 1 0;
+                min-height: 320px;
+                max-height: none;
+            }
         }
 
         .product-card {
@@ -148,7 +170,7 @@
                 <!-- 內容在這 -->
                 <div class="row">
                     <!-- 左側 -->
-                    <div class="col-lg-4">
+                    <div class="col-lg-4 product-side">
                         <div class="card section-card shadow-sm mb-3">
                             <div class="section-header d-flex justify-content-between align-items-center">
                                 <span>🔍 產品查詢</span>
@@ -529,25 +551,25 @@
     <div id="footerArea"></div>
     <!-- 共用 layout -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../js/settings.js?v=202610150234"></script>
-    <script src="../js/site.js?v=202610150234"></script>
-    <script src="../js/auth.js?v=202610150234"></script>
+    <script src="../js/settings.js?v=202610151001"></script>
+    <script src="../js/site.js?v=202610151001"></script>
+    <script src="../js/auth.js?v=202610151001"></script>
     <script>
         Auth.checkLogin();
     </script>
-    <script src="../js/config.js?v=202610150234"></script>
-    <script src="../js/api.js?v=202610150234"></script>
-    <script src="../js/layout.js?v=202610150234"></script>
-    <script src="../js/core.js?v=202610150234"></script>
-    <script src="../js/ai-chat.js?v=202610150234"></script>
-    <script src="../js/favorite.js?v=202610150234"></script>
-    <script src="../js/cost.js?v=202610150234"></script>
+    <script src="../js/config.js?v=202610151001"></script>
+    <script src="../js/api.js?v=202610151001"></script>
+    <script src="../js/layout.js?v=202610151001"></script>
+    <script src="../js/core.js?v=202610151001"></script>
+    <script src="../js/ai-chat.js?v=202610151001"></script>
+    <script src="../js/favorite.js?v=202610151001"></script>
+    <script src="../js/cost.js?v=202610151001"></script>
     <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
-    <script src="../js/cost-review.js?v=202610150234"></script>
-    <script src="../js/material-quick.js?v=202610150234"></script>
-    <script src="../js/pages/category-manager.js?v=202610150234"></script>
-    <script src="../js/pages/stock-util.js?v=202610150234"></script>
-    <script src="../js/pages/product.js?v=202610150234"></script>
+    <script src="../js/cost-review.js?v=202610151001"></script>
+    <script src="../js/material-quick.js?v=202610151001"></script>
+    <script src="../js/pages/category-manager.js?v=202610151001"></script>
+    <script src="../js/pages/stock-util.js?v=202610151001"></script>
+    <script src="../js/pages/product.js?v=202610151001"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             App.init("Product");
