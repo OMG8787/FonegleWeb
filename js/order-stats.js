@@ -2,7 +2,7 @@
 // 訂單統計（首頁品牌損益、品牌攤提表、客戶頁共用）
 // - 訂單資料一列一個品項，同一個 OrderNo 合併成一張訂單
 // - 營收 = 訂單總額（TotalAmount，已扣折扣）− 運費：運費是支出，不算收益（但仍計入客戶的應收帳款）
-// - 成本 = Σ 數量 × 單位成本：已結清（已付款）且訂單記有成本單價（UnitCost）→ 用當時記下的（不再變動）；
+// - 成本 = Σ 數量 × 單位成本：訂單記有成本單價（UnitCost，確認成交 / 已付款時鎖定）→ 用當時記下的（不再變動）；
 //          其餘用產品目前的成本價（Products.CostPrice，食材浮動時會跟著變）；都沒有的品項以 0 計，並記在 missing
 // - 退款的訂單不計
 // - 通路：SalesChannel = B2B → B2B；其他（LINE / 官網 / 門市 / 其他）→ 線上訂單
@@ -62,8 +62,8 @@ window.OrderStats = {
             const pid = String(r.ProductID ?? "");
             const snap = r.UnitCost;
 
-            if (r.PaymentStatus === "已付款" && snap !== null && snap !== undefined && snap !== "") {
-                o.cost += App.num(r.Qty) * App.num(snap);          // 已結清：成本已鎖定
+            if (snap !== null && snap !== undefined && snap !== "") {
+                o.cost += App.num(r.Qty) * App.num(snap);          // 已確認成交：成本已鎖定
             } else {
                 o.locked = false;
                 if (costOf.has(pid)) o.cost += App.num(r.Qty) * costOf.get(pid);

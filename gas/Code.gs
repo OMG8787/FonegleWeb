@@ -1746,22 +1746,20 @@ const HOOKS = {
         afterWrite(obj, ctx) { syncCalendarDeposit_(obj, ctx); }
     },
     // 訂單（連到客戶的）自動建立 / 更新應收帳款，發票提醒與收帳提醒都依帳款計算
-    // 訂單成本：沒結清（未付款）時用產品目前的成本（食材會浮動）；變成「已付款」那一刻把成本記進 UnitCost，
-    // 之後產品成本再怎麼變，這筆訂單的利潤都不會動
+    // 訂單成本：還在「待確認」時用產品目前的成本（食材會浮動）；確認成交（訂單狀態離開待確認）或已付款的那一刻，
+    // 把產品當下的成本記進 UnitCost，之後產品成本再怎麼變，這筆訂單的利潤都不會動
     Orders: {
         beforeInsert(obj) {
-            if (obj.PaymentStatus === '已付款' && (obj.UnitCost === null || obj.UnitCost === undefined || obj.UnitCost === ''))
-                snapshotOrderCost_(obj);
+            if (orderCostLocked_(obj) && !hasVal_(obj.UnitCost)) snapshotOrderCost_(obj);
         },
         beforeUpdate(patch, old) {
-            const nowPaid = (patch.PaymentStatus !== undefined ? patch.PaymentStatus : old.PaymentStatus) === '已付款';
-            const wasPaid = old.PaymentStatus === '已付款';
-            const hasOld = old.UnitCost !== null && old.UnitCost !== undefined && old.UnitCost !== '';
+            const now = orderCostLocked_(Object.assign({}, old, patch));
+            const was = orderCostLocked_(old);
+            const hasOld = hasVal_(old.UnitCost);
 
-            if (nowPaid && wasPaid && hasOld) delete patch.UnitCost;              // 已結清：成本鎖定，不接受修改
-            else if (nowPaid && !wasPaid && (patch.UnitCost === undefined || patch.UnitCost === null || patch.UnitCost === ''))
-                snapshotOrderCost_(patch, old);                                    // 剛結清：記下當下成本
-            else if (!nowPaid && patch.UnitCost === undefined && hasOld) patch.UnitCost = '';   // 退款 / 改回未付款：解除鎖定
+            if (now && was && hasOld) delete patch.UnitCost;                       // 已鎖定：成本不接受修改
+            else if (now && !hasVal_(patch.UnitCost)) snapshotOrderCost_(patch, old);   // 剛確認成交（或舊的已確認訂單還沒記成本）：記下當下成本
+            else if (!now && patch.UnitCost === undefined && hasOld) patch.UnitCost = '';   // 改回待確認 / 取消 / 退款：解除鎖定
         },
         afterWrite(obj, ctx) { syncOrderReceivable_(obj.OrderNo, ctx); syncOrderMemos_(obj.OrderNo); }
     },
@@ -1821,6 +1819,15 @@ const HOOKS = {
 //   修改訂單：更新金額、品項、日期；訂單改成已付款 → 帳款補成已收（不會把已收的改回未收）
 //   刪除訂單：由訂單自動建立、而且還沒收款的帳款一起刪除
 // ------------------------------------------------------------
+const hasVal_ = v => v !== null && v !== undefined && v !== '';
+
+// 成本要鎖定的訂單：已確認成交（訂單狀態不是待確認 / 取消）或已付款；退款不算
+function orderCostLocked_(o) {
+    if (o.PaymentStatus === '退款') return false;
+    const st = String(o.OrderStatus || '');
+    return o.PaymentStatus === '已付款' || (!!st && st !== '待確認' && st !== '取消');
+}
+
 // 把產品「目前」的成本記進這筆訂單（沒有產品或產品沒有成本就不記）
 function snapshotOrderCost_(target, old) {
     const pid = target.ProductID !== undefined ? target.ProductID : (old && old.ProductID);
@@ -2763,7 +2770,7 @@ function archivePlan_(table, cutoff) {
 
             let c = 0;
             rows.forEach(r => {
-                const snap = r.PaymentStatus === '已付款' && r.UnitCost !== null && r.UnitCost !== '' ? dbNum_(r.UnitCost) : dbNum_(cost[String(r.ProductID)]);
+                const snap = hasVal_(r.UnitCost) ? dbNum_(r.UnitCost) : dbNum_(cost[String(r.ProductID)]);
                 c += dbNum_(r.Qty) * snap;
             });
 

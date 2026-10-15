@@ -6,9 +6,45 @@ const App = {
 
         Layout.init();
 
+        // 版面統一：搜尋區可收合、左側列表延伸（先處理，頁面載入資料時版面就固定好）
+        App.enhance();
+
         if (pageName && Pages[pageName]) {
             await Pages[pageName].init();
         }
+    },
+
+    // =========================
+    // 版面統一（全站）
+    //   1. 搜尋區塊（.search-area 或 data-search-box）加上「收合 / 展開」，每次進頁面預設展開
+    //   2. 左列表、右表單：左側列表延伸到跟右側表單一樣高（CSS 見 layout.css 的 .side-col）
+    // =========================
+    enhance() {
+
+        document.querySelectorAll(".search-area, [data-search-box]").forEach(el => {
+            if (el.dataset.collapsible) return;
+            el.dataset.collapsible = "1";
+            const bar = document.createElement("div");
+            bar.className = "search-toggle d-flex justify-content-between align-items-center";
+            bar.innerHTML = `<span class="small fw-bold text-muted">${App.esc(el.dataset.searchBox || "🔍 搜尋條件")}</span>
+                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" aria-expanded="true">▲ 收合</button>`;
+            el.parentNode.insertBefore(bar, el);
+            const btn = bar.querySelector("button");
+            btn.addEventListener("click", () => {
+                const hide = !el.classList.contains("d-none");
+                el.classList.toggle("d-none", hide);
+                btn.textContent = hide ? "▼ 展開" : "▲ 收合";
+                btn.setAttribute("aria-expanded", String(!hide));
+            });
+        });
+
+        document.querySelectorAll('[class*="list-wrapper"], .list-wrap').forEach(w => {
+            const col = w.closest('[class*="col-lg-"], [class*="col-xl-"]');
+            if (!col || !col.parentElement || !col.parentElement.querySelector("#formCard") || col.contains(document.getElementById("formCard"))) return;
+            col.classList.add("side-col");
+            for (let el = w.parentElement; el && el !== col; el = el.parentElement) el.classList.add("side-flex");
+            w.classList.add("side-fill");
+        });
     },
 
     toast(msg) {

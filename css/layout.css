@@ -386,3 +386,38 @@ body.sidebar-collapsed #erp-main {
         display: none;
     }
 }
+
+/* =========================================================
+   左列表、右表單的頁面（產品、原料、訂單、出貨、生產、客戶…）
+   大螢幕：左側列表一路延伸到跟右側表單一樣高，往下捲時左邊不會空一大塊（由 App.enhance 自動加上 class）
+   ========================================================= */
+@media (min-width: 992px) {
+    .side-col {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .side-col .side-flex {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .side-col .side-fill {
+        flex: 1 1 0;
+        min-height: min(560px, calc(100vh - 300px));
+        max-height: none !important;
+        overflow-y: auto;
+    }
+}
+
+/* 可收合的搜尋區塊 */
+.search-toggle {
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.search-toggle .btn-link {
+    font-size: .85rem;
+}

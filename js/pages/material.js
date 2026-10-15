@@ -10,8 +10,7 @@ Pages.Material = (() => {
         cacheDom();
         bindEvents();
 
-        hideForm();
-        setModeUI("view");
+        openCreate(false);       // 一進來就是「新增原料」，不用再按按鈕
 
         try {
 
@@ -432,7 +431,7 @@ Pages.Material = (() => {
         }
     }
 
-    function openCreate() {
+    function openCreate(scroll = true) {
         currentDetail = null;
         dom.form.reset();
         dom.ID.value = "";
@@ -440,7 +439,7 @@ Pages.Material = (() => {
         renderPackages(null);
         showForm();
         setModeUI("create");
-        scrollToForm();
+        if (scroll) scrollToForm();
     }
 
     function clearForm() {

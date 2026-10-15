@@ -12,8 +12,7 @@ Pages.Member = (() => {
     function init() {
         cacheDom();
         bindEvents();
-        hideForm();
-        setModeUI("view");
+        openCreate(false);       // 一進來就是「新增會員」，不用再按按鈕
 
         loadRoleList(); // ⭐ 新增：載入角色清單
     }
@@ -433,7 +432,7 @@ ${userId}
         dom.FavoriteFeaturesList.value = u.FavoriteFeaturesList || "";
     }
 
-    function openCreate() {
+    function openCreate(scroll = true) {
 
         currentDetail = null;
 
@@ -447,7 +446,7 @@ ${userId}
 
         setModeUI("create");
 
-        scrollToForm();
+        if (scroll) scrollToForm();
     }
 
     function clearForm() {
