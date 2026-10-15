@@ -106,6 +106,8 @@ html[data-bs-theme="dark"] .bg-light { background-color: var(--bs-tertiary-bg) !
 html[data-bs-theme="dark"] .table-light { --bs-table-bg: #2b3137; --bs-table-color: var(--bs-body-color); --bs-table-border-color: var(--bs-border-color); }
 html[data-bs-theme="dark"] .btn-light { --bs-btn-bg: #2b3137; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); --bs-btn-hover-bg: #343a40; --bs-btn-hover-color: #fff; }
 html[data-bs-theme="dark"] .text-dark:not(.badge) { color: var(--bs-body-color) !important; }
+/* 淺色底的標籤（例如產品卡片的「🟢 正常」「🔴 庫存不足」）：深色模式底色變深，字也要跟著變亮 */
+html[data-bs-theme="dark"] .badge.bg-light.text-dark { color: var(--bs-body-color) !important; }
 html[data-bs-theme="dark"] .text-black { color: var(--bs-body-color) !important; }
 body > .ts-dropdown { z-index: 2000 !important; }
 body > .ts-dropdown.product-dd { min-width: 380px; }

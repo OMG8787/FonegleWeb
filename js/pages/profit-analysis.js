@@ -135,7 +135,7 @@ Pages.ProfitAnalysis = (() => {
             dom.stockBody.innerHTML = rows.sort((a, b) => b.value - a.value).slice(0, 10).map(r => `<tr>
                 <td>${esc(r.m.MaterialName)}</td>
                 <td class="text-end">${Math.round(r.stock * 100) / 100} ${esc(r.m.Unit || "")}</td>
-                <td class="text-end">${r.price ? money(r.price) : "-"}</td>
+                <td class="text-end">${r.price ? "$" + (Math.round(r.price * 10000) / 10000).toLocaleString(undefined, { maximumFractionDigits: 4 }) : "-"}</td>
                 <td class="text-end fw-bold">${money(r.value)}</td>
                 <td>${r.last ? esc(r.last) : "-"}</td>
                 <td>${!r.last || r.last < old ? '<span class="badge bg-warning text-dark">久未進貨，可能是呆料</span>' : ""}</td></tr>`).join("") || `<tr><td colspan="6" class="text-muted">目前沒有庫存紀錄</td></tr>`;
@@ -180,7 +180,7 @@ Pages.ProfitAnalysis = (() => {
         const missing = online.missing + b2b.missing;
         dom.missingHint.classList.toggle("d-none", !missing);
         dom.missingHint.innerHTML = missing
-            ? `⚠️ 有 <b>${missing}</b> 個訂單品項沒有連到產品或產品沒有成本價，成本以 0 計，利潤會偏高。請到「訂單管理」把品項選成產品清單裡的產品，並在「產品管理」用「成本確認」補上配方與成本。`
+            ? `⚠️ 有 <b>${missing}</b> 個訂單品項沒有連到產品或產品沒有成本價，成本以 0 計，利潤會偏高。請到「訂單管理」按 <a href="order.html?link=1">🔗 品項連到產品</a> 一次連好，並在「產品管理」用「成本確認」補上配方與成本。`
             : "";
 
         // B2B 各客戶

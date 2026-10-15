@@ -82,11 +82,47 @@ Pages.Formula = (() => {
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
             "sumBase", "sumPct", "sumScaled", "sumCost",
-            "rUnitCost", "rUnitHint", "rMaterialCost", "rProfit", "rMargin", "rSuggest"
+            "rUnitCost", "rUnitHint", "rMaterialCost", "rProfit", "rMargin", "rSuggest",
+            "btnYieldCalc", "yieldCalcBox", "ycIn", "ycOut", "ycApply", "ycResult"
         ]).forEach(id => dom[id] = document.getElementById(id));
     }
 
+    // 成品率小工具：實際做出的成品重量 ÷ 投入原料重量
+    function yieldCalcRate() {
+        const inG = App.numOrNull(dom.ycIn.value), outG = App.numOrNull(dom.ycOut.value);
+        return inG > 0 && outG > 0 ? round(outG / inG * 100, 1) : null;
+    }
+
+    function updateYieldCalc() {
+        const rate = yieldCalcRate();
+        dom.ycApply.disabled = rate === null || rate > 200;
+        dom.ycResult.innerHTML = rate === null ? "填好兩個重量就會算出成品率"
+            : rate > 200 ? `<span class="text-danger">成品率 ${rate}%：成品比原料還重很多，請確認重量</span>`
+            : `成品率 = ${g(App.num(dom.ycOut.value))} ÷ ${g(App.num(dom.ycIn.value))} = <b>${rate}%</b>`;
+    }
+
+    function bindYieldCalc() {
+        dom.btnYieldCalc.addEventListener("click", () => {
+            const open = dom.yieldCalcBox.classList.toggle("d-none") === false;
+            if (!open) return;
+            if (!dom.ycIn.value) dom.ycIn.value = baseTotal() ? round(baseTotal(), 1) : "";
+            updateYieldCalc();
+            dom.ycOut.focus();
+        });
+        dom.ycIn.addEventListener("input", updateYieldCalc);
+        dom.ycOut.addEventListener("input", updateYieldCalc);
+        dom.ycApply.addEventListener("click", () => {
+            const rate = yieldCalcRate();
+            if (rate === null) return;
+            dom.YieldRate.value = rate;
+            dom.YieldRate.dispatchEvent(new Event("input", { bubbles: true }));
+            dom.yieldCalcBox.classList.add("d-none");
+        });
+    }
+
     function bindEvents() {
+
+        bindYieldCalc();
 
         dom.qKeyword.addEventListener("input", renderList);
         dom.qGroup.addEventListener("change", () => {
@@ -766,6 +802,9 @@ Pages.Formula = (() => {
         dom.btnAddMaterial.disabled = locked;
         dom.btnNormalize.disabled = locked;
         dom.btnRefreshCost.disabled = locked;
+        dom.btnYieldCalc.disabled = locked;
+        dom.yieldCalcBox.classList.add("d-none");
+        dom.ycIn.value = dom.ycOut.value = "";
 
         dom.formCard.classList.toggle("view-locked", locked);
 

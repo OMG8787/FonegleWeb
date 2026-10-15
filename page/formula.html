@@ -8,13 +8,13 @@
     <link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
     <link rel="manifest" href="../manifest.webmanifest">
     <meta name="theme-color" content="#c48b6a">
-    <script src="../js/theme.js?v=202610151150"></script>
-    <link href="../css/dark.css?v=202610151150" rel="stylesheet">
+    <script src="../js/theme.js?v=202610151940"></script>
+    <link href="../css/dark.css?v=202610151940" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
-    <link href="../css/layout.css?v=202610151150" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/css/tom-select.css" rel="stylesheet">
+    <link href="../css/layout.css?v=202610151940" rel="stylesheet">
 
     <style>
         .q-view .btn { white-space: nowrap; border-radius: 999px; padding: .2rem .6rem; }
@@ -254,6 +254,7 @@
                                         <div class="col-6 col-md-2">
                                             <label class="form-label small">成品率 %</label>
                                             <input id="YieldRate" type="number" min="1" max="200" step="any" class="form-control calc" placeholder="100">
+                                            <button type="button" id="btnYieldCalc" class="btn btn-link btn-sm p-0 text-decoration-none" title="用實際做出來的成品重量算成品率">🧮 用實際重量算</button>
                                         </div>
                                         <div class="col-6 col-md-2">
                                             <label class="form-label small">售價（每單位）</label>
@@ -262,6 +263,28 @@
                                         <div class="col-6 col-md-2">
                                             <label class="form-label small">目標成本率 %</label>
                                             <input id="TargetCostRate" type="number" min="1" max="100" class="form-control calc" placeholder="30">
+                                        </div>
+                                        <!-- 成品率小工具：投入多少原料、實際做出多少成品 → 成品率 -->
+                                        <div class="col-12 d-none" id="yieldCalcBox">
+                                            <div class="border rounded p-2 small">
+                                                <div class="row g-2 align-items-end">
+                                                    <div class="col-6 col-md-3">
+                                                        <label class="form-label small mb-0" for="ycIn">投入原料（g）</label>
+                                                        <input id="ycIn" type="number" min="0" step="any" class="form-control form-control-sm">
+                                                    </div>
+                                                    <div class="col-6 col-md-3">
+                                                        <label class="form-label small mb-0" for="ycOut">實際做出成品（g）</label>
+                                                        <input id="ycOut" type="number" min="0" step="any" class="form-control form-control-sm" placeholder="例如 350">
+                                                    </div>
+                                                    <div class="col-12 col-md-auto">
+                                                        <button type="button" id="ycApply" class="btn btn-sm btn-primary" disabled>套用成品率</button>
+                                                    </div>
+                                                    <div class="col-12 col-md">
+                                                        <span id="ycResult" class="text-muted"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="text-muted mt-1">投入原料預設是配方的基準總重；如果這次做的是放大後的批次，就填那一批實際投入的原料重量。例如豆子 500 g ＋ 牛奶 400 g 泡出 350 g → 成品率 38.9%。</div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -406,24 +429,24 @@
     <div id="footerArea"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../js/settings.js?v=202610151150"></script>
-    <script src="../js/site.js?v=202610151150"></script>
-    <script src="../js/auth.js?v=202610151150"></script>
+    <script src="../js/settings.js?v=202610151940"></script>
+    <script src="../js/site.js?v=202610151940"></script>
+    <script src="../js/auth.js?v=202610151940"></script>
     <script>
         Auth.checkLogin();
     </script>
-    <script src="../js/config.js?v=202610151150"></script>
-    <script src="../js/api.js?v=202610151150"></script>
-    <script src="../js/layout.js?v=202610151150"></script>
-    <script src="../js/core.js?v=202610151150"></script>
-    <script src="../js/ai-chat.js?v=202610151150"></script>
-    <script src="../js/favorite.js?v=202610151150"></script>
-    <script src="../js/cost.js?v=202610151150"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
-    <script src="../js/cost-review.js?v=202610151150"></script>
-    <script src="../js/groups.js?v=202610151150"></script>
-    <script src="../js/material-quick.js?v=202610151150"></script>
-    <script src="../js/pages/formula.js?v=202610151150"></script>
+    <script src="../js/config.js?v=202610151940"></script>
+    <script src="../js/api.js?v=202610151940"></script>
+    <script src="../js/layout.js?v=202610151940"></script>
+    <script src="../js/core.js?v=202610151940"></script>
+    <script src="../js/ai-chat.js?v=202610151940"></script>
+    <script src="../js/favorite.js?v=202610151940"></script>
+    <script src="../js/cost.js?v=202610151940"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
+    <script src="../js/cost-review.js?v=202610151940"></script>
+    <script src="../js/groups.js?v=202610151940"></script>
+    <script src="../js/material-quick.js?v=202610151940"></script>
+    <script src="../js/pages/formula.js?v=202610151940"></script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {

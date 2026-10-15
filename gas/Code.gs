@@ -557,7 +557,8 @@ const PRIVATE_ACTIONS = {
     dbStatus: dbStatus_,
     dbBackup: dbBackup_,
     dbTrim: dbTrim_,
-    dbArchive: dbArchive_
+    dbArchive: dbArchive_,
+    linkOrderProducts: linkOrderProducts_
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
@@ -1857,6 +1858,8 @@ function syncOrderReceivable_(orderNo, ctx) {
 
     if (!found) {
         if (o.PaymentStatus === '退款') return;
+        // 已結清、而且在帳款封存截止日以前的訂單：它的帳款可能已經封存成每月結論，再建一筆會讓收入重複計算
+        if (paid && billDate < receivableArchiveCut_()) return;
         appendRow_(rt, {
             ReceivableID: nextSeq_(rt),
             CompanyId: o.CompanyId,
@@ -1994,26 +1997,36 @@ function syncOrderMemos_(orderNo) {
     memos.forEach(x => { if (!byNo.has(String(x.obj.LinkId))) byNo.set(String(x.obj.LinkId), x); });
     const ts = now_();
 
-    // 還在待處理 → 沒有備忘錄就建立
+    // 還在待處理 → 沒有備忘錄就建立；備忘錄還開著 → 內容跟著訂單更新（例如確認後只剩「尚未出貨」、品項有增減）
     //   全部掃描時（定時補齊）只處理最近 60 天的訂單、一次最多 30 張，避免舊資料一次湧進備忘錄
     const since = only ? '' : ymdAdd_(ts.slice(0, 10), -60);
     let made = 0;
     groups.forEach((o, no) => {
         const reasons = orderTodoReasons_(o);
-        if (!reasons.length || byNo.has(no)) return;
-        if (since && String(o.OrderDate || o.CreatedAt || '').slice(0, 10) < since) return;
-        if (!only && made >= 30) return;
-        made++;
+        if (!reasons.length) return;
 
         const rows = rowsByNo.get(no) || [];
         const total = Number(o.TotalAmount) || rows.reduce((s, r) => s + (Number(r.obj.Qty) || 0) * (Number(r.obj.UnitPrice) || 0), 0);
         const ship = String(o.ExpectedShippingDate || '').slice(0, 10);
+        const title = '📦 訂單待處理：' + (o.MemberName || '（未填客戶）') + '　' + no;
+        const content = reasons.join('、') + '\n品項 ' + rows.map(r => (r.obj.ProductName || '') + (r.obj.Qty ? '×' + r.obj.Qty : '')).join('、').slice(0, 120) +
+            '　金額 $' + total + (ship ? '　預計出貨 ' + ship : '');
+
+        const memo = byNo.get(no);
+        if (memo) {
+            if (memo.obj.IsDone !== true && (memo.obj.Content !== content || memo.obj.Title !== title || String(memo.obj.DueDate || '') !== ship))
+                writeRow_(mt, memo, { Title: title, Content: content, DueDate: ship, UpdatedAt: ts, UpdatedBy: 'SYSTEM' });
+            return;
+        }
+
+        if (since && String(o.OrderDate || o.CreatedAt || '').slice(0, 10) < since) return;
+        if (!only && made >= 30) return;
+        made++;
 
         appendRow_(mt, {
             ID: nextSeq_(mt),
-            Title: '📦 訂單待處理：' + (o.MemberName || '（未填客戶）') + '　' + no,
-            Content: reasons.join('、') + '\n品項 ' + rows.map(r => (r.obj.ProductName || '') + (r.obj.Qty ? '×' + r.obj.Qty : '')).join('、').slice(0, 120) +
-                '　金額 $' + total + (ship ? '　預計出貨 ' + ship : ''),
+            Title: title,
+            Content: content,
             DueDate: ship,
             Priority: '中',
             IsDone: false,
@@ -2038,6 +2051,56 @@ function syncOrderMemos_(orderNo) {
             UpdatedAt: ts,
             UpdatedBy: 'SYSTEM'
         });
+    });
+}
+
+// 帳款最近一次封存的截止日（沒封存過 = 空字串）
+function receivableArchiveCut_() {
+    let cut = '';
+    cachedObjs_(tbl_('ArchiveSummary')).forEach(a => {
+        if (a.Source === 'ARCHIVE' && a.Key === 'Receivable' && String(a.Period || '') > cut) cut = String(a.Period);
+    });
+    return cut;
+}
+
+// ------------------------------------------------------------
+// 舊訂單品項連到產品（訂單頁「品項連到產品」）：{ links: [{ OrderID, ProductID, rename }] }
+//   以前手打品名、沒有連到產品的品項，連好後才算得出成本
+//   已確認成交 / 已付款、還沒記成本的品項，順便用產品目前的成本鎖定（與確認成交時相同）
+//   只改這幾個欄位：不重算帳款、不產生「訂單待處理」提醒（舊訂單不需要）
+//   已經連到現有產品的品項不會被改掉（多人同時操作時以先連的為準）；原本的產品已被刪除的可以重新連
+// ------------------------------------------------------------
+function linkOrderProducts_(req, ctx) {
+    const links = Array.isArray(req.links) ? req.links : [];
+    if (!links.length) fail_('沒有要連結的品項');
+    if (links.length > 500) fail_('一次最多連結 500 個品項');
+
+    return withLock_(() => {
+        const t = access_('Orders', ctx, 'write');
+        const products = new Map(readRows_(tbl_('Products')).map(x => [String(x.obj.ID), x.obj]));
+        const rows = new Map(readRows_(t).map(x => [String(x.obj.OrderID), x]));
+        const out = { linked: 0, locked: 0, skipped: 0 };
+
+        links.forEach(l => {
+            const x = rows.get(String(l && l.OrderID));
+            const p = products.get(String(l && l.ProductID));
+
+            // 已經連到現有產品的不改；原本連到的產品已被刪除的可以重新連
+            if (!x || !p || (hasVal_(x.obj.ProductID) && products.has(String(x.obj.ProductID)))) { out.skipped++; return; }
+
+            const patch = { ProductID: String(p.ID) };
+            if (l.rename === true && p.ProductName) patch.ProductName = p.ProductName;
+            if (orderCostLocked_(x.obj) && !hasVal_(x.obj.UnitCost) && hasVal_(p.CostPrice)) {
+                patch.UnitCost = Number(p.CostPrice);
+                out.locked++;
+            }
+
+            stamp_(t, patch, ctx, false);
+            writeRow_(t, x, patch);
+            out.linked++;
+        });
+
+        return out;
     });
 }
 
@@ -2764,9 +2827,11 @@ function archivePlan_(table, cutoff) {
 
             const channel = f.SalesChannel === 'B2B' ? 'b2b' : 'online';
             const refunded = rows.some(r => r.PaymentStatus === '退款');
+            const cancelled = rows.every(r => r.OrderStatus === '取消');
             const ship = dbNum_(f.ShippingFee);
 
             if (refunded) { add(dbMon_(date), 'order_refunded', channel, 1, dbNum_(f.TotalAmount)); return; }
+            if (cancelled) { add(dbMon_(date), 'order_cancelled', channel, 1, dbNum_(f.TotalAmount)); return; }     // 取消的訂單不算營收
 
             let c = 0;
             rows.forEach(r => {

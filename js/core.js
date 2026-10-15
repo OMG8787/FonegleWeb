@@ -116,6 +116,28 @@ const App = {
             .includes(String(keyword).trim().toLowerCase());
     },
 
+    // 模糊搜尋（給 TomSelect 的 score 用）：連續包含分數最高；其次是一半以上的字出現（例如「色漿」找得到「色素漿」）；
+    //   空白分隔的多個關鍵字都要符合。fields：要比對的欄位
+    fuzzy(search, fields = ["text", "cat"]) {
+        const words = String(search || "").toLowerCase().split(/\s+/).filter(Boolean);
+        return item => {
+            if (!words.length) return 1;
+            const text = fields.map(f => String(item[f] ?? "")).join(" ").toLowerCase();
+            let total = 0;
+            for (const w of words) {
+                const at = text.indexOf(w);
+                if (at >= 0) { total += 10 + (at === 0 ? 3 : 0) + w.length / text.length; continue; }
+                const chars = Array.from(w);
+                const hit = chars.filter(ch => text.indexOf(ch) >= 0).length;
+                if (hit < Math.ceil(chars.length / 2)) return 0;
+                let i = 0, inOrder = 0;
+                for (const ch of chars) { const j = text.indexOf(ch, i); if (j >= 0) { inOrder++; i = j + 1; } }
+                total += hit / chars.length + inOrder / chars.length;
+            }
+            return total;
+        };
+    },
+
     toBool(v) {
 
         if (v === true) return true;

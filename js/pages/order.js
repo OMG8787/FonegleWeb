@@ -8,6 +8,8 @@ Pages.Order = (() => {
     let customers = [];     // Companies：客戶與合作廠商
     let members = [];       // Users：舊訂單使用的會員
     let productOptions = [];
+    let allProducts = null;     // 全部產品（含停用；判斷訂單品項連到的產品還在不在）
+    let lastOrders = [];
     let mode = "view";
 
     async function init() {
@@ -27,10 +29,18 @@ Pages.Order = (() => {
                 onTable(name, rows) {
                     if (name === "Companies") { customers = rows || []; renderCustomerOptions(); }
                     if (name === "Users") { members = rows || []; renderCustomerOptions(); }
-                    if (name === "Products") renderProductOptions(rows || []);
+                    if (name === "Products") { allProducts = rows || []; renderProductOptions(allProducts); updateLinkBadge(); }
                     if (name === "Orders") applySearch(rows || []);
                 }
             });
+
+            // 從其他頁面帶參數進來：?link=1 → 打開「品項連到產品」（經營分析）；?no=訂單號碼 → 直接打開那張訂單（首頁的訂單提醒）
+            const params = new URLSearchParams(location.search);
+            if (params.get("link")) openLinkProducts();
+            const no = params.get("no");
+            const target = no && orderCache.find(o => String(o.OrderNo) === no);
+            if (target) loadDetail(target);
+            else if (no) alert(`找不到訂單 ${no}（可能已經刪除）`);
 
         } catch (err) {
 
@@ -210,6 +220,316 @@ Pages.Order = (() => {
         }
     }
 
+    // =========================
+    // 品項連到產品：以前手打品名、沒有連到產品（或連到的產品已被刪除）的訂單品項，依品名整理後一次連到產品
+    //   連好後才算得出成本與利潤；已確認成交 / 已付款的品項，後端會順便用產品目前的成本鎖定
+    // =========================
+    let linkModal = null, linkEl = null, linkGroups = [], linkProducts = [];
+
+    const normName = s => String(s ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+    const nameKey = s => normName(s).toLowerCase().replace(/[\s\p{P}]/gu, "");
+
+    function specOf(p) {
+        return [p.Specification, p.Flavor, p.Capacity ? p.Capacity + (p.Unit || "") : "", p.Weight ? p.Weight + "g" : "", p.Color].filter(Boolean).join(" ");
+    }
+
+    // ids：現有產品的編號（有給才檢查「連到的產品已被刪除」）
+    function unlinkedRows(rows, ids) {
+        return (rows || []).filter(r => {
+            if (!r.OrderNo || !normName(r.ProductName)) return false;
+            const pid = String(r.ProductID ?? "").trim();
+            return !pid || (!!ids && !ids.has(pid));
+        });
+    }
+
+    function updateLinkBadge() {
+        const badge = document.getElementById("linkBadge");
+        if (!badge) return;
+        const n = unlinkedRows(lastOrders, allProducts ? new Set(allProducts.map(p => String(p.ID))) : null).length;
+        badge.textContent = n;
+        badge.classList.toggle("d-none", !n);
+    }
+
+    // 相似度 0~1：最長共同子序列（適合中文品名，例如「芒果冰淇淋大杯」與「芒果冰淇淋」）
+    function similarity(a, b) {
+        const s = [...a], t = [...b];
+        if (!s.length || !t.length) return 0;
+        const dp = new Array(t.length + 1).fill(0);
+        for (let i = 1; i <= s.length; i++) {
+            let prev = 0;
+            for (let j = 1; j <= t.length; j++) {
+                const keep = dp[j];
+                dp[j] = s[i - 1] === t[j - 1] ? prev + 1 : Math.max(dp[j], dp[j - 1]);
+                prev = keep;
+            }
+        }
+        return 2 * dp[t.length] / (s.length + t.length);
+    }
+
+    // 建議連到哪個產品：品名＋規格相同 > 品名相同 > 互相包含 > 名稱相似；同名多規格用訂單單價對產品售價分辨
+    //   sure = 很有把握（預先選好、打勾）；沒把握的只顯示「可能是」，按「套用」才選
+    function suggestProduct(g) {
+        const n = nameKey(g.name);
+        const list = linkProducts.map(p => {
+            const pn = nameKey(p.ProductName);
+            if (!pn) return null;
+            const full = nameKey(p.ProductName + specOf(p));
+            let score = 0, why = "";
+            if (full !== pn && n === full) { score = 100; why = "品名＋規格相同"; }
+            else if (n === pn) { score = 95; why = "品名相同"; }
+            else if (pn.length >= 2 && n.includes(pn)) { score = 60 + Math.round(30 * pn.length / n.length); why = `品名包含「${p.ProductName}」`; }
+            else if (n.length >= 2 && pn.includes(n)) { score = 60 + Math.round(30 * n.length / pn.length); why = "產品名稱包含這個品名"; }
+            else { const sim = similarity(n, pn); if (sim >= 0.6) { score = Math.round(sim * 70); why = "名稱相似"; } }
+            if (!score) return null;
+            if (g.prices.size && g.prices.has(App.num(p.SalePrice))) { score += 4; why += "、售價相同"; }
+            return { p, score, why };
+        }).filter(Boolean).sort((a, b) => b.score - a.score);
+
+        if (!list.length) return null;
+        const ties = list.filter(x => x.score === list[0].score).length;
+        return { id: String(list[0].p.ID), why: list[0].why, sure: list[0].score >= 75 && ties === 1, ties };
+    }
+
+    function buildLinkGroups(rows) {
+        const ids = new Set(linkProducts.map(p => String(p.ID)));
+        const map = new Map();
+        unlinkedRows(rows, ids).forEach(r => {
+            const key = nameKey(r.ProductName);
+            const g = map.get(key) || { name: normName(r.ProductName), rows: [], orders: new Set(), qty: 0, prices: new Set(), dates: [], b2b: new Set() };
+            g.rows.push(r);
+            g.orders.add(r.OrderNo);
+            g.qty += App.num(r.Qty);
+            if (App.num(r.UnitPrice) > 0) g.prices.add(App.num(r.UnitPrice));
+            const d = App.toDateInput(r.OrderDate);
+            if (d) g.dates.push(d);
+            if (r.SalesChannel === "B2B") g.b2b.add(r.OrderNo);
+            map.set(key, g);
+        });
+        return [...map.values()].map(g => {
+            g.dates.sort();
+            const s = suggestProduct(g);
+            return Object.assign(g, { suggest: s, pick: s && s.sure ? s.id : "", on: !!(s && s.sure) });
+        }).sort((a, b) => b.rows.length - a.rows.length || a.name.localeCompare(b.name, "zh-Hant"));
+    }
+
+    function ensureLinkModal() {
+
+        if (linkEl) return;
+
+        linkEl = document.createElement("div");
+        linkEl.className = "modal fade";
+        linkEl.tabIndex = -1;
+        linkEl.innerHTML = `
+<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title">🔗 品項連到產品</h5><div class="small text-muted">以前手打品名、沒有連到產品的訂單品項，依品名整理；連到產品後才算得出成本與利潤</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body" id="lkBody"></div>
+    <div class="modal-footer justify-content-between">
+        <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="lkRename"><label class="form-check-label small" for="lkRename">訂單上的品名一併改成產品名稱</label></div>
+        <div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">關閉</button><button type="button" class="btn btn-primary" id="lkOk">🔗 連結選取的品項</button></div>
+    </div>
+</div></div>`;
+        document.body.appendChild(linkEl);
+        linkModal = new bootstrap.Modal(linkEl);
+
+        linkEl.addEventListener("change", e => {
+            const t = e.target;
+            if (t.matches("[data-lk]")) {
+                const g = linkGroups[Number(t.dataset.lk)];
+                if (t.checked && !g.pick) { t.checked = false; alert("請先在右邊選擇要連到哪個產品"); return; }
+                g.on = t.checked;
+                updateLinkStat();
+            } else if (t.matches("#lkAll")) {
+                linkGroups.forEach((g, i) => {
+                    const tr = linkEl.querySelector(`[data-lk-row="${i}"]`);
+                    if (!g.pick || (tr && tr.classList.contains("d-none"))) return;
+                    g.on = t.checked;
+                    const cb = linkEl.querySelector(`[data-lk="${i}"]`);
+                    if (cb) cb.checked = t.checked;
+                });
+                updateLinkStat();
+            }
+        });
+        linkEl.addEventListener("click", e => {
+            const a = e.target.closest("[data-lk-apply]");
+            if (!a) return;
+            e.preventDefault();
+            const i = Number(a.dataset.lkApply);
+            linkEl.querySelector(`[data-lk-sel="${i}"]`).tomselect?.setValue(linkGroups[i].suggest.id);
+        });
+        linkEl.addEventListener("input", e => {
+            if (!e.target.matches("#lkSearch")) return;
+            const q = e.target.value.trim();
+            const score = App.fuzzy(q, ["name"]);
+            linkGroups.forEach((g, i) => linkEl.querySelector(`[data-lk-row="${i}"]`)?.classList.toggle("d-none", !!q && !score(g)));
+        });
+        linkEl.querySelector("#lkOk").addEventListener("click", submitLinks);
+    }
+
+    function renderLinkWhy(i) {
+        const g = linkGroups[i], s = g.suggest;
+        const el = linkEl.querySelector(`[data-lk-why="${i}"]`);
+        if (!el) return;
+        if (!s) { el.innerHTML = g.pick ? "" : `<span class="text-muted">找不到相近的產品，請自己選（沒有的話先到「產品管理」新增）</span>`; return; }
+        if (g.pick === s.id) { el.innerHTML = `<span class="text-success">✨ 建議：${App.esc(s.why)}</span>`; return; }
+        const p = linkProducts.find(x => String(x.ID) === s.id);
+        const label = p ? p.ProductName + (specOf(p) ? "【" + specOf(p) + "】" : "") : "";
+        el.innerHTML = `<span class="text-muted">${s.ties > 1 ? `⚠️ 有 ${s.ties} 個一樣相近的產品，請確認是哪一個。` : ""}可能是「${App.esc(label)}」（${App.esc(s.why)}）</span> <a href="#" data-lk-apply="${i}">套用</a>`;
+    }
+
+    function updateLinkStat() {
+        const on = linkGroups.filter(g => g.on && g.pick);
+        const items = on.reduce((t, g) => t + g.rows.length, 0);
+        const total = linkGroups.reduce((t, g) => t + g.rows.length, 0);
+        const stat = linkEl.querySelector("#lkStat");
+        if (stat) stat.textContent = `共 ${linkGroups.length} 種品名（${total} 個品項）・已選 ${on.length} 種（${items} 個品項）`;
+        const ok = linkEl.querySelector("#lkOk");
+        ok.disabled = !on.length;
+        ok.textContent = `🔗 連結選取的品項（${items}）`;
+    }
+
+    function renderLink() {
+
+        const esc = App.esc;
+        const body = linkEl.querySelector("#lkBody");
+        body.querySelectorAll("select").forEach(s => s.tomselect?.destroy());
+
+        if (!linkGroups.length) {
+            body.innerHTML = `<div class="text-center text-muted py-5">🎉 所有訂單品項都已經連到產品了</div>`;
+            const ok = linkEl.querySelector("#lkOk");
+            ok.disabled = true;
+            ok.textContent = "🔗 連結選取的品項";
+            return;
+        }
+
+        const money = v => "$" + (Math.round(v * 100) / 100).toLocaleString();
+        body.innerHTML = `
+<div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+    <input id="lkSearch" class="form-control form-control-sm" style="max-width:240px" placeholder="🔍 搜尋品名" autocomplete="off">
+    <label class="small mb-0"><input type="checkbox" class="form-check-input me-1" id="lkAll">全選（已選好產品的）</label>
+    <span class="small text-muted" id="lkStat"></span>
+</div>
+<div class="alert alert-light border small py-2 mb-2">💡 已依品名、規格、售價先猜好要連的產品，有把握的已經選好並打勾（✨），請確認。找不到對應的產品，先到「產品管理」新增，再回來連結。<br>已確認成交 / 已付款的訂單，連結後會用產品<b>目前</b>的成本鎖定。</div>
+<div class="table-responsive"><table class="table table-sm align-middle mb-0">
+    <thead><tr><th style="width:36px"></th><th>訂單上的品名</th><th style="min-width:300px">連到產品</th></tr></thead>
+    <tbody>${linkGroups.map((g, i) => {
+        const prices = [...g.prices].sort((a, b) => a - b);
+        const price = prices.length ? "・單價 " + (prices.length > 1 ? money(prices[0]) + " ~ " + money(prices[prices.length - 1]) : money(prices[0])) : "";
+        const first = g.dates[0], last = g.dates[g.dates.length - 1];
+        const dates = first ? "・" + (first === last ? first : first + " ~ " + last) : "";
+        return `<tr data-lk-row="${i}">
+        <td><input type="checkbox" class="form-check-input" data-lk="${i}" ${g.on ? "checked" : ""}></td>
+        <td><div class="fw-semibold">${esc(g.name)}</div><div class="small text-muted">${g.rows.length} 個品項・${g.orders.size} 張訂單・數量 ${Math.round(g.qty * 100) / 100}${price}${dates}${g.b2b.size ? `・B2B ${g.b2b.size} 張` : ""}</div></td>
+        <td><select data-lk-sel="${i}"></select><div class="small mt-1" data-lk-why="${i}"></div></td>
+    </tr>`;
+    }).join("")}</tbody>
+</table></div>`;
+
+        const options = linkProducts.map(p => ({
+            value: String(p.ID), text: p.ProductName || "產品 " + p.ID,
+            spec: [specOf(p), p.IsActive === false ? "已停用" : ""].filter(Boolean).join("・"), sku: p.SKU || p.Barcode || "", price: p.SalePrice ?? ""
+        }));
+
+        linkGroups.forEach((g, i) => {
+            new TomSelect(body.querySelector(`[data-lk-sel="${i}"]`), {
+                options, items: g.pick ? [g.pick] : [], maxItems: 1, valueField: "value", labelField: "text", searchField: ["text", "spec", "sku"],
+                placeholder: "選擇產品（可打字搜尋）", refreshThrottle: 0, dropdownParent: "body", dropdownClass: "ts-dropdown product-dd",
+                score: search => App.fuzzy(search, ["text", "spec", "sku"]),
+                sortField: [{ field: "$score" }, { field: "text" }, { field: "spec" }],
+                render: { option: productOptionHtml, item: productItemHtml, no_results: () => `<div class="no-results">找不到產品：先到「產品管理」新增</div>` },
+                onChange: v => {
+                    g.pick = v || "";
+                    g.on = !!g.pick;
+                    const cb = body.querySelector(`[data-lk="${i}"]`);
+                    if (cb) cb.checked = g.on;
+                    renderLinkWhy(i);
+                    updateLinkStat();
+                }
+            });
+            renderLinkWhy(i);
+        });
+
+        updateLinkStat();
+    }
+
+    async function loadLinkData() {
+        API.cacheClear();
+        const d = await API.getMany(["Orders", "Products"]);
+        linkProducts = (d.Products || []).slice().sort((a, b) => String(a.ProductName || "").localeCompare(String(b.ProductName || ""), "zh-Hant"));
+        linkGroups = buildLinkGroups(d.Orders || []);
+        allProducts = d.Products || [];
+        return d;
+    }
+
+    async function openLinkProducts() {
+
+        ensureLinkModal();
+
+        try {
+            await loadLinkData();
+        } catch (err) {
+            App.error(err, "讀取資料失敗");
+            return;
+        }
+
+        linkEl.querySelector("#lkRename").checked = false;
+        renderLink();
+        linkModal.show();
+    }
+
+    async function submitLinks() {
+
+        const chosen = linkGroups.filter(g => g.on && g.pick);
+        if (!chosen.length) return;
+
+        const rename = linkEl.querySelector("#lkRename").checked;
+        const links = chosen.flatMap(g => g.rows.map(r => ({ OrderID: r.OrderID, ProductID: g.pick, rename })));
+        const orders = new Set(chosen.flatMap(g => g.rows.map(r => r.OrderNo))).size;
+
+        if (!confirm(`要把 ${chosen.length} 種品名（${links.length} 個品項、${orders} 張訂單）連到選好的產品嗎？` +
+            (rename ? "\n\n訂單上的品名會一併改成產品名稱。" : "") +
+            "\n\n已確認成交 / 已付款、還沒記成本的品項，會同時用產品目前的成本鎖定。")) return;
+
+        const btn = linkEl.querySelector("#lkOk");
+        btn.disabled = true;
+        const sum = { linked: 0, locked: 0, skipped: 0 };
+
+        try {
+            for (let i = 0; i < links.length; i += 150) {
+                const r = await API.call("linkOrderProducts", { links: links.slice(i, i + 150) }, { loadingText: `連結中…（${Math.min(i + 150, links.length)} / ${links.length}）` });
+                sum.linked += r.linked || 0;
+                sum.locked += r.locked || 0;
+                sum.skipped += r.skipped || 0;
+            }
+            alert(`✅ 已連結 ${sum.linked} 個品項` +
+                (sum.locked ? `\n🔒 其中 ${sum.locked} 個已確認成交 / 已付款的品項，已用產品目前的成本鎖定` : "") +
+                (sum.skipped ? `\n（${sum.skipped} 個品項已經被連過或找不到，略過）` : ""));
+        } catch (err) {
+            if (/未知的操作/.test(err?.message || "")) alert("後端還沒更新：請先把 gas/Code.gs 重新部署成新版本，再使用這個功能。");
+            else App.error(err, "連結失敗");
+        } finally {
+            btn.disabled = false;
+        }
+
+        // 不論成功或部分成功，都重新整理清單與訂單列表
+        try {
+            const d = await loadLinkData();
+            renderLink();
+            applySearch(d.Orders || []);
+        } catch (err) {
+            console.warn("重新整理失敗", err);
+        }
+    }
+
+    // 產品選項的顯示：同名多規格要分得出來；滑鼠移上去顯示規格、SKU、售價
+    function productOptionHtml(d, esc) {
+        const tip = [d.text, d.spec && "規格：" + d.spec, d.sku && "SKU：" + d.sku, d.price !== undefined && d.price !== "" && d.price !== null && "售價：$" + d.price].filter(Boolean).join("\n");
+        return `<div title="${esc(tip)}">${esc(d.text)}${d.spec ? ` <span class="text-primary small">【${esc(d.spec)}】</span>` : ""}<span class="text-muted small">${d.sku ? "　" + esc(d.sku) : ""}${d.price !== undefined && d.price !== "" && d.price !== null ? "　$" + esc(d.price) : ""}</span></div>`;
+    }
+
+    function productItemHtml(d, esc) {
+        return `<div title="${esc([d.text, d.spec && "規格：" + d.spec, d.sku && "SKU：" + d.sku].filter(Boolean).join("\n"))}">${esc(d.text)}${d.spec ? ` <span class="text-primary small">【${esc(d.spec)}】</span>` : ""}</div>`;
+    }
+
     // 成本要鎖定的訂單：已確認成交（訂單狀態不是待確認 / 取消）或已付款；退款不算（與後端 orderCostLocked_ 相同）
     const costLocked = (orderStatus, payStatus) => payStatus !== "退款" && (payStatus === "已付款" || (!!orderStatus && orderStatus !== "待確認" && orderStatus !== "取消"));
     const noCost = o => o.UnitCost === null || o.UnitCost === undefined || o.UnitCost === "";
@@ -236,7 +556,7 @@ Pages.Order = (() => {
         const b2b = new Set(todo.filter(o => o.SalesChannel === "B2B").map(o => o.OrderNo)).size;
 
         if (!todo.length) { alert(skip ? `沒有可以鎖定的訂單。
-有 ${skip} 個已確認 / 已付款的訂單品項沒有連到產品，或產品還沒有成本，無法記錄成本（請先在訂單把品項選成產品，並在產品頁設定成本）。` : "所有已確認 / 已付款訂單的成本都已經鎖定了 👍"); return; }
+有 ${skip} 個已確認 / 已付款的訂單品項沒有連到產品，或產品還沒有成本，無法記錄成本（請先用「🔗 品項連到產品」把品項連到產品，並在產品頁設定成本）。` : "所有已確認 / 已付款訂單的成本都已經鎖定了 👍"); return; }
 
         const orderCount = new Set(todo.map(o => o.OrderNo)).size;
         if (!confirm(`要把 ${orderCount} 張已確認成交 / 已付款的訂單（${todo.length} 個品項${b2b ? `，其中 B2B ${b2b} 張` : ""}）的成本，用「產品目前的成本」補上並鎖定嗎？
@@ -362,6 +682,7 @@ Pages.Order = (() => {
             addDetailRow
         );
         document.getElementById("btnLockOld")?.addEventListener("click", lockOldOrders);
+        document.getElementById("btnLinkProducts")?.addEventListener("click", openLinkProducts);
         document.getElementById("btnConfirmOrders")?.addEventListener("click", openConfirmOrders);
         document.getElementById("orderCostInfo")?.addEventListener("click", e => {
             if (!e.target.closest("#btnUnlockCost")) return;
@@ -437,7 +758,9 @@ Pages.Order = (() => {
 
     function applySearch(rows) {
 
+        lastOrders = rows || [];
         updateConfirmBadge(rows);
+        updateLinkBadge();
 
         const q = {
             member: dom.qMemberID.value,
@@ -717,8 +1040,7 @@ Pages.Order = (() => {
                 price: p.SalePrice ?? "",
                 cost: p.CostPrice,
                 // 同名產品的不同規格：選單要看得出是哪一個
-                spec: [p.Specification, p.Flavor, p.Capacity ? p.Capacity + (p.Unit || "") : "", p.Weight ? p.Weight + "g" : "", p.Color].filter(Boolean).join(" ")
-                    || (p.SKU || p.Barcode ? "" : "編號 " + p.ID),     // 什麼規格資料都沒填：至少顯示產品編號，才分得出同名的是哪一個
+                spec: specOf(p) || (p.SKU || p.Barcode ? "" : "編號 " + p.ID),     // 什麼規格資料都沒填：至少顯示產品編號，才分得出同名的是哪一個
                 sku: p.SKU || p.Barcode || ""
             }));
 
@@ -734,9 +1056,11 @@ Pages.Order = (() => {
     function renderList(result) {
         dom.searchTitle.textContent =
             result.title;
-        const sum = result.list.reduce((t, o) => t + App.num(o.TotalAmount), 0);
+        const dead = o => o.Rows.every(r => r.OrderStatus === "取消") || o.Rows.some(r => r.PaymentStatus === "退款");
+        const sum = result.list.reduce((t, o) => t + (dead(o) ? 0 : App.num(o.TotalAmount)), 0);
+        const skipped = result.list.filter(dead).length;
         dom.searchCount.textContent =
-            `共 ${result.count} 筆，共計 $${Math.round(sum).toLocaleString()} 元`;
+            `共 ${result.count} 筆，共計 $${Math.round(sum).toLocaleString()} 元` + (skipped ? `（不含取消 / 退款 ${skipped} 筆）` : "");
         dom.orderList.innerHTML = "";
         if (!result.list.length) {
             dom.emptyHint.classList.remove("d-none");
@@ -943,14 +1267,13 @@ class="btn btn-danger btn-sm">
                 searchField: ["text", "spec", "sku"],
                 valueField: "value",
                 labelField: "text",
-                sortField: [{ field: "text" }, { field: "spec" }],
+                // 打字模糊比對（例如「芒冰」找得到「芒果冰淇淋」），符合度高的排前面
+                score: search => App.fuzzy(search, ["text", "spec", "sku"]),
+                sortField: [{ field: "$score" }, { field: "text" }, { field: "spec" }],
                 render: {
                     // 滑鼠移上去顯示規格、SKU、售價（同名多規格才分得出來）
-                    option: (d, esc) => {
-                        const tip = [d.text, d.spec && "規格：" + d.spec, d.sku && "SKU：" + d.sku, d.price !== undefined && d.price !== "" && "售價：$" + d.price].filter(Boolean).join("\n");
-                        return `<div title="${esc(tip)}">${esc(d.text)}${d.spec ? ` <span class="text-primary small">【${esc(d.spec)}】</span>` : ""}<span class="text-muted small">${d.sku ? "　" + esc(d.sku) : ""}${d.price !== undefined && d.price !== "" ? "　$" + esc(d.price) : ""}</span></div>`;
-                    },
-                    item: (d, esc) => `<div title="${esc([d.text, d.spec && "規格：" + d.spec, d.sku && "SKU：" + d.sku].filter(Boolean).join("\n"))}">${esc(d.text)}${d.spec ? ` <span class="text-primary small">【${esc(d.spec)}】</span>` : ""}</div>`,
+                    option: productOptionHtml,
+                    item: productItemHtml,
                     option_create: (data, escape) => `<div class="create">＋ 使用自訂品名「<b>${escape(data.input)}</b>」</div>`,
                     no_results: () => `<div class="no-results">找不到產品，輸入完整品名後按 Enter 加入自訂品項</div>`
                 }

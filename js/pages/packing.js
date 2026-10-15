@@ -46,6 +46,15 @@ Pages.Packing = (() => {
         });
 
         await load();
+
+        // 從首頁的行事曆提醒點進來：?key=cal:活動編號 → 直接打開那份清單
+        const key = new URLSearchParams(location.search).get("key");
+        const l = key && allLists().find(x => x.key === key);
+        if (l) {
+            cur = { key: l.key, name: l.name, date: l.date, end: l.end, calId: l.calId };
+            renderLists();
+            renderList();
+        }
     }
 
     async function load() {

@@ -3,7 +3,7 @@ window.Pages = window.Pages || {};
 // =========================================================
 // 品牌攤提表（BrandCosts 工作表）
 // - 支出：依「攤提月數」平均分攤到每個月（空白 / 0 = 當月一次認列）
-// - 回收：手動記錄的收入，可選擇把出攤紀錄的盈虧一起計入
+// - 回收：手動記錄的收入，可分別選擇要不要把出攤盈虧、線上訂單利潤、B2B 訂單利潤一起計入（各自記住在這台裝置）
 // =========================================================
 Pages.Amortization = (() => {
 
@@ -11,7 +11,8 @@ Pages.Amortization = (() => {
 
     const CATEGORIES = ["硬體", "包材", "食材", "人力", "其他"];
     const FIELDS = ["RecordDate", "Type", "Category", "ItemName", "Amount", "AmortizeMonths", "Vendor", "Note"];
-    const STORAGE_KEY = "fonegle_amort_include_stall";
+    const OLD_KEY = "fonegle_amort_include_stall";      // 舊版：一個開關同時控制出攤與訂單
+    const SWITCHES = { includeStall: "fonegle_amort_inc_stall", includeOnline: "fonegle_amort_inc_online", includeB2b: "fonegle_amort_inc_b2b" };
 
     const dom = {};
 
@@ -29,7 +30,11 @@ Pages.Amortization = (() => {
         bindEvents();
 
         try {
-            dom.includeStall.checked = localStorage.getItem(STORAGE_KEY) !== "false";
+            const old = localStorage.getItem(OLD_KEY);
+            Object.entries(SWITCHES).forEach(([id, key]) => {
+                const v = localStorage.getItem(key);
+                dom[id].checked = v === null ? old !== "false" : v !== "false";
+            });
         } catch { }
 
         openCreate();
@@ -52,7 +57,7 @@ Pages.Amortization = (() => {
     function cacheDom() {
 
         FIELDS.concat([
-            "costForm", "formCard", "formTitle", "editHint", "monthlyPreview", "includeStall",
+            "costForm", "formCard", "formTitle", "editHint", "monthlyPreview", "includeStall", "includeOnline", "includeB2b",
             "btnCreate", "btnUpdate", "btnDelete", "btnClear", "qType", "qCategory",
             "sumInvest", "sumRecovered", "sumRecoveredNote", "sumRemain", "sumMonthly", "sumPayback", "paybackBar",
             "categoryBody", "monthBody", "entryBody", "emptyHint"
@@ -69,12 +74,12 @@ Pages.Amortization = (() => {
         dom.qType.addEventListener("change", renderEntries);
         dom.qCategory.addEventListener("change", renderEntries);
 
-        dom.includeStall.addEventListener("change", () => {
+        Object.entries(SWITCHES).forEach(([id, key]) => dom[id].addEventListener("change", () => {
             try {
-                localStorage.setItem(STORAGE_KEY, String(dom.includeStall.checked));
+                localStorage.setItem(key, String(dom[id].checked));
             } catch { }
             render();
-        });
+        }));
 
         dom.Type.addEventListener("change", updateFormState);
         dom.Amount.addEventListener("input", updateFormState);
@@ -153,11 +158,11 @@ Pages.Amortization = (() => {
             : 0;
     }
 
-    // 訂單利潤：訂單總額 − 產品成本（filterFn 收到的是 { date }）
+    // 訂單利潤：訂單總額 − 產品成本（filterFn 收到的是 { StallDate: 訂單日期 }）；b2b = null 表示有開的通路都算
+    const orderOn = o => (o.b2b ? dom.includeB2b : dom.includeOnline).checked;
+
     function orderProfit(filterFn = () => true, b2b = null) {
-        return dom.includeStall.checked
-            ? orders.filter(o => (b2b === null || o.b2b === b2b) && filterFn({ StallDate: o.date })).reduce((s, o) => s + o.profit, 0)
-            : 0;
+        return orders.filter(o => (b2b === null || o.b2b === b2b) && orderOn(o) && filterFn({ StallDate: o.date })).reduce((s, o) => s + o.profit, 0);
     }
 
     function renderSummary() {
@@ -174,10 +179,13 @@ Pages.Amortization = (() => {
 
         dom.sumInvest.textContent = money(invest);
         dom.sumRecovered.textContent = money(recovered);
-        const missing = orders.reduce((s, o) => s + o.missing, 0);
-        dom.sumRecoveredNote.textContent = dom.includeStall.checked
-            ? `回收紀錄 ${money(manual)} ＋ 出攤盈虧 ${money(stall)} ＋ 線上訂單 ${money(online)} ＋ B2B ${money(b2b)}` +
-              (missing ? `（${missing} 個訂單品項沒有產品成本價，以 0 計）` : "")
+        const missing = orders.filter(orderOn).reduce((s, o) => s + o.missing, 0);
+        const parts = [`回收紀錄 ${money(manual)}`];
+        if (dom.includeStall.checked) parts.push(`出攤盈虧 ${money(stall)}`);
+        if (dom.includeOnline.checked) parts.push(`線上訂單 ${money(online)}`);
+        if (dom.includeB2b.checked) parts.push(`B2B ${money(b2b)}`);
+        dom.sumRecoveredNote.textContent = parts.length > 1
+            ? parts.join(" ＋ ") + (missing ? `（${missing} 個訂單品項沒有產品成本價，以 0 計）` : "")
             : "僅計回收紀錄";
         dom.sumRemain.textContent = money(Math.max(0, invest - recovered));
         dom.sumMonthly.textContent = money(monthly);
@@ -252,7 +260,7 @@ Pages.Amortization = (() => {
     <td class="text-end">${money(amort)}</td>
     <td class="text-end">${money(recovered)}</td>
     <td class="text-end">${dom.includeStall.checked ? money(stall) : "-"}</td>
-    <td class="text-end">${dom.includeStall.checked ? money(order) : "-"}</td>
+    <td class="text-end">${dom.includeOnline.checked || dom.includeB2b.checked ? money(order) : "-"}</td>
     <td class="text-end fw-bold ${net >= 0 ? "profit" : "loss"}">${money(net)}</td>
 </tr>`);
         }

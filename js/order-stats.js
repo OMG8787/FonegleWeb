@@ -4,7 +4,7 @@
 // - 營收 = 訂單總額（TotalAmount，已扣折扣）− 運費：運費是支出，不算收益（但仍計入客戶的應收帳款）
 // - 成本 = Σ 數量 × 單位成本：訂單記有成本單價（UnitCost，確認成交 / 已付款時鎖定）→ 用當時記下的（不再變動）；
 //          其餘用產品目前的成本價（Products.CostPrice，食材浮動時會跟著變）；都沒有的品項以 0 計，並記在 missing
-// - 退款的訂單不計
+// - 退款、取消的訂單不計
 // - 通路：SalesChannel = B2B → B2B；其他（LINE / 官網 / 門市 / 其他）→ 線上訂單
 // =========================================================
 window.OrderStats = {
@@ -52,12 +52,14 @@ window.OrderStats = {
                     cost: 0,
                     missing: 0,
                     locked: true,
-                    refunded: false
+                    refunded: false,
+                    cancelled: true
                 };
                 map.set(r.OrderNo, o);
             }
 
             if (r.PaymentStatus === "退款") o.refunded = true;
+            if (r.OrderStatus !== "取消") o.cancelled = false;          // 整張訂單都取消才算取消
 
             const pid = String(r.ProductID ?? "");
             const snap = r.UnitCost;
@@ -72,7 +74,7 @@ window.OrderStats = {
         });
 
         return [...map.values()]
-            .filter(o => !o.refunded)
+            .filter(o => !o.refunded && !o.cancelled)
             .map(o => Object.assign(o, { profit: o.revenue - o.cost, b2b: o.channel === "B2B" }));
     },
 

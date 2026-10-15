@@ -141,7 +141,7 @@ Pages.Home = (() => {
     // 行事曆提醒：這個活動有備品清單 → 顯示打包進度
     function packBadge(calId) {
         const list = packing.filter(p => p.ListKey === "cal:" + calId);
-        const go = `href="page/packing.html"`;
+        const go = `href="page/packing.html?key=${encodeURIComponent("cal:" + calId)}"`;     // 直接打開這個活動的清單
         if (!list.length) return Auth.hasPermission(21, 10, 22) ? `<div class="small"><a ${go} class="link-secondary">🧺 還沒整理備品清單</a></div>` : "";
         const done = list.filter(p => p.IsPacked === true).length;
         return `<div class="small"><a ${go} class="${done === list.length ? "link-success" : "link-warning"}">🧺 備品 ${done} / ${list.length} 已打包</a></div>`;
@@ -240,7 +240,7 @@ Pages.Home = (() => {
         <div class="memo-title">${m.Priority === "高" ? "❗ " : ""}${esc(m.Title || "")}</div>
         ${notice && m.Content ? `<div class="small text-muted" style="white-space:pre-line">${esc(m.Content)}</div>` : ""}
         <div class="small">${notice ? `<span class="badge bg-warning text-dark">系統通知</span>` : ""} ${dueBadge} ${m.IsShared ? `<span class="badge bg-info">${m.CreatedBy === me ? "已共享" : "同事共享"}</span>` : ""}
-        ${["approveUser", "resetPassword"].includes(m.LinkType) && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往處理</a>` : ""}${m.LinkType === "orderTodo" && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/order.html">前往訂單</a>` : ""}</div>
+        ${["approveUser", "resetPassword"].includes(m.LinkType) && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/access.html#pending">前往處理</a>` : ""}${m.LinkType === "orderTodo" && m.IsDone !== true ? `<a class="btn btn-sm btn-warning py-0 ms-1" href="page/order.html?no=${encodeURIComponent(m.LinkId || "")}">前往訂單</a>` : ""}</div>
     </div>
     ${mine ? `<div class="memo-actions"><button class="btn btn-sm btn-link text-danger p-0" data-delete="${m.ID}">刪除</button></div>` : ""}
 </div>`;

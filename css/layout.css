@@ -343,10 +343,11 @@ body.sidebar-collapsed #erp-main {
         font-size: 15px;
     }
 
+    /* 左右 12px：剛好抵銷 .row 的 -12px 外距，避免列表＋表單頁可以左右滑動 2px */
     #erp-main,
     body.sidebar-collapsed #erp-main {
         margin-left: 0;
-        padding: 10px;
+        padding: 10px 12px;
     }
 
     #erp-main .container-fluid {

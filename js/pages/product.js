@@ -375,9 +375,7 @@ ${(() => {
 <span class="badge bg-light text-dark">
 ${stockStatus}
 </span>
-<span class="badge bg-secondary">
-${App.esc(x.Status || "未知")}
-</span>
+${x.Status ? `<span class="badge bg-secondary">${App.esc(x.Status)}</span>` : ""}
 </div>
 `;
                 dom.productList

@@ -3,10 +3,14 @@
 //   - 一送出就立即擋住點擊與 Enter（透明）
 //   - 超過 200ms 才顯示轉圈與文字，快速操作不會閃爍
 //   - 多個請求同時進行時，全部完成才關閉
+//   - 只蓋住頁面內容：上方導覽列與左側選單照常可以點，點錯頁面不用等它跑完就能換頁
+//     （登入頁沒有選單、或開著對話框時，才整個畫面擋住）
+//   - 正在儲存（新增 / 修改 / 刪除）時離開頁面會先提醒，避免分批送出的資料只寫了一半
 // =========================================================
 const Loading = {
 
     count: 0,
+    writing: 0,
     showTimer: null,
     hideTimer: null,
 
@@ -31,6 +35,9 @@ const Loading = {
             #loadingMask{position:fixed;inset:0;z-index:2147483000;display:none;align-items:center;justify-content:center;
                 background:transparent;cursor:progress;transition:background .15s}
             #loadingMask.active{display:flex}
+            #loadingMask.in-page{top:60px;left:260px;z-index:1039;transition:background .15s,left .25s ease}
+            body.sidebar-collapsed #loadingMask.in-page{left:70px}
+            @media (max-width:991.98px){#loadingMask.in-page{top:52px;left:0}}
             #loadingMask.visible{background:rgba(17,24,39,.35);backdrop-filter:blur(1px)}
             #loadingMask .loading-box{display:none;align-items:center;gap:12px;background:#fff;color:#1f2937;
                 padding:16px 24px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:16px;font-weight:600;max-width:80vw}
@@ -60,6 +67,7 @@ const Loading = {
 
         const mask = this.el();
         mask.querySelector(".loading-text").textContent = text || "處理中…";
+        mask.classList.toggle("in-page", this.inPage());
         mask.classList.add("active");
 
         // 送出請求時移開焦點，避免 Enter 再次送出
@@ -95,6 +103,11 @@ const Loading = {
 
     get busy() {
         return this.count > 0;
+    },
+
+    // 有選單的頁面、而且沒有開著對話框：只蓋頁面內容
+    inPage() {
+        return !!document.getElementById("erp-main") && !!document.getElementById("erp-header") && !document.querySelector(".modal.show");
     },
 
     // =========================
@@ -166,13 +179,21 @@ const Loading = {
     }
 };
 
-// 遮罩期間擋住鍵盤送出（Enter / 空白鍵）
+// 遮罩期間擋住鍵盤送出（Enter / 空白鍵）；只蓋頁面內容時，導覽列與選單上的按鍵照常
 document.addEventListener("keydown", e => {
-    if (Loading.busy && (e.key === "Enter" || e.key === " ")) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
+    if (!Loading.busy || (e.key !== "Enter" && e.key !== " ")) return;
+    if (document.getElementById("loadingMask")?.classList.contains("in-page") && e.target?.closest?.("#erp-header, #erp-sidebar")) return;
+    e.preventDefault();
+    e.stopPropagation();
 }, true);
+
+// 正在儲存時離開頁面：瀏覽器先問一次（讀取資料不會問，點錯頁面可以直接換）
+window.addEventListener("beforeunload", e => {
+    if (Loading.writing > 0) {
+        e.preventDefault();
+        e.returnValue = "";
+    }
+});
 
 const Auth = {
 
@@ -272,6 +293,9 @@ const Auth = {
     // 讀取類操作：在背景執行（頂端細進度條），不擋畫面
     readActions: new Set(["list", "getMany", "get", "me", "loginSessions", "loginLog", "ping"]),
 
+    // 會擋畫面、但不會改資料的操作（離開頁面不用提醒）
+    maskReadActions: new Set(["accessList", "getAiConfig", "financeSummary", "dbStatus", "publicConfig", "testAiConfig", "aiChat", "aiGenerate", "login", "logout"]),
+
     // opts.silent：完全不顯示（自動補傳、驗證登入等）
     // opts.mask：讀取時也要擋畫面（例如按下「查詢」後要等結果）
     // opts.noRetry：失敗不自動重試（例如現場點餐：失敗就立刻改為暫存）
@@ -288,14 +312,18 @@ const Auth = {
         const kind = opts.silent ? "none"
             : (this.readActions.has(action) && !opts.mask ? "bg" : "mask");
 
+        const writing = !opts.silent && !this.readActions.has(action) && !this.maskReadActions.has(action);
+
         if (kind === "mask") Loading.show(opts.loadingText || Loading.texts[action]);
         if (kind === "bg") Loading.bgStart();
+        if (writing) Loading.writing++;
 
         try {
             return await this.send(url, action, payload, opts);
         } finally {
             if (kind === "mask") Loading.hide();
             if (kind === "bg") Loading.bgEnd();
+            if (writing) Loading.writing--;
         }
     },
 
@@ -639,15 +667,20 @@ const Auth = {
 
         const style = document.createElement("style");
 
+        // 只蓋頁面內容：上方導覽列與左側選單照常可以點，走錯頁面直接點別的功能就好（深色模式字也要看得到）
         style.innerHTML = `
         .permission-box{
             background:white;
+            color:#1f2937;
             padding:30px 40px;
             border-radius:16px;
             font-size:24px;
             font-weight:bold;
             box-shadow:0 10px 30px rgba(0,0,0,.3);
         }
+        body:has(#erp-header) #permissionMask{top:60px!important;left:260px!important;right:0;bottom:0;width:auto!important;height:auto!important;z-index:1039!important}
+        body.sidebar-collapsed:has(#erp-header) #permissionMask{left:70px!important}
+        @media (max-width:991.98px){body:has(#erp-header) #permissionMask{top:52px!important;left:0!important}}
     `;
 
         document.head.appendChild(style);

@@ -6,6 +6,11 @@ Pages.Shipment = (() => {
     let listCache = [];
     let currentDetail = null;
     let mode = "create";
+    let orders = [];        // 訂單（一列一個品項）：選訂單編號帶入收件資料，存檔後同步訂單的出貨狀態
+
+    // 出貨單狀態 → 訂單的出貨狀態（只往前推，不會倒退）
+    const ORDER_SHIP = { "出貨中": "配送中", "已送達": "已完成" };
+    const SHIP_RANK = { "": 0, "未配送": 0, "配送中": 1, "已完成": 2 };
 
     const FIELDS = [
         "ShipmentID", "ShipmentNo", "OrderID", "ProductID", "BatchNo",
@@ -20,6 +25,61 @@ Pages.Shipment = (() => {
         // 頁面沒有「新增」按鈕，預設顯示新增表單
         openCreate();
         searchShipping();
+        loadOrders();
+    }
+
+    async function loadOrders() {
+        try {
+            orders = await API.list("Orders");
+            const first = new Map();
+            orders.forEach(o => { if (o.OrderNo && !first.has(o.OrderNo)) first.set(o.OrderNo, o); });
+            dom.orderNoList.innerHTML = [...first.values()]
+                .sort((a, b) => String(b.OrderDate).localeCompare(String(a.OrderDate))).slice(0, 300)
+                .map(o => `<option value="${App.esc(o.OrderNo)}">${App.esc([o.MemberName, App.toDateInput(o.OrderDate), o.OrderStatus].filter(Boolean).join("・"))}</option>`).join("");
+            if (dom.OrderID.value) showOrderHint();
+        } catch (err) {
+            console.warn("讀取訂單失敗（照常手動輸入訂單編號）", err);
+        }
+    }
+
+    function orderRows(no) {
+        const v = String(no || "").trim();
+        return v ? orders.filter(o => String(o.OrderNo) === v) : [];
+    }
+
+    function showOrderHint() {
+        const rows = orderRows(dom.OrderID.value);
+        const v = dom.OrderID.value.trim();
+        dom.orderHint.textContent = rows.length
+            ? `🧾 ${rows[0].MemberName || ""}　${rows.map(r => (r.ProductName || "") + (r.Qty ? "×" + r.Qty : "")).join("、")}　訂單出貨狀態：${rows[0].ShippingStatus || "未配送"}`
+            : v && orders.length ? "找不到這張訂單：存檔後不會同步訂單的出貨狀態" : "";
+        return rows;
+    }
+
+    // 選了訂單 → 帶入收件人、電話、地址；只有一個品項時也帶入產品編號、數量、單位（只帶還沒填的欄位）
+    function onOrderPicked() {
+        const rows = showOrderHint();
+        if (!rows.length) return;
+        const o = rows[0];
+        const fill = (el, v) => { if (el && !el.value && v !== undefined && v !== null && v !== "") el.value = v; };
+        fill(dom.ReceiverName, o.ContactName || o.MemberName);
+        fill(dom.ReceiverPhone, o.MemberPhone);
+        fill(dom.ReceiverAddress, o.ShippingAddress);
+        if (rows.length === 1) { fill(dom.ProductID, o.ProductID); fill(dom.ShippingQty, o.Qty); fill(dom.Unit, o.Unit); }
+    }
+
+    // 出貨單存檔後同步訂單的出貨狀態（出貨中 → 配送中、已送達 → 已完成；只往前推），訂單的「尚未出貨」提醒會跟著關閉
+    async function syncOrder(payload) {
+        const target = ORDER_SHIP[payload.ShippingStatus];
+        const todo = orderRows(payload.OrderID).filter(r => (SHIP_RANK[r.ShippingStatus || ""] ?? 0) < (SHIP_RANK[target] ?? 0));
+        if (!target || !todo.length) return "";
+        try {
+            await API.batch(todo.map(r => ({ action: "update", table: "Orders", id: r.OrderID, data: { ShippingStatus: target } })), { loadingText: "同步訂單中…" });
+            todo.forEach(r => { r.ShippingStatus = target; });
+            return `\n📦 已把訂單 ${payload.OrderID} 的出貨狀態改成「${target}」`;
+        } catch (err) {
+            return `\n⚠️ 訂單出貨狀態沒有同步（${err?.message || err}），請到訂單管理手動修改`;
+        }
     }
 
     function cacheDom() {
@@ -27,7 +87,7 @@ Pages.Shipment = (() => {
             "qShipmentNo", "qOrderNo", "qReceiverName", "qLogisticsCompany",
             "qTrackingNumber", "qShippingDate", "qShippingStatus", "btnSearch",
             "shippingList", "emptyHint", "searchTitle", "searchCount",
-            "formCard", "editHint", "btnCreate", "btnUpdate", "btnDelete", "btnClear"
+            "formCard", "editHint", "btnCreate", "btnUpdate", "btnDelete", "btnClear", "orderNoList", "orderHint"
         ].concat(FIELDS).forEach(id => {
             dom[id] = document.getElementById(id);
         });
@@ -40,6 +100,7 @@ Pages.Shipment = (() => {
         dom.btnUpdate?.addEventListener("click", submitUpdate);
         dom.btnDelete?.addEventListener("click", deleteShipping);
         dom.btnClear?.addEventListener("click", openCreate);
+        dom.OrderID?.addEventListener("change", onOrderPicked);
         dom.shippingList?.addEventListener("click", e => {
             const card = e.target.closest(".shipping-card");
             if (!card)
@@ -118,11 +179,7 @@ Pages.Shipment = (() => {
 收件人：${esc(x.ReceiverName || "")}
 </div>
 
-<div class="mt-2">
-<span class="badge bg-primary">
-${esc(x.ShippingStatus || "未知")}
-</span>
-</div>
+${x.ShippingStatus ? `<div class="mt-2"><span class="badge bg-primary">${esc(x.ShippingStatus)}</span></div>` : ""}
 `;
             dom.shippingList.appendChild(div);
         });
@@ -146,6 +203,7 @@ ${esc(x.ShippingStatus || "未知")}
             else
                 dom[k].value = d[k] ?? "";
         });
+        showOrderHint();
     }
 
     function buildPayload() {
@@ -176,8 +234,9 @@ ${esc(x.ShippingStatus || "未知")}
 
     async function submitCreate() {
         try {
-            const created = await API.insert("Shipment", buildPayload());
-            alert(`🎉 出貨資料建立成功\n🚚 ${created.ShipmentNo}`);
+            const payload = buildPayload();
+            const created = await API.insert("Shipment", payload);
+            alert(`🎉 出貨資料建立成功\n🚚 ${created.ShipmentNo}` + await syncOrder(payload));
             openCreate();
             await searchShipping();
         } catch (err) {
@@ -189,8 +248,9 @@ ${esc(x.ShippingStatus || "未知")}
         if (!currentDetail)
             return;
         try {
-            await API.update("Shipment", currentDetail.ShipmentID, buildPayload());
-            alert("✅ 出貨資料修改成功");
+            const payload = buildPayload();
+            await API.update("Shipment", currentDetail.ShipmentID, payload);
+            alert("✅ 出貨資料修改成功" + await syncOrder(payload));
             await searchShipping();
         } catch (err) {
             App.error(err, "修改失敗");
@@ -216,6 +276,7 @@ ${esc(x.ShippingStatus || "未知")}
         currentDetail = null;
         dom.form?.reset();
         dom.ShipmentID.value = "";
+        if (dom.orderHint) dom.orderHint.textContent = "";
         setMode("create");
     }
 
