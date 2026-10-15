@@ -37,6 +37,7 @@ const Config = {
                 { id: 34, Permission: [21, 10, 24], name: "🧾 出攤紀錄", page: "page/stall.html" },
                 { id: 33, Permission: [21, 10], name: "🔗 市集報名連結", page: "page/market-link.html" },
                 { id: 39, Permission: [21, 10, 24], name: "🔖 保證金追蹤", page: "page/deposit.html" },
+                { id: 68, Permission: [21, 10, 22], name: "🧺 出攤備品清單", page: "page/packing.html" },
                 { id: 32, Permission: [], name: "🏷️ 品牌資訊", page: "page/brand.html" }
             ]
         },

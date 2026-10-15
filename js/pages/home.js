@@ -45,6 +45,7 @@ Pages.Home = (() => {
 
         // 每張表各自讀取：哪一區的資料先回來就先顯示（有快取時先顯示上次的資料）
         const tables = ["Memos", "Calendar", "CalendarDays"];
+        if (Auth.hasPermission(21, 10, 22)) tables.push("PackingItems");
         if (finance) tables.push("Receivable", "Expenses", "StallRecords", "BrandCosts", "Orders", "Products", "Companies", "Deposits", "ArchiveSummary");
 
         // 品牌損益是否含品牌攤提表（記住選擇）
@@ -68,8 +69,10 @@ Pages.Home = (() => {
 
             if (data.Calendar === null)
                 dom.reminderList.innerHTML = `<div class="text-muted small">🔒 沒有行事曆權限</div>`;
-            else if ("Calendar" in data && "CalendarDays" in data)
+            else if ("Calendar" in data && "CalendarDays" in data) {
+                packing = data.PackingItems || [];
                 renderReminders(data.Calendar || [], data.CalendarDays || []);
+            }
 
             if (finance && data.Receivable && "Expenses" in data && "StallRecords" in data && "BrandCosts" in data) {
                 dom.financeRow.classList.remove("d-none");
@@ -133,6 +136,17 @@ Pages.Home = (() => {
     // =========================
     // 行事曆提醒
     // =========================
+    let packing = [];       // 出攤備品清單（PackingItems）
+
+    // 行事曆提醒：這個活動有備品清單 → 顯示打包進度
+    function packBadge(calId) {
+        const list = packing.filter(p => p.ListKey === "cal:" + calId);
+        const go = `href="page/packing.html"`;
+        if (!list.length) return Auth.hasPermission(21, 10, 22) ? `<div class="small"><a ${go} class="link-secondary">🧺 還沒整理備品清單</a></div>` : "";
+        const done = list.filter(p => p.IsPacked === true).length;
+        return `<div class="small"><a ${go} class="${done === list.length ? "link-success" : "link-warning"}">🧺 備品 ${done} / ${list.length} 已打包</a></div>`;
+    }
+
     function renderReminders(events, days) {
 
         const today = ymd(new Date());
@@ -154,7 +168,7 @@ Pages.Home = (() => {
             }
 
             d.filter(x => x.date >= today && x.date <= until)
-                .forEach(x => items.push({ ...x, name: e.EventName, address: e.EventAddress, private: !!String(e.UserDB_ID || "").trim() }));
+                .forEach(x => items.push({ ...x, name: e.EventName, address: e.EventAddress, private: !!String(e.UserDB_ID || "").trim(), calId: e.CalendarId }));
         });
 
         items.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
@@ -172,6 +186,7 @@ Pages.Home = (() => {
         ${x.address ? `　📍 ${esc(x.address)}` : ""}
     </div>
     ${x.note ? `<div class="small">📝 ${esc(x.note)}</div>` : ""}
+    ${packBadge(x.calId)}
 </div>`).join("") || `<div class="text-muted small">未來 ${REMIND_DAYS} 天沒有行程 🎉</div>`;
     }
 

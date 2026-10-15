@@ -99,6 +99,11 @@ const SCHEMA = {
             'CreatedBy CreatedAt UpdatedBy UpdatedAt',
         money: 'BoothFee TransportCost StaffCost OtherCost CashIncome ElectronicPay PaymentFee Revenue FoodCost TotalCost ProfitLoss RevenueLow RevenueTarget'
     },
+    // 出攤備品清單：每次出攤預計帶的產品與物件，想到就加，出發前一次核對（ListKey = cal:活動編號 或自訂清單）
+    PackingItems: {
+        key: 'ID', seq: 'ID', freeDelete: true,
+        cols: 'ID:n ListKey ListName EventDate CalendarId:n ItemType ProductID:n ItemName Qty:n Unit Note IsPacked:b SortOrder:n CreatedBy CreatedAt UpdatedBy UpdatedAt'
+    },
     // 保證金追蹤（市集 / 場地 / 廠商押金）：付出去的錢，活動後要記得要回來
     Deposits: {
         key: 'ID', seq: 'ID',
@@ -127,7 +132,7 @@ const SCHEMA = {
         key: 'ID', seq: 'ID',
         cols: 'ID:n SKU Barcode ProductName ShortName CategoryID:n Brand Specification Flavor Capacity Weight:n Color Material Unit ' +
             'SalePrice:n MemberPrice:n CostPrice:n ShelfLifeDays:n FormulaID MinStock:n CurrentStock:n Status IsB2B:b IsB2C:b IsActive:b ' +
-            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson CostVerified:b ExpDate'
+            'Description Remark CreatedBy CreatedAt UpdatedBy UpdatedAt FormulaUseMode FormulaUseQty:n PackagingJson CostVerified:b ExpDate Groups'
     },
     Material: {
         key: 'ID', seq: 'ID',
@@ -221,7 +226,7 @@ const SCHEMA = {
         key: 'FormulaID', seq: 'FormulaID',
         cols: 'FormulaID:n FormulaCode ProductID FormulaName VersionNo YieldQty:n YieldUnit IsActive:b Description Remark ' +
             'PackagingCost:n LaborCost:n OtherCost:n TargetPrice:n TargetCostRate:n MaterialCost:n TotalCost:n UnitCost:n ' +
-            'CreatedBy CreatedAt UpdatedBy UpdatedAt UnitWeight:n YieldRate:n BaseWeight:n IsVerified:b VerifiedBy VerifiedAt IsFavorite:b IsSemi:b',
+            'CreatedBy CreatedAt UpdatedBy UpdatedAt UnitWeight:n YieldRate:n BaseWeight:n IsVerified:b VerifiedBy VerifiedAt IsFavorite:b IsSemi:b Groups',
         money: 'PackagingCost LaborCost OtherCost TargetPrice MaterialCost TotalCost UnitCost'
     },
     FormulaDetail: {
@@ -285,6 +290,7 @@ const TABLE_INFO = {
     BrandBlocks: ['market', '品牌資訊頁的內容區塊（類型、內容 JSON、排序；由「品牌資訊」頁編輯）'],
     CrawlerSources: ['market', '市集報名連結'],
     Deposits: ['market', '保證金追蹤（付出 / 預計退還 / 已退還）'],
+    PackingItems: ['market', '出攤備品清單（每次出攤要帶的產品與物件、是否已打包）'],
     Products: ['product', '產品'],
     ID_Category: ['product', '產品分類'],
     Material: ['product', '原料'],
@@ -365,7 +371,7 @@ const COLUMN_LABELS = {
     UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
     ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
-    WasteDate: '報廢日期', Reason: '原因', PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
+    Groups: '群組（以 | 分隔，可同時屬於多個群組）', ListKey: '清單代號（cal:活動編號 / 自訂）', ListName: '清單名稱（活動名稱）', ItemType: '類型（產品 / 物件）', IsPacked: '已打包', WasteDate: '報廢日期', Reason: '原因', PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
     OpeningQty: '期初數量', PurchasedQty: '本月進貨量', PurchasedAmount: '本月進貨金額', CountedQty: '實盤數量',
     UsedQty: '本月使用量', AvgUnitPrice: '平均單價', UsedCost: '使用成本', StockValue: '庫存價值',
     NearestExpDate: '最近到期日', LatestMfgDate: '最近製造日', ShippedQty: '本月出貨', OtherOutQty: '其他出庫（市集 / 試吃 / 贈送）',
@@ -444,6 +450,7 @@ const TABLE_PERMS = {
     MarketOrders: { read: MARKET.concat(FINANCE), write: MARKET },
     CrawlerSources: { read: MARKET, write: MARKET },
     Deposits: { read: MARKET.concat(FINANCE), write: MARKET.concat(FINANCE) },
+    PackingItems: { read: MARKET.concat(CAL, PRODUCT), write: MARKET.concat(PRODUCT) },
     Roles: { read: 'all', write: [3] },
     Settings: { read: 'all', write: [3] },
     ID_Category: { read: PRODUCT.concat(SALES, FINANCE), write: PRODUCT },

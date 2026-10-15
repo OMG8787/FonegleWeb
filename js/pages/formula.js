@@ -30,6 +30,7 @@ Pages.Formula = (() => {
     let tryPortion = null;  // 目前試算的每份重量 g（不一定等於配方的單位重量）
     let formMode = "create";        // "create" 新增 / "view" 瀏覽（唯讀） / "edit" 編輯中
     let viewTouched = false;        // 使用者自己切換過篩選（常用 / 已確認 / 待確認 / 全部）
+    let groupBox = null;            // 群組（多選，可直接輸入新群組）
 
     // =========================
     // 初始化
@@ -37,6 +38,7 @@ Pages.Formula = (() => {
     async function init() {
 
         cacheDom();
+        groupBox = Groups.attach(dom.groupSelect);
         bindEvents();
         openCreate(false);
 
@@ -75,7 +77,7 @@ Pages.Formula = (() => {
     function cacheDom() {
         FIELDS.concat([
             "formulaForm", "formCard", "formTitle", "editHint", "viewHint", "btnEditToggle", "btnCancelEdit",
-            "IsActive", "qKeyword", "IsVerified", "verifiedInfo", "verifyStat", "btnFavorite",
+            "IsActive", "qKeyword", "qGroup", "groupSelect", "IsVerified", "verifiedInfo", "verifyStat", "btnFavorite",
             "formulaList", "emptyHint", "listCount", "detailList", "materialNames", "btnAddMaterial", "btnNormalize",
             "btnRefreshCost", "btnNew", "btnExportAll", "btnCreate", "btnUpdate", "btnCopy", "btnDelete", "btnClear",
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
@@ -87,6 +89,11 @@ Pages.Formula = (() => {
     function bindEvents() {
 
         dom.qKeyword.addEventListener("input", renderList);
+        dom.qGroup.addEventListener("change", () => {
+            // 選了群組：常用配方可能不多，改看全部
+            if (dom.qGroup.value && view() === "fav") { setView("all"); viewTouched = true; }
+            renderList();
+        });
         document.querySelectorAll("input[name=qView]").forEach(r => r.addEventListener("change", () => {
             viewTouched = true;
             renderList();
@@ -673,10 +680,15 @@ Pages.Formula = (() => {
         const esc = App.esc;
         const v = view();
 
+        Groups.fillFilter(dom.qGroup, formulas);
+        groupBox.setOptions(Groups.collect(formulas, products));
+        const grp = dom.qGroup.value;
+
         listCache = formulas
             .filter(VIEW_FILTER[v] || VIEW_FILTER.all)
+            .filter(f => !grp || Groups.parse(f.Groups).includes(grp))
             .filter(f => !kw ||
-                App.like(f.FormulaName, kw) || App.like(f.FormulaCode, kw) ||
+                App.like(f.FormulaName, kw) || App.like(f.FormulaCode, kw) || App.like(f.Groups, kw) ||
                 allDetails.some(d => d.FormulaID === f.FormulaID && App.like(d.MaterialName, kw)))
             // 常用排最前面
             .sort((a, b) => isFavorite(b) - isFavorite(a) || String(a.FormulaName).localeCompare(String(b.FormulaName), "zh-Hant"));
@@ -708,6 +720,7 @@ Pages.Formula = (() => {
         <span class="text-nowrap">${isFavorite(f) || isVerified(f)
                     ? `<button type="button" class="btn btn-link p-0 me-1 fav-btn" data-fav="${i}" title="${isFavorite(f) ? "移出常用" : "加入常用"}" aria-label="${isFavorite(f) ? "移出常用" : "加入常用"}">${isFavorite(f) ? "⭐" : "☆"}</button>` : ""}${f.IsSemi === true ? `<span class="badge bg-warning text-dark" title="再製品（半成品），可當作其他配方的食材">🍳 再製品</span> ` : ""}${!isVerified(f) && isActive(f) ? `<span class="badge bg-danger" title="還沒確認為正確配方（可到成本確認精靈核可）">⏳ 待確認</span>` : ""}${hasWarning(f) ? ` <span class="badge bg-warning text-dark" title="有原料單價待確認">⚠️</span>` : ""}${f.IsActive === false ? ` <span class="badge bg-secondary">停用</span>` : ""}</span>
     </div>
+    ${f.Groups ? `<div>${Groups.badges(f.Groups)}</div>` : ""}
     <div class="small text-muted">${esc(f.YieldUnit || "")}${f.UnitWeight ? `（${g(f.UnitWeight)}g）` : ""} × ${f.YieldQty ?? "-"}</div>
     <div class="small">單位成本 <b>${unit ? money(unit, 2) : "-"}</b>
         ${rate !== null ? `　成本率 <b class="${rate <= 0.35 ? "good" : "bad"}">${(rate * 100).toFixed(1)}%</b>` : ""}</div>
@@ -749,6 +762,7 @@ Pages.Formula = (() => {
         FIELDS.forEach(k => { if (dom[k]) dom[k].disabled = locked; });
         dom.IsActive.disabled = locked;
         dom.IsVerified.disabled = locked;
+        groupBox.disable(locked);
         dom.btnAddMaterial.disabled = locked;
         dom.btnNormalize.disabled = locked;
         dom.btnRefreshCost.disabled = locked;
@@ -765,6 +779,7 @@ Pages.Formula = (() => {
         tryMult = null;
         tryPortion = null;
         dom.formulaForm.reset();
+        groupBox.set([]);
         dom.IsActive.checked = true;
         dom.IsVerified.checked = false;
         dom.verifiedInfo.textContent = "";
@@ -818,6 +833,7 @@ Pages.Formula = (() => {
 
         FIELDS.forEach(k => dom[k].value = f[k] ?? "");
         dom.ProductID.value = f.ProductID ? String(f.ProductID) : "";
+        groupBox.set(f.Groups);
         dom.IsActive.checked = f.IsActive !== false;
         dom.IsVerified.checked = isVerified(f);
         dom.verifiedInfo.textContent = !isVerified(f) ? ""
@@ -870,6 +886,7 @@ Pages.Formula = (() => {
                 TotalCost: round(c.totalCost, 2),
                 UnitCost: round(c.unitCost, 2),
                 Description: dom.Description.value.trim(),
+                Groups: Groups.join(groupBox.get()),
                 IsActive: dom.IsActive.checked,
                 IsVerified: dom.IsVerified.checked
             },

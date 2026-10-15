@@ -16,10 +16,12 @@ Pages.Product = (() => {
     const keyOf = p => { const n = String(p.ProductName || "").trim().toLowerCase(); return n || "#" + p.ID; };
     const siblingsOf = p => (p ? allProducts.filter(x => keyOf(x) === keyOf(p)).sort((a, b) => a.ID - b.ID) : []);
     const specLabel = (p, i) => [p.Specification, p.Capacity ? p.Capacity + (p.Unit || "") : ""].filter(Boolean).join(" ") || p.SKU || `規格 ${i + 1}`;
-    const SHARED_FIELDS = ["ProductName", "ShortName", "Brand", "CategoryID", "Description"];     // 改了會同步到其他規格
+    const SHARED_FIELDS = ["ProductName", "ShortName", "Brand", "CategoryID", "Description", "Groups"];
+    let groupBox = null;                                  // 群組（多選，可直接輸入新群組）     // 改了會同步到其他規格
 
     function init() {
         cacheDom();
+        groupBox = Groups.attach(dom.groupSelect);
         bindEvents();
         openCreate();           // 一進來就是「新增產品」，不用再按按鈕
         loadInit();
@@ -32,6 +34,8 @@ Pages.Product = (() => {
         dom.productList = document.getElementById("productList");
         dom.emptyHint = document.getElementById("emptyHint");
         dom.specBar = document.getElementById("specBar");
+        dom.groupSelect = document.getElementById("groupSelect");
+        dom.qGroup = document.getElementById("qGroup");
         dom.searchTitle = document.getElementById("searchTitle");
         dom.searchCount = document.getElementById("searchCount");
         dom.btnSearch = document.getElementById("btnSearch");
@@ -166,6 +170,7 @@ Pages.Product = (() => {
         );
 
         dom.btnRecalcAll.addEventListener("click", recalcAll);
+        dom.qGroup.addEventListener("change", () => applySearch(allProducts));
         document.getElementById("btnReview").addEventListener("click", () => CostReview.open({ onDone: async () => { await loadInit(); if (currentDetail) { const f = allProducts.find(p => p.ID === currentDetail.ID); if (f) { currentDetail = f; fillForm(f); } } } }));
         dom.btnApplyCost.addEventListener("click", () => recalc(true));
         dom.btnAddPack.addEventListener("click", () => {
@@ -222,6 +227,7 @@ Pages.Product = (() => {
         currentDetail = null;
         packRows = [];
         syncFormulaSelect();
+        groupBox.set([]);
         renderPack();
         updateUseLabel();
         calculateProfit();
@@ -252,8 +258,13 @@ Pages.Product = (() => {
             name: dom.qProductName.value.trim(),
             brand: dom.qBrand.value.trim(),
             category: dom.qCategory.value.trim(),
-            status: dom.qStatus.value.trim()
+            status: dom.qStatus.value.trim(),
+            group: dom.qGroup.value
         };
+
+        Groups.fillFilter(dom.qGroup, allProducts);
+        groupBox.setOptions(Groups.collect(allProducts, formulas));
+        q.group = dom.qGroup.value;
 
         const list = all
             .filter(x =>
@@ -262,7 +273,8 @@ Pages.Product = (() => {
                 (App.like(x.ProductName, q.name) || App.like(x.ShortName, q.name)) &&
                 App.like(x.Brand, q.brand) &&
                 (!q.category || String(x.CategoryID) === q.category) &&
-                App.like(x.Status, q.status))
+                App.like(x.Status, q.status) &&
+                (!q.group || Groups.parse(x.Groups).includes(q.group)))
             .sort((a, b) => a.ID - b.ID);
 
         // 同名的規格歸成一張卡片
@@ -310,6 +322,7 @@ Pages.Product = (() => {
                     const low = group.some(p => Number(p.CurrentStock) <= Number(p.MinStock));
                     div.innerHTML = `
 <div class="product-name">${App.esc(x.ProductName || "未命名產品")} <span class="badge bg-info text-dark">${group.length} 種規格</span></div>
+${x.Groups ? `<div class="mb-1">${Groups.badges(x.Groups)}</div>` : ""}
 <div class="product-info">🏷品牌：${App.esc(x.Brand || "-")}　📦 庫存合計：${group.reduce((t, p) => t + (Number(p.CurrentStock) || 0), 0)}</div>
 ${group.map((p, i) => {
                         const sale = Number(p.SalePrice) || 0, hasCost = p.CostPrice !== null && p.CostPrice !== undefined && p.CostPrice !== "", cost = Number(p.CostPrice) || 0;
@@ -335,6 +348,7 @@ ${group.map((p, i) => {
 <div class="product-name">
 ${App.esc(x.ProductName || "未命名產品")}
 </div>
+${x.Groups ? `<div class="mb-1">${Groups.badges(x.Groups)}</div>` : ""}
 <div class="product-info">
 SKU：
 ${App.esc(x.SKU || "-")}
@@ -391,7 +405,8 @@ ${App.esc(x.Status || "未知")}
         ensureFormulaOption(d && d.FormulaID);
         Object.keys(dom)
             .forEach(key => {
-                if (!dom[key])
+                // 左側查詢條件（q 開頭）不跟著產品資料改變
+                if (!dom[key] || /^q[A-Z]/.test(key))
                     return;
                 if (
                     dom[key].tagName ===
@@ -424,6 +439,7 @@ ${App.esc(x.Status || "未知")}
         packRows = Cost.parsePackaging(d && d.PackagingJson).map(x => ({ MaterialID: x.MaterialID ?? "", Name: x.Name || "", Qty: x.Qty ?? "", UnitCost: x.UnitCost ?? "", Kind: x.Kind === "decor" ? "decor" : "" }));
         if (!dom.FormulaUseMode.value) dom.FormulaUseMode.value = "portion";
         syncFormulaSelect();
+        groupBox.set(d && d.Groups);
         renderPack();
         updateUseLabel();
         recalc(false);
@@ -820,7 +836,8 @@ ${c.missing.length ? `<div class="text-danger mt-1">⚠️ 這些沒有單價，
             IsB2C: dom.IsB2C.checked,
             IsActive: dom.IsActive.checked,
             Description: dom.Description.value,
-            Remark: dom.Remark.value
+            Remark: dom.Remark.value,
+            Groups: Groups.join(groupBox.get())
         };
     }
 
@@ -868,6 +885,7 @@ ${currentDetail.ProductName}
             currentDetail = null;
             packRows = [];
             syncFormulaSelect();
+            groupBox.set([]);
             renderPack();
             updateUseLabel();
             recalc(false);
