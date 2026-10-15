@@ -14,12 +14,43 @@ const App = {
         }
     },
 
+    // 頁面標題：沒有圖示的補上左側選單的圖示；（未開放）改成標籤；標題下方的按鈕移到右邊
+    enhanceHeader() {
+        const body = document.querySelector("#erp-main .container-fluid > .card:first-child > .card-body");
+        const h2 = body && body.querySelector("h2");
+        if (!h2 || body.dataset.header) return;
+        body.dataset.header = "1";
+
+        try {
+            const file = location.pathname.split("/").pop();
+            const item = (typeof Config !== "undefined" ? Config.menuData : []).flatMap(g => g.items).find(i => String(i.page).split("/").pop() === file);
+            const icon = item ? String(item.name).split(" ")[0] : "";
+            if (icon && /\p{Extended_Pictographic}/u.test(icon) && !/^\s*\p{Extended_Pictographic}/u.test(h2.textContent)) h2.prepend(icon + " ");
+        } catch { }
+
+        h2.innerHTML = h2.innerHTML.replace(/[（(](未開放|未完成)[）)]/, ' <span class="badge text-bg-secondary align-middle fs-6 fw-normal">$1</span>');
+
+        if (body.classList.contains("d-flex")) return;
+        const kids = [...body.children];
+        const isBtn = el => el.matches("button, a.btn, .btn-group, .d-flex") && el.querySelector("button, a.btn") || el.matches("button, a.btn");
+        const btns = kids.filter(el => el !== h2 && isBtn(el));
+        if (!btns.length) return;
+        const left = document.createElement("div");
+        const right = document.createElement("div");
+        right.className = "d-flex flex-wrap gap-2 align-items-center";
+        kids.forEach(el => (btns.includes(el) ? right : left).appendChild(el));
+        body.append(left, right);
+        body.classList.add("d-flex", "flex-wrap", "justify-content-between", "align-items-center", "gap-2");
+    },
+
     // =========================
     // 版面統一（全站）
     //   1. 搜尋區塊（.search-area 或 data-search-box）加上「收合 / 展開」，每次進頁面預設展開
     //   2. 左列表、右表單：左側列表延伸到跟右側表單一樣高（CSS 見 layout.css 的 .side-col）
     // =========================
     enhance() {
+
+        App.enhanceHeader();
 
         document.querySelectorAll(".search-area, [data-search-box]").forEach(el => {
             if (el.dataset.collapsible) return;
