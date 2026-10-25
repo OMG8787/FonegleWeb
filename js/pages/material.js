@@ -436,6 +436,8 @@ Pages.Material = (() => {
 
         currentDetail = item;
         fillForm(item);
+        const rp = document.getElementById("btnReplaceTo");
+        if (rp) { rp.href = "formula.html?replace=" + encodeURIComponent("m:" + item.ID); rp.classList.remove("d-none"); }
         showForm();
         setModeUI("edit");
         scrollToForm();
@@ -631,6 +633,7 @@ Pages.Material = (() => {
 
     function openCreate(scroll = true) {
         currentDetail = null;
+        document.getElementById("btnReplaceTo")?.classList.add("d-none");
         dom.form.reset();
         dom.ID.value = "";
         dom.IsActive.value = "true";

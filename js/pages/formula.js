@@ -72,6 +72,10 @@ Pages.Formula = (() => {
         const q = new URLSearchParams(location.search).get("f");
         const target = q && formulas.find(f => String(f.FormulaID) === String(q));
         if (target) { loadDetail(target); setMode("edit"); }
+
+        // 從原料管理點「改用…」進來：?replace=m:原料編號 → 直接打開食材改用
+        const rp = new URLSearchParams(location.search).get("replace");
+        if (rp) openReplace(rp);
     }
 
     function cacheDom() {
@@ -84,7 +88,7 @@ Pages.Formula = (() => {
             "sumBase", "sumPct", "sumScaled", "sumCost",
             "rUnitCost", "rUnitHint", "rMaterialCost", "rProfit", "rMargin", "rSuggest",
             "btnYieldCalc", "yieldCalcBox", "ycIn", "ycOut", "ycApply", "ycResult",
-            "recipeTitle", "subRecipes", "btnIngredients", "btnNutrition"
+            "recipeTitle", "subRecipes", "btnIngredients", "btnNutrition", "btnReplaceIng"
         ]).forEach(id => dom[id] = document.getElementById(id));
     }
 
@@ -427,7 +431,174 @@ ${missing.length ? `<div class="alert alert-warning py-2 small mb-2">⚠️ ${mi
         }
     }
 
+    // =========================
+    // 食材改用 / 合併：舊名稱或重複的食材（原料、再製品配方、沒連結的手打名稱），所有配方一起改用另一個原料或再製品配方
+    //   例如「自製穩定劑」其實就是「二代穩定劑」配方 → 用到自製穩定劑的配方都改連到二代穩定劑，原本的停用（不刪除）
+    // =========================
+    let rpEl = null, rpModal = null, rpSrc = null, rpDst = null;
+
+    const ingKey = d => (d.SubFormulaId && subFormula(d.SubFormulaId) ? "s:" + d.SubFormulaId : d.MaterialID ? "m:" + d.MaterialID : "n:" + String(d.MaterialName || "").trim());
+    const keyLabel = k => {
+        const id = k.slice(2);
+        if (k.startsWith("s:")) return `🍳 ${subFormula(id)?.FormulaName || "配方 " + id}（再製品配方）`;
+        if (k.startsWith("m:")) { const m = allMaterialById(id); return `🔗 ${m ? m.MaterialName : "原料 " + id}（原料${m && m.IsActive === false ? "，已停用" : ""}）`; }
+        return `✏️ ${id}（手打名稱，沒連結）`;
+    };
+    let allMats = [];
+    const allMaterialById = id => allMats.find(m => String(m.ID) === String(id)) || materialById(id);
+
+    // 這個再製品配方用到（或層層用到）parentId → 不能拿來給 parentId 當食材（會自己包含自己）
+    function usesFormula(formulaId, parentId, depth = 0) {
+        if (String(formulaId) === String(parentId)) return true;
+        if (depth > 8) return false;
+        return detailsOf(Number(formulaId)).some(d => d.SubFormulaId && usesFormula(d.SubFormulaId, parentId, depth + 1));
+    }
+
+    function ensureReplaceModal() {
+        if (rpEl) return;
+        rpEl = document.createElement("div");
+        rpEl.className = "modal fade";
+        rpEl.tabIndex = -1;
+        rpEl.innerHTML = `<div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title">🔀 食材改用 / 合併</h5><div class="small text-muted">舊名稱、重複的食材，所有配方一次改用另一個原料或再製品配方</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <label class="form-label small mb-1" for="rpSrc">① 原本的食材（舊名稱 / 要被取代的）</label>
+        <select id="rpSrc"></select>
+        <label class="form-label small mb-1 mt-3" for="rpDst">② 改用（以後都用這個）</label>
+        <select id="rpDst"></select>
+        <div id="rpPreview" class="mt-3"></div>
+        <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="rpDisable" checked><label class="form-check-label small" for="rpDisable" id="rpDisableLabel">改完後停用原本的（不刪除，之後還可以在原料管理 / 配方頁找回）</label></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">關閉</button><button type="button" class="btn btn-primary" id="rpOk" disabled>🔀 改用</button></div>
+</div></div>`;
+        document.body.appendChild(rpEl);
+        rpModal = new bootstrap.Modal(rpEl);
+        rpEl.querySelector("#rpOk").addEventListener("click", applyReplace);
+    }
+
+    function rpSelect(sel, options, onChange) {
+        sel.tomselect?.destroy();
+        return new TomSelect(sel, {
+            options, maxItems: 1, valueField: "value", labelField: "text", searchField: ["text"], placeholder: "打字搜尋…",
+            refreshThrottle: 0, dropdownParent: "body", score: s => App.fuzzy(s, ["text"]),
+            sortField: [{ field: "$score" }, { field: "n", direction: "desc" }, { field: "text" }],
+            render: { option: (d, esc) => `<div>${esc(d.text)}${d.n ? ` <span class="small text-muted">用在 ${d.n} 個配方</span>` : ""}</div>` },
+            onChange
+        });
+    }
+
+    async function openReplace(preset) {
+        ensureReplaceModal();
+        try {
+            const d = await API.getMany(["Formula", "FormulaDetail", "Material", "Products"]);
+            formulas = d.Formula || formulas;
+            allDetails = d.FormulaDetail || allDetails;
+            allMats = d.Material || [];
+            if (d.Products) products = d.Products;
+        } catch (err) { return App.error(err, "讀取資料失敗"); }
+
+        // ① 配方裡實際用到的食材（依使用次數）＋ 原料庫的原料、再製品配方
+        const uses = new Map();
+        allDetails.forEach(d => { const k = ingKey(d); if (k === "n:") return; if (!uses.has(k)) uses.set(k, new Set()); uses.get(k).add(String(d.FormulaID)); });
+        const srcKeys = new Set([...uses.keys(), ...allMats.map(m => "m:" + m.ID), ...formulas.filter(f => f.IsSemi === true).map(f => "s:" + f.FormulaID)]);
+        const opt = k => ({ value: k, text: keyLabel(k), n: (uses.get(k) || new Set()).size });
+        rpSrc = rpSelect(rpEl.querySelector("#rpSrc"), [...srcKeys].map(opt), renderReplacePreview);
+        // ② 改用：啟用中的原料、再製品配方（其他配方也可以，會自動標成再製品）
+        const dst = allMats.filter(m => m.IsActive !== false).map(m => "m:" + m.ID)
+            .concat(formulas.filter(f => f.IsActive !== false).map(f => "s:" + f.FormulaID));
+        rpDst = rpSelect(rpEl.querySelector("#rpDst"), dst.map(k => Object.assign(opt(k), k.startsWith("s:") && subFormula(k.slice(2))?.IsSemi !== true ? { text: keyLabel(k).replace("（再製品配方）", "（配方，會標成再製品）") } : {})), renderReplacePreview);
+        if (preset && srcKeys.has(preset)) rpSrc.setValue(preset, true);
+        renderReplacePreview();
+        rpModal.show();
+    }
+
+    // 會被改到的配方食材（排除改用的配方自己、以及會造成自己包含自己的）
+    function replaceTargets() {
+        const src = rpSrc?.getValue(), dst = rpDst?.getValue();
+        if (!src || !dst || src === dst) return { rows: [], skipped: [] };
+        // 原料 / 配方：手打同樣名稱、沒有連結的食材也一起改
+        const srcName = src.startsWith("m:") ? allMaterialById(src.slice(2))?.MaterialName : src.startsWith("s:") ? subFormula(src.slice(2))?.FormulaName : "";
+        const sameName = srcName ? "n:" + String(srcName).trim() : "";
+        const rows = allDetails.filter(d => ingKey(d) === src || (sameName && ingKey(d) === sameName));
+        const skipped = dst.startsWith("s:") ? rows.filter(d => usesFormula(dst.slice(2), d.FormulaID)) : [];
+        return { rows: rows.filter(d => !skipped.includes(d)), skipped };
+    }
+
+    function renderReplacePreview() {
+        const esc = App.esc;
+        const src = rpSrc?.getValue(), dst = rpDst?.getValue();
+        const box = rpEl.querySelector("#rpPreview"), ok = rpEl.querySelector("#rpOk");
+        const dis = rpEl.querySelector("#rpDisable"), disLabel = rpEl.querySelector("#rpDisableLabel");
+        dis.closest(".form-check").classList.toggle("d-none", !src || src.startsWith("n:"));
+        disLabel.textContent = src && src.startsWith("s:") ? "改完後停用原本的配方（不刪除）；連到它的產品一起改連到新的配方" : "改完後停用原本的原料（不刪除，之後還可以在原料管理找回）";
+        if (!src || !dst) { box.innerHTML = ""; ok.disabled = true; return; }
+        if (src === dst) { box.innerHTML = `<div class="text-danger small">原本的和改用的是同一個</div>`; ok.disabled = true; return; }
+        const { rows, skipped } = replaceTargets();
+        const prods = src.startsWith("s:") ? products.filter(p => String(p.FormulaID) === src.slice(2)) : [];
+        const fname = id => formulas.find(f => String(f.FormulaID) === String(id))?.FormulaName || "配方 " + id;
+        box.innerHTML = `<div class="border rounded p-2 small">
+            <div class="fw-bold mb-1">會改到 ${new Set(rows.map(d => d.FormulaID)).size} 個配方、${rows.length} 個食材${prods.length ? `、${prods.length} 個產品` : ""}</div>
+            ${rows.length ? `<ul class="mb-1">${rows.map(d => `<li>${esc(fname(d.FormulaID))}：${esc(d.MaterialName || "")} ${g(num(d.Quantity), 2)} g</li>`).join("")}</ul>` : `<div class="text-muted">沒有配方用到它${prods.length ? "" : "（只會停用原本的）"}</div>`}
+            ${prods.length ? `<div>產品改連：${prods.map(p => esc(p.ProductName)).join("、")}</div>` : ""}
+            ${skipped.length ? `<div class="text-warning">略過 ${skipped.length} 個：${skipped.map(d => esc(fname(d.FormulaID))).join("、")}（改用的配方本身用到它，會變成自己包含自己）</div>` : ""}
+        </div>`;
+        ok.disabled = !rows.length && !prods.length && !(dis.checked && !src.startsWith("n:"));
+    }
+
+    async function applyReplace() {
+        const src = rpSrc.getValue(), dst = rpDst.getValue();
+        const { rows } = replaceTargets();
+        const disable = rpEl.querySelector("#rpDisable").checked && !src.startsWith("n:");
+        const prods = src.startsWith("s:") ? products.filter(p => String(p.FormulaID) === src.slice(2)) : [];
+        const dstName = keyLabel(dst).replace(/^\S+\s/, "").replace(/（.*$/, "");
+        if (!confirm(`把「${keyLabel(src).replace(/^\S+\s/, "").replace(/（.*$/, "")}」改用「${dstName}」？\n\n${rows.length} 個配方食材${prods.length ? `、${prods.length} 個產品` : ""}會一起改${disable ? "，原本的會停用" : ""}。`)) return;
+
+        const ops = [];
+        const dstId = dst.slice(2);
+        let data;
+        if (dst.startsWith("m:")) {
+            const m = allMaterialById(dstId);
+            data = { MaterialID: String(m.ID), MaterialName: m.MaterialName, SubFormulaId: "", PackageId: "", UnitCost: m.CostPrice ?? "", Remark: "" };
+        } else {
+            const f = subFormula(dstId);
+            if (f.IsSemi !== true) { ops.push({ action: "update", table: "Formula", id: f.FormulaID, data: { IsSemi: true } }); f.IsSemi = true; }
+            data = { MaterialID: "", MaterialName: f.FormulaName, SubFormulaId: String(f.FormulaID), PackageId: "", UnitCost: round(Cost.subGramCost(f.FormulaID, formulas, allDetails, materials).price, 6), Remark: "" };
+        }
+        rows.forEach(d => { ops.push({ action: "update", table: "FormulaDetail", id: d.FormulaDetailID, data }); Object.assign(d, data); });
+        prods.forEach(p => { ops.push({ action: "update", table: "Products", id: p.ID, data: { FormulaID: dstId } }); p.FormulaID = dstId; });
+
+        // 用到的配方重算成本
+        const parents = new Set(rows.map(d => String(d.FormulaID)));
+        parents.forEach(pid => {
+            const pf = formulas.find(f => String(f.FormulaID) === pid);
+            if (!pf) return;
+            const costs = Cost.formulaCosts(pf, allDetails.filter(d => String(d.FormulaID) === pid), materials, { formulas, allDetails, materials, seen: new Set([pid]) });
+            Object.assign(pf, costs);
+            ops.push({ action: "update", table: "Formula", id: pf.FormulaID, data: costs });
+        });
+
+        if (disable) {
+            const note = `已改用「${dstName}」`;
+            if (src.startsWith("m:")) ops.push({ action: "update", table: "Material", id: src.slice(2), data: { IsActive: false, Remark: note } });
+            if (src.startsWith("s:")) ops.push({ action: "update", table: "Formula", id: src.slice(2), data: { IsActive: false, Remark: note } });
+        }
+
+        try {
+            for (let i = 0; i < ops.length; i += 40) await API.batch(ops.slice(i, i + 40), { loadingText: "改用中…" });
+            for (const pid of parents) await propagateSemi(pid);
+            await reload();
+            renderList();
+            if (current) loadDetail(formulas.find(f => f.FormulaID === current.FormulaID) || current);
+            rpModal.hide();
+            alert(`✅ 已改用「${dstName}」：${parents.size} 個配方、${rows.length} 個食材${prods.length ? `、${prods.length} 個產品` : ""}${disable ? "，原本的已停用" : ""}。` +
+                (prods.length || parents.size ? "\n\n產品成本請到產品頁按「重算成本」更新。" : ""));
+        } catch (err) {
+            App.error(err, "改用失敗");
+        }
+    }
+
     function bindRecipeExtras() {
+        dom.btnReplaceIng?.addEventListener("click", () => openReplace());
         dom.FormulaName.addEventListener("input", updateRecipeTitle);
         dom.btnIngredients.addEventListener("click", openIngredients);
         dom.btnNutrition.addEventListener("click", openNutrition);
