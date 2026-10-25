@@ -5,6 +5,7 @@ Pages.Material = (() => {
     let listCache = [];
     let currentDetail = null;
     let mode = "view";
+    let allMaterials = [];
 
     async function init() {
         cacheDom();
@@ -20,6 +21,10 @@ Pages.Material = (() => {
 
             renderCompanyOptions(data.Companies);
             applySearch(data.Material);
+
+            // 從配方的成分表 / 營養素點進來：?quick=ing / ?quick=nu → 直接打開快速建立
+            const quick = new URLSearchParams(location.search).get("quick");
+            if (quick === "ing" || quick === "nu") openQuick(quick);
 
         } catch (err) {
 
@@ -110,7 +115,182 @@ Pages.Material = (() => {
             document.getElementById("Remark");
     }
 
+    // =========================
+    // 快速建立成分 / 營養素：列出還沒建立的原料（配方用得多的排前面），一次填好一起存
+    // =========================
+    const hasIng = m => Nutrition.ingredients(m).length > 0;
+    const missing = kind => m => (kind === "ing" ? !hasIng(m) : !Nutrition.parse(m));
+    let qEl = null, qModal = null, qKind = "ing", usage = null;
+    const qEdits = new Map();     // 原料 ID → 這次輸入的值（成分文字 / 營養物件）
+
+    function updateQuickBadges() {
+        const active = allMaterials.filter(m => m.IsActive !== false);
+        [["ingBadge", "ing"], ["nuBadge", "nu"]].forEach(([id, kind]) => {
+            const b = document.getElementById(id);
+            if (!b) return;
+            const n = active.filter(missing(kind)).length;
+            b.textContent = n;
+            b.classList.toggle("d-none", !n);
+        });
+    }
+
+    async function loadUsage() {
+        if (usage) return usage;
+        usage = new Map();
+        try {
+            const d = await API.getMany(["Formula", "FormulaDetail"]);
+            const live = new Set((d.Formula || []).filter(f => f.IsActive !== false).map(f => String(f.FormulaID)));
+            (d.FormulaDetail || []).forEach(x => {
+                if (!x.MaterialID || !live.has(String(x.FormulaID))) return;
+                const k = String(x.MaterialID);
+                if (!usage.has(k)) usage.set(k, new Set());
+                usage.get(k).add(String(x.FormulaID));
+            });
+        } catch (err) {
+            console.warn("讀取配方失敗（不顯示使用次數）", err);
+        }
+        return usage;
+    }
+
+    function ensureQuickModal() {
+        if (qEl) return;
+        qEl = document.createElement("div");
+        qEl.className = "modal fade";
+        qEl.tabIndex = -1;
+        qEl.innerHTML = `<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title" id="qTitle"></h5><div class="small text-muted" id="qSub"></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+            <input id="qSearch" class="form-control form-control-sm" style="max-width:220px" placeholder="🔍 搜尋原料" autocomplete="off">
+            <div class="btn-group btn-group-sm" role="group">
+                <input type="radio" class="btn-check" name="qScope" id="qScopeMissing" value="missing" checked><label class="btn btn-outline-secondary" for="qScopeMissing">還沒建立的</label>
+                <input type="radio" class="btn-check" name="qScope" id="qScopeAll" value="all"><label class="btn btn-outline-secondary" for="qScopeAll">全部原料</label>
+            </div>
+            <label class="small mb-0"><input type="checkbox" class="form-check-input me-1" id="qUsedOnly">只看配方有用到的</label>
+            <span class="small text-muted" id="qStat"></span>
+        </div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light" id="qHead"></thead><tbody id="qBody"></tbody></table></div>
+    </div>
+    <div class="modal-footer justify-content-between">
+        <span class="small text-muted" id="qHint"></span>
+        <div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">關閉</button><button type="button" class="btn btn-primary" id="qSave" disabled>💾 儲存</button></div>
+    </div>
+</div></div>`;
+        document.body.appendChild(qEl);
+        qModal = new bootstrap.Modal(qEl);
+
+        qEl.addEventListener("input", e => {
+            if (e.target.id === "qSearch") return renderQuick();
+            const tr = e.target.closest("tr[data-qid]");
+            if (tr) collectRow(tr);
+        });
+        qEl.addEventListener("change", e => { if (e.target.name === "qScope" || e.target.id === "qUsedOnly") renderQuick(); });
+        qEl.addEventListener("click", e => {
+            const tr = e.target.closest("tr[data-qid]");
+            if (e.target.closest("[data-q-self]") && tr) {
+                tr.querySelector("[data-q-ing]").value = allMaterials.find(m => String(m.ID) === tr.dataset.qid)?.MaterialName || "";
+                collectRow(tr);
+            } else if (e.target.closest("[data-q-zero]") && tr) {
+                tr.querySelectorAll("[data-nu]").forEach(i => { i.value = "0"; });
+                collectRow(tr);
+            } else if (e.target.closest("#qSave")) saveQuick();
+        });
+    }
+
+    function collectRow(tr) {
+        const id = tr.dataset.qid;
+        const v = qKind === "ing" ? tr.querySelector("[data-q-ing]").value : Nutrition.readInputs(tr);
+        qEdits.set(id, v);
+        tr.classList.add("table-warning");
+        updateQuickSave();
+    }
+
+    function updateQuickSave() {
+        const btn = qEl.querySelector("#qSave");
+        btn.disabled = !qEdits.size;
+        btn.textContent = qEdits.size ? `💾 儲存（${qEdits.size} 項）` : "💾 儲存";
+    }
+
+    async function openQuick(kind) {
+        qKind = kind;
+        ensureQuickModal();
+        qEdits.clear();
+        updateQuickSave();
+        await loadUsage();
+        const used = m => (usage.get(String(m.ID)) || new Set()).size;
+        qEl.querySelector("#qUsedOnly").checked = allMaterials.some(m => m.IsActive !== false && missing(kind)(m) && used(m));
+        qEl.querySelector("#qSearch").value = "";
+        qEl.querySelector("#qScopeMissing").checked = true;
+        qEl.querySelector("#qTitle").textContent = kind === "ing" ? "📋 快速建立成分" : "🥗 快速建立營養素";
+        qEl.querySelector("#qSub").textContent = kind === "ing"
+            ? "照原料包裝上的「成分」填寫，用「、」分開；牛奶、砂糖這種單一原料按「單一原料」就好。配方的成分表會把複合原料顯示成 材料(成分)。"
+            : "照原料包裝上營養標示的「每 100 公克」填寫；只有「每份」的話先換算成每 100 公克。水這類沒有營養的按「全部 0」。";
+        qEl.querySelector("#qHint").textContent = "填過的列會變黃色，按「儲存」一次存起來。配方用得越多的原料排越前面。";
+        renderQuick();
+        qModal.show();
+    }
+
+    function renderQuick() {
+        const esc = App.esc;
+        const q = qEl.querySelector("#qSearch").value.trim();
+        const scopeAll = qEl.querySelector("#qScopeAll").checked;
+        const usedOnly = qEl.querySelector("#qUsedOnly").checked;
+        const used = m => (usage.get(String(m.ID)) || new Set()).size;
+        const active = allMaterials.filter(m => m.IsActive !== false);
+        const left = active.filter(missing(qKind)).length;
+        const list = active
+            .filter(m => (scopeAll || missing(qKind)(m) || qEdits.has(String(m.ID))) && (!usedOnly || used(m)) && App.like(m.MaterialName, q))
+            .sort((a, b) => used(b) - used(a) || String(a.MaterialName).localeCompare(String(b.MaterialName), "zh-Hant"));
+
+        qEl.querySelector("#qStat").textContent = `還沒建立 ${left} 項 / 共 ${active.length} 項原料・目前列出 ${list.length} 項`;
+        const F = Nutrition.FIELDS;
+        qEl.querySelector("#qHead").innerHTML = qKind === "ing"
+            ? `<tr><th>原料</th><th style="min-width:360px">成分</th><th></th></tr>`
+            : `<tr><th>原料</th>${F.map(f => `<th class="text-end small">${f.label}<div class="fw-normal text-muted">${f.unit}</div></th>`).join("")}<th></th></tr>`;
+
+        const info = m => `<div class="fw-semibold">${esc(m.MaterialName)}</div><div class="small text-muted">${[m.Category, m.Specification, used(m) ? `用在 ${used(m)} 個配方` : "配方沒用到"].filter(Boolean).map(esc).join("・")}</div>`;
+        qEl.querySelector("#qBody").innerHTML = list.map(m => {
+            const id = String(m.ID), edit = qEdits.get(id), mark = qEdits.has(id) ? "table-warning" : "";
+            if (qKind === "ing") {
+                const val = edit !== undefined ? edit : Nutrition.ingredients(m).join("、");
+                return `<tr data-qid="${id}" class="${mark}"><td>${info(m)}</td>
+                    <td><input class="form-control form-control-sm" data-q-ing value="${esc(val)}" placeholder="例如：砂糖、可可粉、植物油"></td>
+                    <td class="text-nowrap"><button type="button" class="btn btn-sm btn-outline-secondary" data-q-self title="成分就是這個原料本身">單一原料</button></td></tr>`;
+            }
+            const nu = edit !== undefined ? edit : (Nutrition.parse(m) || {});
+            return `<tr data-qid="${id}" class="${mark}"><td>${info(m)}</td>
+                ${F.map(f => `<td><input type="number" min="0" step="any" class="form-control form-control-sm text-end" style="min-width:68px" data-nu="${f.k}" value="${nu[f.k] ?? ""}"></td>`).join("")}
+                <td class="text-nowrap"><button type="button" class="btn btn-sm btn-outline-secondary" data-q-zero title="沒有營養（例如水）：全部填 0">全部 0</button></td></tr>`;
+        }).join("") || `<tr><td colspan="10" class="text-center text-muted py-4">${left ? "沒有符合的原料" : "🎉 全部原料都建立好了"}</td></tr>`;
+    }
+
+    async function saveQuick() {
+        if (!qEdits.size) return;
+        const ops = [...qEdits.entries()].map(([id, v]) => ({
+            action: "update", table: "Material", id,
+            data: qKind === "ing" ? { Ingredients: Nutrition.ingredients({ Ingredients: v }).join("、") } : { NutritionJson: Nutrition.stringify(v) }
+        }));
+        const btn = qEl.querySelector("#qSave");
+        btn.disabled = true;
+        try {
+            for (let i = 0; i < ops.length; i += 40) await API.batch(ops.slice(i, i + 40), { loadingText: "儲存中…" });
+            ops.forEach(op => { const m = allMaterials.find(x => String(x.ID) === String(op.id)); if (m) Object.assign(m, op.data); });
+            const n = ops.length;
+            qEdits.clear();
+            updateQuickSave();
+            renderQuick();
+            updateQuickBadges();
+            renderMaterialList(listCache);
+            alert(`✅ 已儲存 ${n} 項原料的${qKind === "ing" ? "成分" : "營養成分"}`);
+        } catch (err) {
+            btn.disabled = false;
+            App.error(err, "儲存失敗");
+        }
+    }
+
     function bindEvents() {
+        document.getElementById("btnQuickIng")?.addEventListener("click", () => openQuick("ing"));
+        document.getElementById("btnQuickNu")?.addEventListener("click", () => openQuick("nu"));
         dom.btnNew?.addEventListener(
             "click",
             openCreate
@@ -191,6 +371,9 @@ Pages.Material = (() => {
 
     function applySearch(all) {
 
+        allMaterials = all || [];
+        updateQuickBadges();
+
         const q = {
             name: dom.qMaterialName.value.trim(),
             category: dom.qCategory.value.trim(),
@@ -240,6 +423,7 @@ Pages.Material = (() => {
                 <span>庫存：${m.CurrentStock ?? 0} ${App.esc(m.Unit || "")}</span>
                 <span>成本：${m.CostPrice ?? 0}</span>
             </div>
+            ${m.IsActive !== false && (!hasIng(m) || !Nutrition.parse(m)) ? `<div class="small mt-1">${!hasIng(m) ? `<span class="badge bg-light text-dark border me-1">📋 未建成分</span>` : ""}${!Nutrition.parse(m) ? `<span class="badge bg-light text-dark border">🥗 未建營養</span>` : ""}</div>` : ""}
         `;
             dom.materialList.appendChild(div);
         });
@@ -300,7 +484,8 @@ Pages.Material = (() => {
         renderPackages(d);
         const nu = Nutrition.parse(d);
         Nutrition.fillInputs(nutritionBox(), nu);
-        document.getElementById("nutritionDetails").open = !!nu;
+        document.getElementById("Ingredients").value = v(d.Ingredients);
+        document.getElementById("nutritionDetails").open = !!nu || hasIng(d);
     }
 
     // 營養成分輸入框（第一次用到才建立）
@@ -344,7 +529,8 @@ Pages.Material = (() => {
             IsActive: dom.IsActive.value === "true",
             Description: dom.Description.value,
             Remark: dom.Remark.value,
-            NutritionJson: Nutrition.stringify(Nutrition.readInputs(nutritionBox()))
+            NutritionJson: Nutrition.stringify(Nutrition.readInputs(nutritionBox())),
+            Ingredients: Nutrition.ingredients({ Ingredients: document.getElementById("Ingredients").value }).join("、")
         }, pf ? { CostPrice: pf.CostPrice } : {});
     }
 

@@ -181,8 +181,9 @@ Pages.Formula = (() => {
         return [...out.values()].sort((a, b) => b.w - a.w);
     }
 
-    // 成分標示：材料(成分)
-    const labelText = nodes => nodes.map(n => n.children ? `${n.name}(${labelText(n.children)})` : n.name).join("、");
+    // 成分標示：材料(成分)；買來的複合原料（原料管理有填成分）也顯示成 材料(成分)
+    const leafLabel = n => { const c = Nutrition.compound(materialById(n.materialId)); return c ? `${n.name}(${c.join("、")})` : n.name; };
+    const labelText = nodes => nodes.map(n => n.children ? `${n.name}(${labelText(n.children)})` : leafLabel(n)).join("、");
 
     // 用到的再製品配方，依這次的用量換算（再製品裡又有再製品就再往下一層）
     function subRecipeBlocks(c) {
@@ -278,16 +279,18 @@ Pages.Formula = (() => {
         const total = leaves.reduce((t, l) => t + l.w, 0);
         const hasSub = tree.some(n => n.children);
         const name = dom.FormulaName.value.trim() || "這個配方";
+        const noIng = leaves.filter(l => !Nutrition.ingredients(materialById(l.materialId)).length);
 
         showPanel(`📋 ${name}　成分表`, `
-<p class="small text-muted mb-3">依投入重量由多到少排列（食品成分標示的順序）。🍳 再製品依它在這個配方裡的用量，把它自己的食材比例一起算進來。</p>
+<p class="small text-muted mb-3">依投入重量由多到少排列（食品成分標示的順序）。🍳 再製品依它在這個配方裡的用量，把它自己的食材比例一起算進來；買來的複合原料（在原料管理填了成分）顯示成 材料(成分)。</p>
+${noIng.length ? `<div class="alert alert-warning py-2 small">⚠️ ${noIng.length} 個原料還沒建立成分（先當作單一原料）：${noIng.map(l => esc(l.name)).join("、")}。<a href="material.html?quick=ing" target="_blank">到原料管理快速建立 →</a></div>` : ""}
 <div class="mb-3">
     <div class="d-flex justify-content-between align-items-center mb-1"><b>成分標示（材料(成分)）</b><button type="button" class="btn btn-sm btn-outline-primary" data-copy="ingComposite">📋 複製</button></div>
     <div id="ingComposite" class="border rounded p-2 bg-body-tertiary">成分：${esc(labelText(tree))}</div>
 </div>
 ${hasSub ? `<div class="mb-3">
     <div class="d-flex justify-content-between align-items-center mb-1"><b>全部展開（只列原物料）</b><button type="button" class="btn btn-sm btn-outline-primary" data-copy="ingFlat">📋 複製</button></div>
-    <div id="ingFlat" class="border rounded p-2 bg-body-tertiary">成分：${esc(leaves.map(l => l.name).join("、"))}</div>
+    <div id="ingFlat" class="border rounded p-2 bg-body-tertiary">成分：${esc(leaves.map(leafLabel).join("、"))}</div>
 </div>` : ""}
 <div class="table-responsive"><table class="table table-sm align-middle mb-0">
     <thead class="table-light"><tr><th>#</th><th>原物料</th><th class="text-end">比例</th><th class="text-end">基準重量 g</th><th>來自</th></tr></thead>
@@ -384,7 +387,7 @@ ${yieldRate < 1 ? `<div class="form-check mb-2"><input class="form-check-input" 
             .filter((x, i) => x || i === 2).join("\n");
 
         fxEl.querySelector("#nuResult").innerHTML = `
-${missing.length ? `<div class="alert alert-warning py-2 small mb-2">⚠️ ${missing.length} 個原物料還沒有營養資料（佔 ${pctOf(total - covered, total)}），先以 0 計，結果會偏低：${missing.map(l => esc(l.name)).join("、")}。請在下方表格補上。</div>` : `<div class="small text-success mb-2">✅ 所有原物料都有營養資料</div>`}
+${missing.length ? `<div class="alert alert-warning py-2 small mb-2">⚠️ ${missing.length} 個原物料還沒有營養資料（佔 ${pctOf(total - covered, total)}），先以 0 計，結果會偏低：${missing.map(l => esc(l.name)).join("、")}。請在下方表格補上，或<a href="material.html?quick=nu" target="_blank">到原料管理快速建立 →</a></div>` : `<div class="small text-success mb-2">✅ 所有原物料都有營養資料</div>`}
 <div class="d-flex flex-wrap gap-3 align-items-start">
     <table class="table table-sm table-bordered mb-0" style="max-width:520px" id="nuLabel">
         <thead><tr><th colspan="${serving ? 4 : 2}" class="text-center">營養標示${serving ? `<div class="fw-normal small">每一份量 ${g(serving, 1)} 公克</div>` : ""}</th></tr>

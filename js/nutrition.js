@@ -38,6 +38,26 @@ window.Nutrition = {
         return Object.keys(out).length ? JSON.stringify(out) : "";
     },
 
+    // 原料的成分（包裝上的成分標示）：「砂糖、可可粉、植物油」→ 陣列；沒建立 = []
+    //   括號裡的不拆開：「巧克力(可可膏、砂糖)、奶粉」→ ["巧克力(可可膏、砂糖)", "奶粉"]
+    ingredients(m) {
+        const out = [];
+        let cur = "", depth = 0;
+        for (const ch of String((m && m.Ingredients) || "")) {
+            if ("(（[【".includes(ch)) depth++;
+            if (")）]】".includes(ch)) depth = Math.max(0, depth - 1);
+            if (!depth && "、,，;；\n".includes(ch)) { out.push(cur); cur = ""; } else cur += ch;
+        }
+        out.push(cur);
+        return out.map(s => s.trim()).filter(Boolean);
+    },
+
+    // 複合原料（成分不只自己）：回傳成分陣列；單一原料或沒建立 → null
+    compound(m) {
+        const list = this.ingredients(m);
+        return list.length && !(list.length === 1 && list[0] === String(m.MaterialName || "").trim()) ? list : null;
+    },
+
     fmt(v, f) {
         const n = Number(v) || 0;
         const d = f.digits;
