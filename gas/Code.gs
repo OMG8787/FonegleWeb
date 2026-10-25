@@ -352,7 +352,7 @@ const COLUMN_LABELS = {
     // 商品與生產
     SKU: 'SKU', Barcode: '條碼', ProductName: '產品名稱', ShortName: '簡稱', CategoryID: '分類編號', Brand: '品牌',
     Specification: '規格', Flavor: '口味', Capacity: '容量', Weight: '重量', Color: '顏色', Material: '材質',
-    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', UnitCost: '成本單價（結清當下的產品成本，結清後不再變動）', InvoiceGroup: '同一張發票的進貨（整張發票一起建立）', TaxRate: '稅率 %（0 = 未稅 / 免稅）', ArchiveId: '封存批次', Period: '期間（yyyy-MM）', Label: '項目', Count: '筆數', ArchivedAt: '封存時間', PackagesJson: '規格 / 產地 / 供應商 / 價格選項（JSON，同一原料可有多種）', Ingredients: '成分（原料包裝上的成分標示，以「、」分開；單一原料填原料名稱）', NutritionJson: '營養成分（每 100 g，JSON：熱量 kcal、蛋白質 protein、脂肪 fat、飽和脂肪 satFat、反式脂肪 transFat、碳水化合物 carb、糖 sugar、鈉 sodium mg）', PackageId: '指定使用的規格選項（空白 = 跟著原料的計價用規格）', SubFormulaId: '這個食材是自己做的再製品：連到的配方編號（成本自動來自那個配方）', IsSemi: '再製品（半成品，可當作其他配方的食材）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
+    SalePrice: '售價', MemberPrice: '會員價', CostPrice: '成本價（每單位）', ShelfLifeDays: '保存天數', FormulaID: '配方編號', InvoiceGroup: '同一張發票的進貨（整張發票一起建立）', TaxRate: '稅率 %（0 = 未稅 / 免稅）', ArchiveId: '封存批次', Period: '期間（yyyy-MM）', Label: '項目', Count: '筆數', ArchivedAt: '封存時間', PackagesJson: '規格 / 產地 / 供應商 / 價格選項（JSON，同一原料可有多種）', Ingredients: '成分（原料包裝上的成分標示，以「、」分開；單一原料填原料名稱）', NutritionJson: '營養成分（每 100 g，JSON：熱量 kcal、蛋白質 protein、脂肪 fat、飽和脂肪 satFat、反式脂肪 transFat、碳水化合物 carb、糖 sugar、鈉 sodium mg）', PackageId: '指定使用的規格選項（空白 = 跟著原料的計價用規格）', SubFormulaId: '這個食材是自己做的再製品：連到的配方編號（成本自動來自那個配方）', IsSemi: '再製品（半成品，可當作其他配方的食材）', PackageWeight: '包裝重量', PackagePrice: '包裝價格', CostVerified: '成本已確認', FormulaUseMode: '配方用量單位（portion 份數 / weight 重量g）', FormulaUseQty: '配方用量', PackagingJson: '包材清單（JSON，由產品頁維護）',
     MinStock: '安全庫存', CurrentStock: '目前庫存', IsB2B: 'B2B', IsB2C: 'B2C', CategoryName: '分類名稱',
     CategoryCode: '分類代碼', MaterialName: '原料名稱', Category: '分類', SupplierID: '供應商（廠商編號）',
     OriginCountry: '原產地', ExpireDays: '保存天數', InventoryID: '編號', ProductID: '產品編號', MaterialID: '原料編號',
@@ -368,7 +368,7 @@ const COLUMN_LABELS = {
     ReturnedDate: '實際退還日', ReturnedAmount: '退還金額',
     IsVerified: '已確認為正確配方', VerifiedBy: '確認人', VerifiedAt: '確認時間', IsFavorite: '常用配方',
     LaborCost: '人工成本', TargetPrice: '預計售價', TargetCostRate: '目標成本率 %', MaterialCost: '原料成本',
-    UnitCost: '單位成本', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
+    UnitCost: '單位成本（配方：每單位成本；訂單：確認成交 / 已付款時鎖定的產品成本，之後不再變動）', FormulaDetailID: '編號', MaterialCode: '原料代碼', Quantity: '用量（配方為基準重量 g）', LineCost: '小計成本',
     ProductionID: '編號', ProductionNo: '生產單號', Factory: '工廠', ProductionLine: '產線', PlannedQty: '計畫數量',
     ProducedQty: '生產數量', NGQty: '不良數量', OperatorName: '作業員', SupervisorName: '主管',
     Groups: '群組（以 | 分隔，可同時屬於多個群組）', ListKey: '清單代號（cal:活動編號 / 自訂）', ListName: '清單名稱（活動名稱）', ItemType: '類型（產品 / 物件）', IsPacked: '已打包', WasteDate: '報廢日期', Reason: '原因', PurchaseDate: '進貨日期', Supplier: '供應商', ExpenseId: '支出表編號', CountMonth: '盤點月份（yyyy-MM）',
@@ -1663,6 +1663,9 @@ function doInsert_(name, data, ctx) {
 
     if (t.key && (obj[t.key] === undefined || obj[t.key] === null || obj[t.key] === ''))
         fail_('缺少主鍵：' + t.key);
+
+    if (t.key !== t.seq && t.types[t.key] === 'n' && isNaN(Number(obj[t.key])))
+        fail_('主鍵必須是數字：' + t.key);
 
     if (t.key !== t.seq && findRow_(t, obj[t.key]))
         fail_('資料已存在：' + obj[t.key]);
