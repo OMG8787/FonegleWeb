@@ -83,7 +83,8 @@ Pages.Formula = (() => {
             "btnPrint", "btnExcel", "printCost", "tryMult", "tryTotal", "tryPortion", "tryUnitLabel", "factorText", "btnSetDefault",
             "sumBase", "sumPct", "sumScaled", "sumCost",
             "rUnitCost", "rUnitHint", "rMaterialCost", "rProfit", "rMargin", "rSuggest",
-            "btnYieldCalc", "yieldCalcBox", "ycIn", "ycOut", "ycApply", "ycResult"
+            "btnYieldCalc", "yieldCalcBox", "ycIn", "ycOut", "ycApply", "ycResult",
+            "recipeTitle", "subRecipes", "btnIngredients", "btnNutrition"
         ]).forEach(id => dom[id] = document.getElementById(id));
     }
 
@@ -120,9 +121,327 @@ Pages.Formula = (() => {
         });
     }
 
+    // =========================
+    // 原料表標題帶配方名稱（截圖表格時看得出是哪個配方）
+    // =========================
+    const recipeLabel = name => (/配方$/.test(name) ? name : name + "配方") + "原料";
+
+    function updateRecipeTitle() {
+        const name = dom.FormulaName.value.trim();
+        dom.recipeTitle.textContent = name ? recipeLabel(name) : "原料";
+    }
+
+    // =========================
+    // 再製品展開（下方的再製品配方、成分表、營養素共用）
+    // =========================
+    const subFormula = id => (id ? formulas.find(f => String(f.FormulaID) === String(id)) : null);
+    const itemName = x => materialById(x.MaterialID)?.MaterialName || x.MaterialName || "";
+    const toItem = x => ({ name: itemName(x), materialId: x.MaterialID ?? "", subId: x.SubFormulaId || "", qty: num(x.Quantity) });
+    const savedItems = id => detailsOf(Number(id)).map(toItem).filter(x => x.qty > 0 && (x.name || x.subId));
+    const rootSeen = () => new Set(current ? [String(current.FormulaID)] : []);
+
+    // 這個食材是可以再展開的再製品（有配方、有食材、不會繞回自己）
+    function expandable(x, seen) {
+        const sub = subFormula(x.subId);
+        return sub && !seen.has(String(sub.FormulaID)) && seen.size < 8 && savedItems(sub.FormulaID).length ? sub : null;
+    }
+
+    // 樹狀成分：weight = 這一層用了幾 g，再製品的食材依它在配方裡的比例分下去；同一個原料合併
+    function ingredientTree(items, weight, seen) {
+        const base = items.reduce((t, x) => t + x.qty, 0);
+        const map = new Map();
+        items.forEach(x => {
+            const sub = expandable(x, seen);
+            const key = sub ? "s:" + sub.FormulaID : x.materialId ? "m:" + x.materialId : "n:" + x.name.trim();
+            const node = map.get(key) || { key, name: sub ? sub.FormulaName : x.name, materialId: sub ? "" : x.materialId, w: 0, sub };
+            node.w += base ? weight * x.qty / base : 0;
+            map.set(key, node);
+        });
+        const nodes = [...map.values()];
+        nodes.forEach(n => { if (n.sub) n.children = ingredientTree(savedItems(n.sub.FormulaID), n.w, new Set([...seen, String(n.sub.FormulaID)])); });
+        return nodes.sort((a, b) => b.w - a.w);
+    }
+
+    function rootTree() {
+        const items = rows.map(toItem).filter(x => x.qty > 0 && (x.name || x.subId));
+        return ingredientTree(items, items.reduce((t, x) => t + x.qty, 0), rootSeen());
+    }
+
+    // 全部展開成原物料（再製品不列，改列它的食材），重量由多到少
+    function flatLeaves(tree) {
+        const out = new Map();
+        const walk = (nodes, path) => nodes.forEach(n => {
+            if (n.children) return walk(n.children, path.concat(n.name));
+            const o = out.get(n.key) || { key: n.key, name: n.name, materialId: n.materialId, w: 0, via: new Set() };
+            o.w += n.w;
+            o.via.add(path.join(" › "));
+            out.set(n.key, o);
+        });
+        walk(tree, []);
+        return [...out.values()].sort((a, b) => b.w - a.w);
+    }
+
+    // 成分標示：材料(成分)
+    const labelText = nodes => nodes.map(n => n.children ? `${n.name}(${labelText(n.children)})` : n.name).join("、");
+
+    // 用到的再製品配方，依這次的用量換算（再製品裡又有再製品就再往下一層）
+    function subRecipeBlocks(c) {
+        const blocks = [];
+        const walk = (items, amounts, parent, seen, depth) => items.forEach((x, i) => {
+            const sub = expandable(x, seen);
+            if (!sub || !(amounts[i] > 0)) return;
+            const det = savedItems(sub.FormulaID);
+            const base = det.reduce((t, d) => t + d.qty, 0);
+            const yieldRate = (num(sub.YieldRate) || 100) / 100;
+            const raw = amounts[i] / yieldRate;
+            const scaled = det.map(d => (base ? raw * d.qty / base : 0));
+            const inner = new Set([...seen, String(sub.FormulaID)]);
+            blocks.push({
+                sub, parent, need: amounts[i], yieldRate, raw, depth, base,
+                lines: det.map((d, j) => ({ name: d.name, base: d.qty, pct: base ? d.qty / base : 0, scaled: scaled[j], isSub: !!expandable(d, inner) }))
+            });
+            walk(det, scaled, sub.FormulaName, inner, depth + 1);
+        });
+        const items = rows.map(toItem);
+        walk(items, c.lines.map((l, i) => l.scaled > 0 ? l.scaled : items[i].qty), dom.FormulaName.value.trim() || "這個配方", rootSeen(), 0);
+        return blocks;
+    }
+
+    function renderSubRecipes(c) {
+        const esc = App.esc;
+        dom.subRecipes.innerHTML = subRecipeBlocks(c).map(b => `
+<div class="mt-3" style="margin-left:${b.depth * 16}px" data-sub-recipe="${b.sub.FormulaID}">
+    <div class="section-title d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span>🍳 ${esc(recipeLabel(b.sub.FormulaName))} <span class="small text-muted fw-normal">（用在「${esc(b.parent)}」：需要 ${g(b.need, 1)} g${b.yieldRate !== 1 ? `，成品率 ${round(b.yieldRate * 100, 1)}% → 備料 ${g(b.raw, 1)} g` : ""}）</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-sub-open="${b.sub.FormulaID}">開啟配方</button>
+    </div>
+    <div class="table-responsive"><table class="table table-sm recipe-table mb-1">
+        <thead class="table-light"><tr><th>#</th><th>原料</th><th class="text-end">製作重量 g</th><th class="text-end">百分比</th><th class="text-end">基準重量 g</th></tr></thead>
+        <tbody>${b.lines.map((l, i) => `<tr><td class="text-muted small">${i + 1}</td><td>${l.isSub ? "🍳 " : ""}${esc(l.name)}</td><td class="text-end fw-bold">${g(l.scaled, 1)}</td><td class="text-end small">${(l.pct * 100).toFixed(2)}%</td><td class="text-end">${g(l.base, 2)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td></td><td>合計</td><td class="text-end">${g(b.raw, 1)}</td><td class="text-end">100%</td><td class="text-end">${g(b.base, 2)}</td></tr></tfoot>
+    </table></div>
+</div>`).join("");
+    }
+
+    // =========================
+    // 成分表 / 營養素（對話框）
+    // =========================
+    let fxEl = null, fxModal = null, nuLeaves = [], nuTemp = {};
+
+    function showPanel(title, html) {
+        if (!fxEl) {
+            fxEl = document.createElement("div");
+            fxEl.className = "modal fade";
+            fxEl.tabIndex = -1;
+            fxEl.innerHTML = `<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body"></div></div></div>`;
+            document.body.appendChild(fxEl);
+            fxModal = new bootstrap.Modal(fxEl);
+            fxEl.addEventListener("click", onPanelClick);
+            fxEl.addEventListener("input", onNutritionInput);
+        }
+        fxEl.querySelector(".modal-title").textContent = title;
+        fxEl.querySelector(".modal-body").innerHTML = html;
+        fxModal.show();
+    }
+
+    async function copyText(text, btn) {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const t = document.createElement("textarea");
+            t.value = text;
+            document.body.appendChild(t);
+            t.select();
+            document.execCommand("copy");
+            t.remove();
+        }
+        const old = btn.textContent;
+        btn.textContent = "✅ 已複製";
+        setTimeout(() => { btn.textContent = old; }, 1500);
+    }
+
+    function onPanelClick(e) {
+        const c = e.target.closest("[data-copy]");
+        if (c) { const el = fxEl.querySelector("#" + c.dataset.copy); if (el) copyText(el.innerText.trim(), c); return; }
+        if (e.target.closest("#nuSave")) saveNutrition();
+    }
+
+    const pctOf = (w, total) => (total ? (w / total * 100).toFixed(1) + "%" : "-");
+
+    function openIngredients() {
+        const tree = rootTree();
+        if (!tree.length) return alert("還沒有原料，先在表格加入原料與基準重量");
+        const esc = App.esc;
+        const leaves = flatLeaves(tree);
+        const total = leaves.reduce((t, l) => t + l.w, 0);
+        const hasSub = tree.some(n => n.children);
+        const name = dom.FormulaName.value.trim() || "這個配方";
+
+        showPanel(`📋 ${name}　成分表`, `
+<p class="small text-muted mb-3">依投入重量由多到少排列（食品成分標示的順序）。🍳 再製品依它在這個配方裡的用量，把它自己的食材比例一起算進來。</p>
+<div class="mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-1"><b>成分標示（材料(成分)）</b><button type="button" class="btn btn-sm btn-outline-primary" data-copy="ingComposite">📋 複製</button></div>
+    <div id="ingComposite" class="border rounded p-2 bg-body-tertiary">成分：${esc(labelText(tree))}</div>
+</div>
+${hasSub ? `<div class="mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-1"><b>全部展開（只列原物料）</b><button type="button" class="btn btn-sm btn-outline-primary" data-copy="ingFlat">📋 複製</button></div>
+    <div id="ingFlat" class="border rounded p-2 bg-body-tertiary">成分：${esc(leaves.map(l => l.name).join("、"))}</div>
+</div>` : ""}
+<div class="table-responsive"><table class="table table-sm align-middle mb-0">
+    <thead class="table-light"><tr><th>#</th><th>原物料</th><th class="text-end">比例</th><th class="text-end">基準重量 g</th><th>來自</th></tr></thead>
+    <tbody>${leaves.map((l, i) => `<tr><td class="text-muted">${i + 1}</td><td>${esc(l.name)}</td><td class="text-end fw-bold">${pctOf(l.w, total)}</td><td class="text-end">${g(l.w, 2)}</td>
+        <td class="small text-muted">${[...l.via].map(v => (v ? "🍳 " + esc(v) : "直接使用")).join("、")}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td></td><td>合計</td><td class="text-end">100%</td><td class="text-end">${g(total, 2)}</td><td></td></tr></tfoot>
+</table></div>`);
+    }
+
+    // 這個原料每 100 g 的營養成分：這次輸入的優先，其次是原料庫
+    const nutritionOf = l => nuTemp[l.key] || Nutrition.parse(materialById(l.materialId));
+
+    function openNutrition() {
+        const tree = rootTree();
+        if (!tree.length) return alert("還沒有原料，先在表格加入原料與基準重量");
+        const esc = App.esc;
+        nuTemp = {};
+        nuLeaves = flatLeaves(tree);
+        const total = nuLeaves.reduce((t, l) => t + l.w, 0);
+        const yieldRate = spec().yieldRate;
+        const name = dom.FormulaName.value.trim() || "這個配方";
+        const F = Nutrition.FIELDS;
+
+        showPanel(`🥗 ${name}　營養素`, `
+<p class="small text-muted mb-2">把每個原物料（🍳 再製品會展開成它的食材）每 100 g 的營養成分，依用量加總，再換算回每 100 g。</p>
+${yieldRate < 1 ? `<div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="nuByYield"><label class="form-check-label small" for="nuByYield">依成品率 ${round(yieldRate * 100, 1)}% 換算（烹煮時水分蒸發、重量變輕時勾選；過濾掉茶渣、咖啡渣的不要勾）</label></div>` : ""}
+<div id="nuResult"></div>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 mb-1">
+    <b>原料營養資料（每 100 g，可以直接在這裡補）</b>
+    <button type="button" id="nuSave" class="btn btn-sm btn-primary" disabled>💾 存回原料庫</button>
+</div>
+<div class="table-responsive"><table class="table table-sm align-middle mb-0" id="nuTable">
+    <thead class="table-light"><tr><th>原物料</th><th class="text-end">比例</th>${F.map(f => `<th class="text-end small">${f.label}<div class="fw-normal text-muted">${f.unit}</div></th>`).join("")}</tr></thead>
+    <tbody>${nuLeaves.map(l => {
+        const nu = nutritionOf(l) || {};
+        const linked = !!materialById(l.materialId);
+        return `<tr data-nk="${esc(l.key)}">
+        <td>${esc(l.name)}${linked ? "" : `<div class="small text-warning">未連結原料庫：只用在這次計算</div>`}<div class="small" data-nu-state></div></td>
+        <td class="text-end small">${pctOf(l.w, total)}</td>
+        ${F.map(f => `<td><input type="number" min="0" step="any" class="form-control form-control-sm text-end" style="min-width:70px" data-nf="${f.k}" value="${nu[f.k] ?? ""}"></td>`).join("")}</tr>`;
+    }).join("")}</tbody>
+</table></div>
+<div class="small text-muted mt-1">原料的營養資料也可以在「原料管理」修改；照包裝上營養標示的「每 100 公克」填寫。</div>`);
+
+        fxEl.querySelector("#nuByYield")?.addEventListener("change", renderNutrition);
+        renderNutrition();
+    }
+
+    function onNutritionInput(e) {
+        const input = e.target.closest("[data-nf]");
+        if (!input) return;
+        const tr = input.closest("tr[data-nk]");
+        const l = nuLeaves.find(x => x.key === tr.dataset.nk);
+        if (!l) return;
+        const o = {};
+        tr.querySelectorAll("[data-nf]").forEach(i => { if (i.value !== "") o[i.dataset.nf] = Number(i.value); });
+        nuTemp[l.key] = Object.keys(o).length ? o : null;
+        l.dirty = true;
+        tr.querySelector("[data-nu-state]").textContent = materialById(l.materialId) ? "✏️ 已修改，記得存回原料庫" : "";
+        const n = nuLeaves.filter(x => x.dirty && materialById(x.materialId)).length;
+        const btn = fxEl.querySelector("#nuSave");
+        btn.disabled = !n;
+        btn.textContent = n ? `💾 存回原料庫（${n} 項）` : "💾 存回原料庫";
+        renderNutrition();
+    }
+
+    function renderNutrition() {
+        const esc = App.esc;
+        const F = Nutrition.FIELDS;
+        const total = nuLeaves.reduce((t, l) => t + l.w, 0);
+        const byYield = !!fxEl.querySelector("#nuByYield")?.checked;
+        const weight = total * (byYield ? spec().yieldRate : 1);
+
+        const sum = {};
+        F.forEach(f => { sum[f.k] = 0; });
+        let covered = 0;
+        const missing = [];
+        nuLeaves.forEach(l => {
+            const nu = nutritionOf(l);
+            if (!nu) { missing.push(l); return; }
+            covered += l.w;
+            F.forEach(f => { sum[f.k] += l.w / 100 * (Number(nu[f.k]) || 0); });
+        });
+
+        const per100 = {}, perServing = {};
+        const serving = portion();
+        F.forEach(f => { per100[f.k] = weight ? sum[f.k] / weight * 100 : 0; perServing[f.k] = per100[f.k] * serving / 100; });
+
+        const v = (o, f) => Nutrition.fmt(o[f.k], f) + " " + f.unit;
+        const dv = f => (f.dv ? (perServing[f.k] / f.dv * 100).toFixed(1) + "%" : "*");
+        const name = dom.FormulaName.value.trim() || "這個配方";
+        const text = [`營養標示（${name}）`, serving ? `每一份量 ${g(serving, 1)} 公克` : "", "", (serving ? "項目\t每份\t每100公克" : "項目\t每100公克")]
+            .concat(F.map(f => `${f.indent ? "　" : ""}${f.label}\t${serving ? v(perServing, f) + "\t" : ""}${v(per100, f)}`))
+            .filter((x, i) => x || i === 2).join("\n");
+
+        fxEl.querySelector("#nuResult").innerHTML = `
+${missing.length ? `<div class="alert alert-warning py-2 small mb-2">⚠️ ${missing.length} 個原物料還沒有營養資料（佔 ${pctOf(total - covered, total)}），先以 0 計，結果會偏低：${missing.map(l => esc(l.name)).join("、")}。請在下方表格補上。</div>` : `<div class="small text-success mb-2">✅ 所有原物料都有營養資料</div>`}
+<div class="d-flex flex-wrap gap-3 align-items-start">
+    <table class="table table-sm table-bordered mb-0" style="max-width:520px" id="nuLabel">
+        <thead><tr><th colspan="${serving ? 4 : 2}" class="text-center">營養標示${serving ? `<div class="fw-normal small">每一份量 ${g(serving, 1)} 公克</div>` : ""}</th></tr>
+        <tr><th></th>${serving ? `<th class="text-end">每份</th>` : ""}<th class="text-end">每 100 公克</th>${serving ? `<th class="text-end">每日參考值百分比</th>` : ""}</tr></thead>
+        <tbody>${F.map(f => `<tr><td>${f.indent ? "　" : ""}${f.label}</td>${serving ? `<td class="text-end">${v(perServing, f)}</td>` : ""}<td class="text-end fw-bold" data-per100="${f.k}">${v(per100, f)}</td>${serving ? `<td class="text-end">${dv(f)}</td>` : ""}</tr>`).join("")}</tbody>
+    </table>
+    <div class="small text-muted" style="max-width:320px">
+        <div>總重 ${g(weight, 1)} g${byYield ? `（原料 ${g(total, 1)} g × 成品率）` : ""}</div>
+        <div>每份 = 配方的每份重量（${g(serving, 1)} g）</div>
+        <div>每日參考值：熱量 2000 大卡、蛋白質 60 g、脂肪 60 g、飽和脂肪 18 g、碳水化合物 300 g、鈉 2000 mg；* 參考值未訂定</div>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-copy="nuText">📋 複製營養標示</button>
+        <pre id="nuText" class="d-none">${esc(text)}</pre>
+    </div>
+</div>`;
+        // 複製用的文字放在隱藏的 pre（innerText 拿不到隱藏元素的文字，改用 textContent）
+        fxEl.querySelector("[data-copy=nuText]").onclick = e => { e.stopPropagation(); copyText(text, e.currentTarget); };
+    }
+
+    async function saveNutrition() {
+        const todo = nuLeaves.filter(l => l.dirty && materialById(l.materialId));
+        if (!todo.length) return;
+        const btn = fxEl.querySelector("#nuSave");
+        btn.disabled = true;
+        try {
+            await API.batch(todo.map(l => ({ action: "update", table: "Material", id: l.materialId, data: { NutritionJson: Nutrition.stringify(nuTemp[l.key]) } })), { loadingText: "儲存營養資料中…" });
+            todo.forEach(l => {
+                const m = materialById(l.materialId);
+                if (m) m.NutritionJson = Nutrition.stringify(nuTemp[l.key]);
+                l.dirty = false;
+                const tr = [...fxEl.querySelectorAll("tr[data-nk]")].find(t => t.dataset.nk === l.key);
+                if (tr) tr.querySelector("[data-nu-state]").textContent = "✅ 已存回原料庫";
+            });
+            btn.textContent = "💾 存回原料庫";
+        } catch (err) {
+            btn.disabled = false;
+            App.error(err, "儲存失敗");
+        }
+    }
+
+    function bindRecipeExtras() {
+        dom.FormulaName.addEventListener("input", updateRecipeTitle);
+        dom.btnIngredients.addEventListener("click", openIngredients);
+        dom.btnNutrition.addEventListener("click", openNutrition);
+        dom.subRecipes.addEventListener("click", e => {
+            const b = e.target.closest("[data-sub-open]");
+            if (!b) return;
+            const sub = subFormula(b.dataset.subOpen);
+            if (!sub) return;
+            if (formMode === "edit" && !confirm("離開目前這個配方？沒有儲存的修改會消失。")) return;
+            loadDetail(sub);
+        });
+    }
+
     function bindEvents() {
 
         bindYieldCalc();
+        bindRecipeExtras();
 
         dom.qKeyword.addEventListener("input", renderList);
         dom.qGroup.addEventListener("change", () => {
@@ -344,6 +663,9 @@ Pages.Formula = (() => {
         }
 
         dom.rSuggest.textContent = rate > 0 && c.mult > 0 ? money(c.unitCost / (rate / 100), 0) : "-";
+
+        updateRecipeTitle();
+        renderSubRecipes(c);
     }
 
     // 等比例調整基準重量，讓基準總重 = 1000 g
@@ -1154,6 +1476,11 @@ ${withCost ? `<td></td><td class="n">${money(s.c.materialCost, 2)}</td>` : ""}</
 </table>
 ${withCost ? `<div class="meta" style="margin-top:10px"><span>單位成本 <b>${money(s.c.unitCost, 2)}</b> / ${esc(s.unit)}</span>
 ${s.price ? `<span>售價 <b>${money(s.price)}</b>　成本率 <b>${(s.c.unitCost / s.price * 100).toFixed(1)}%</b></span>` : ""}</div>` : ""}
+${subRecipeBlocks(s.c).map(b => `<h3 style="font-size:16px;margin:18px 0 6px;padding-left:${b.depth * 16}px">🍳 ${esc(recipeLabel(b.sub.FormulaName))}
+<span style="font-weight:normal;font-size:13px;color:#444">（用在「${esc(b.parent)}」：需要 ${g(b.need, 1)} g${b.yieldRate !== 1 ? `，成品率 ${round(b.yieldRate * 100, 1)}% → 備料 ${g(b.raw, 1)} g` : ""}）</span></h3>
+<table><thead><tr><th class="check">✔</th><th>#</th><th>原料</th><th class="n">製作重量 (g)</th><th class="n">百分比</th><th class="n">基準重量 (g)</th></tr></thead>
+<tbody>${b.lines.map((l, i) => `<tr><td></td><td>${i + 1}</td><td>${esc(l.name)}</td><td class="n big">${g(l.scaled, 1)}</td><td class="n">${(l.pct * 100).toFixed(2)}%</td><td class="n">${g(l.base, 2)}</td></tr>`).join("")}</tbody>
+<tfoot><tr><td></td><td></td><td>合計</td><td class="n">${g(b.raw, 1)}</td><td class="n">100%</td><td class="n">${g(b.base, 2)}</td></tr></tfoot></table>`).join("")}
 ${s.note ? `<div class="note"><b>備註：</b>${esc(s.note)}</div>` : ""}
 <div class="sign"><div>製作人 <span></span></div><div>日期 <span></span></div><div>覆核 <span></span></div></div>
 </body></html>`;

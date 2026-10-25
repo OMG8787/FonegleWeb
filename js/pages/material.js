@@ -8,6 +8,7 @@ Pages.Material = (() => {
 
     async function init() {
         cacheDom();
+        nutritionBox();
         bindEvents();
 
         openCreate(false);       // 一進來就是「新增原料」，不用再按按鈕
@@ -297,6 +298,16 @@ Pages.Material = (() => {
         dom.Description.value = v(d.Description);
         dom.Remark.value = v(d.Remark);
         renderPackages(d);
+        const nu = Nutrition.parse(d);
+        Nutrition.fillInputs(nutritionBox(), nu);
+        document.getElementById("nutritionDetails").open = !!nu;
+    }
+
+    // 營養成分輸入框（第一次用到才建立）
+    function nutritionBox() {
+        const box = document.getElementById("nutritionBox");
+        if (!box.dataset.ready) { box.innerHTML = Nutrition.inputsHtml("nu_"); box.dataset.ready = "1"; }
+        return box;
     }
 
     function showForm() {
@@ -332,7 +343,8 @@ Pages.Material = (() => {
             ExpireDays: App.numOrNull(dom.ExpireDays.value),
             IsActive: dom.IsActive.value === "true",
             Description: dom.Description.value,
-            Remark: dom.Remark.value
+            Remark: dom.Remark.value,
+            NutritionJson: Nutrition.stringify(Nutrition.readInputs(nutritionBox()))
         }, pf ? { CostPrice: pf.CostPrice } : {});
     }
 
