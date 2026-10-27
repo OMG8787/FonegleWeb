@@ -3,20 +3,22 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>內部管理系統｜生產履歷(未開放)</title>
+    <title>內部管理系統｜生產履歷</title>
     <link rel="icon" type="image/png" href="../img/logoicon.png">
     <link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
     <link rel="manifest" href="../manifest.webmanifest">
     <meta name="theme-color" content="#c48b6a">
-    <script src="../js/theme.js?v=202610271343"></script>
-    <link href="../css/dark.css?v=202610271343" rel="stylesheet">
+    <script src="../js/theme.js?v=202610271638"></script>
+    <link href="../css/dark.css?v=202610271638" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/css/tom-select.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
 
     <!-- 共用樣式 -->
-    <link href="../css/layout.css?v=202610271343" rel="stylesheet">
+    <link href="../css/layout.css?v=202610271638" rel="stylesheet">
 
     <style>
         /* ===========================================
@@ -296,9 +298,9 @@
                 <!-- 標題 -->
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-body">
-                        <h2 class="mb-1">生產履歷(未開放)</h2>
+                        <h2 class="mb-1">生產履歷</h2>
                         <p class="text-muted mb-0">
-                            記錄每一筆生產資料
+                            記錄每一批生產：選產品自動帶入配方、單位與保存天數，批號自動產生流水號
                         </p>
                     </div>
                 </div>
@@ -313,8 +315,6 @@
                         <div class="card section-card shadow-sm mb-3">
 
                             <div class="search-area">
-
-                                <input id="qProductionNo" class="form-control mb-2" placeholder="🏭 生產單號">
 
                                 <input id="qBatchNo" class="form-control mb-2" placeholder="📦 批號">
 
@@ -439,42 +439,42 @@
                                     </h5>
 
                                     <div class="row">
-
+                                        <div class="col-md-8 mb-3">
+                                            <label class="form-label" for="ProductSelect">
+                                                產品名稱 <span class="text-danger">*</span>
+                                            </label>
+                                            <select id="ProductSelect"></select>
+                                            <div class="form-text">只能選已建立的產品，打字即可搜尋（例如「芒冰」找得到「芒果冰淇淋」）</div>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">
+                                                產品編號（系統帶入）
+                                            </label>
+                                            <input id="ProductID" class="form-control" readonly tabindex="-1">
+                                        </div>
+                                        <div class="col-md-8 mb-3">
+                                            <label class="form-label">
+                                                配方（依產品帶入）
+                                            </label>
+                                            <input id="FormulaName" class="form-control" readonly tabindex="-1" placeholder="選產品後自動帶入">
+                                            <input id="FormulaID" type="hidden">
+                                        </div>
                                         <div class="col-md-4 mb-3">
                                             <label class="form-label">
                                                 生產編號（自動產生）
                                             </label>
-                                            <input id="ProductionID" class="form-control" readonly>
+                                            <input id="ProductionID" class="form-control" readonly tabindex="-1">
                                         </div>
-
-                                        <div class="col-md-4 mb-3">
-                                            <label class="form-label">
-                                                生產單號
+                                        <div class="col-md-8 mb-3">
+                                            <label class="form-label" for="BatchNo">
+                                                批號（自動流水號，可修改）
                                             </label>
-                                            <input id="ProductionNo" class="form-control">
+                                            <div class="input-group">
+                                                <input id="BatchNo" class="form-control" maxlength="40">
+                                                <button type="button" id="btnBatchNo" class="btn btn-outline-secondary" title="依製造日期重新產生流水號">🔄 重新產生</button>
+                                            </div>
+                                            <div id="batchHint" class="form-text">格式：P + 製造日期（年月日）+ 當天序號，例如 P26102701</div>
                                         </div>
-
-                                        <div class="col-md-4 mb-3">
-                                            <label class="form-label">
-                                                批號
-                                            </label>
-                                            <input id="BatchNo" class="form-control">
-                                        </div>
-
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">
-                                                產品編號
-                                            </label>
-                                            <input id="ProductID" class="form-control">
-                                        </div>
-
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">
-                                                配方編號
-                                            </label>
-                                            <input id="FormulaID" class="form-control">
-                                        </div>
-
                                     </div>
 
                                     <hr>
@@ -489,14 +489,14 @@
                                             <label class="form-label">
                                                 工廠
                                             </label>
-                                            <input id="Factory" class="form-control">
+                                            <select id="Factory"></select>
                                         </div>
 
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">
                                                 生產線
                                             </label>
-                                            <input id="ProductionLine" class="form-control">
+                                            <select id="ProductionLine"></select>
                                         </div>
 
                                         <div class="col-md-4 mb-3">
@@ -531,14 +531,14 @@
                                             <label class="form-label">
                                                 作業員
                                             </label>
-                                            <input id="OperatorName" class="form-control">
+                                            <select id="OperatorName"></select>
                                         </div>
 
                                         <div class="col-md-4 mb-3">
                                             <label class="form-label">
                                                 主管
                                             </label>
-                                            <input id="SupervisorName" class="form-control">
+                                            <select id="SupervisorName"></select>
                                         </div>
 
                                     </div>
@@ -565,18 +565,28 @@
                                             <input id="EndTime" type="datetime-local" class="form-control">
                                         </div>
 
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label" for="MfgDate">
                                                 製造日期
                                             </label>
                                             <input id="MfgDate" type="date" class="form-control">
                                         </div>
-
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">
-                                                有效日期
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label" for="ShelfDays">
+                                                保存天數
+                                            </label>
+                                            <div class="input-group">
+                                                <input id="ShelfDays" type="number" min="0" step="1" class="form-control" placeholder="例如 30">
+                                                <span class="input-group-text">天</span>
+                                            </div>
+                                            <div id="shelfHint" class="form-text"></div>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label" for="ExpDate">
+                                                有效日期（系統帶入，可修改）
                                             </label>
                                             <input id="ExpDate" type="date" class="form-control">
+                                            <div class="form-text">＝ 製造日期 + 保存天數；直接改日期會反算天數</div>
                                         </div>
 
                                     </div>
@@ -667,20 +677,20 @@
     <div id="footerArea"></div>
 
     <!-- 共用 layout -->
-    <script src="../js/settings.js?v=202610271343"></script>
-    <script src="../js/site.js?v=202610271343"></script>
-    <script src="../js/auth.js?v=202610271343"></script>
+    <script src="../js/settings.js?v=202610271638"></script>
+    <script src="../js/site.js?v=202610271638"></script>
+    <script src="../js/auth.js?v=202610271638"></script>
     <script>
         Auth.checkLogin();
     </script>
-    <script src="../js/config.js?v=202610271343"></script>
-    <script src="../js/api.js?v=202610271343"></script>
-    <script src="../js/layout.js?v=202610271343"></script>
-    <script src="../js/core.js?v=202610271343"></script>
-    <script src="../js/ai-chat.js?v=202610271343"></script>
-    <script src="../js/favorite.js?v=202610271343"></script>
+    <script src="../js/config.js?v=202610271638"></script>
+    <script src="../js/api.js?v=202610271638"></script>
+    <script src="../js/layout.js?v=202610271638"></script>
+    <script src="../js/core.js?v=202610271638"></script>
+    <script src="../js/ai-chat.js?v=202610271638"></script>
+    <script src="../js/favorite.js?v=202610271638"></script>
 
-    <script src="../js/pages/production.js?v=202610271343"></script>
+    <script src="../js/pages/production.js?v=202610271638"></script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {

@@ -434,7 +434,7 @@ Pages.Order = (() => {
                 options, items: g.pick ? [g.pick] : [], maxItems: 1, valueField: "value", labelField: "text", searchField: ["text", "spec", "sku"],
                 placeholder: "選擇產品（可打字搜尋）", refreshThrottle: 0, dropdownParent: "body", dropdownClass: "ts-dropdown product-dd",
                 score: search => App.fuzzy(search, ["text", "spec", "sku"]),
-                sortField: [{ field: "$score" }, { field: "text" }, { field: "spec" }],
+                sortField: [{ field: "$score", direction: "desc" }, { field: "text" }, { field: "spec" }],
                 render: { option: productOptionHtml, item: productItemHtml, no_results: () => `<div class="no-results">找不到產品：先到「產品管理」新增</div>` },
                 onChange: v => {
                     g.pick = v || "";
@@ -835,7 +835,7 @@ Pages.Order = (() => {
             valueField: "value",
             labelField: "text",
             searchField: ["text", "sub"],
-            sortField: [{ field: "$score" }, { field: "text" }],
+            sortField: [{ field: "$score", direction: "desc" }, { field: "text" }],
             create: input => ({ value: "new:" + input.trim(), text: input.trim() + "（新客戶）", sub: "" }),
             createOnBlur: true,
             maxOptions: 200,
@@ -847,7 +847,7 @@ Pages.Order = (() => {
             valueField: "value",
             labelField: "text",
             searchField: ["text", "sub"],
-            sortField: [{ field: "$score" }, { field: "text" }],
+            sortField: [{ field: "$score", direction: "desc" }, { field: "text" }],
             placeholder: "全部客戶",
             render
         });
@@ -1269,7 +1269,7 @@ class="btn btn-danger btn-sm">
                 labelField: "text",
                 // 打字模糊比對（例如「芒冰」找得到「芒果冰淇淋」），符合度高的排前面
                 score: search => App.fuzzy(search, ["text", "spec", "sku"]),
-                sortField: [{ field: "$score" }, { field: "text" }, { field: "spec" }],
+                sortField: [{ field: "$score", direction: "desc" }, { field: "text" }, { field: "spec" }],
                 render: {
                     // 滑鼠移上去顯示規格、SKU、售價（同名多規格才分得出來）
                     option: productOptionHtml,

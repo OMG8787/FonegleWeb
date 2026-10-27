@@ -481,7 +481,7 @@ ${missing.length ? `<div class="alert alert-warning py-2 small mb-2">⚠️ ${mi
         return new TomSelect(sel, {
             options, maxItems: 1, valueField: "value", labelField: "text", searchField: ["text"], placeholder: "打字搜尋…",
             refreshThrottle: 0, dropdownParent: "body", score: s => App.fuzzy(s, ["text"]),
-            sortField: [{ field: "$score" }, { field: "n", direction: "desc" }, { field: "text" }],
+            sortField: [{ field: "$score", direction: "desc" }, { field: "n", direction: "desc" }, { field: "text" }],
             render: { option: (d, esc) => `<div>${esc(d.text)}${d.n ? ` <span class="small text-muted">用在 ${d.n} 個配方</span>` : ""}</div>` },
             onChange
         });
