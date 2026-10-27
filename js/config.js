@@ -90,6 +90,7 @@ const Config = {
             items: [
                 { id: 2, Permission: [], name: "⚙️ 帳號設定", page: "page/account.html" },
                 { id: 63, Permission: [3], name: "👥 帳號審核與權限", page: "page/access.html" },
+                { id: 69, Permission: [3], name: "💬 LINE 管理", page: "page/line.html" },
                 { id: 66, Permission: [3], name: "🏢 公司與功能設定", page: "page/site-settings.html" },
                 { id: 20, Permission: [3], name: "👨‍👩‍👧‍👦 員工及會員", page: "page/member.html" },
                 { id: 60, Permission: [3], name: "🔐 權限管理", page: "page/permission.html" },

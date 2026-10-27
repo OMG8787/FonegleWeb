@@ -248,6 +248,13 @@ const SCHEMA = {
         cols: 'OrderKey Time Items Total:n Received:n Change:n Payment CreatedBy CreatedAt'
     },
     MailLog: { key: 'ID', seq: 'ID', internal: true, cols: 'ID:n Subject Recipients Attachments SentBy CreatedAt' },
+    // LINE 員工機器人的使用者（加官方帳號好友的人）：Status 待開通 / 已開通 / 停用；RoleList 跟網站帳號同一套權限代碼
+    //   只能由「LINE 管理」頁與機器人存取；LinkedUserId = 綁定的網站帳號（Users.LineUserId）
+    LineUsers: {
+        key: 'LineUserId', internal: true,
+        cols: 'LineUserId DisplayName PictureUrl Status RoleList RoleTemplateId:n LinkedUserId Note IsFollowing:b FollowedAt LastSeenAt ' +
+            'ApprovedBy ApprovedAt UpdatedAt UpdatedBy'
+    },
     // 封存結論：舊的流水帳（帳款、支出、出攤、訂單…）封存後留下的每月總數；財務總表會把它加回去，總金額不變
     ArchiveSummary: {
         key: 'ID', seq: 'ID',
@@ -283,6 +290,7 @@ const TABLE_INFO = {
     Sessions: ['system', '目前登入中的裝置（刪除一列 = 強制該裝置登出，其他欄位請勿修改）'],
     LoginLog: ['system', '登入歷程（帳號、裝置、登入 / 登出時間、使用分鐘數）'],
     MailLog: ['system', '寄信紀錄'],
+    LineUsers: ['system', 'LINE 員工機器人的使用者（加官方帳號好友的人；由「LINE 管理」頁開通與設定權限）'],
     Calendar: ['calendar', '行事曆活動'],
     CalendarDays: ['calendar', '活動每一天的營業時段'],
     MarketOrders: ['market', '市集現場點餐（每筆一張單，Items 為品項明細 JSON）'],
@@ -323,6 +331,9 @@ const COLUMN_LABELS = {
     CreatedAt: '建立時間', CreatedBy: '建立人（使用者ID）', UpdatedAt: '修改時間', UpdateAt: '修改時間',
     UpdatedBy: '修改人（使用者ID）', UpdateLineUserId: '修改人（使用者ID）', CreateLineID: '建立人',
     IsActive: '啟用', IsDeleted: '已取消 / 停用', IsShared: '共享給其他人', IsEnable: '啟用', Unit: '單位', Amount: '金額',
+    // LINE 員工機器人
+    DisplayName: 'LINE 名稱', PictureUrl: 'LINE 大頭貼網址', LinkedUserId: '綁定的網站帳號（Users.LineUserId）', IsFollowing: '仍是好友（封鎖 = FALSE）',
+    FollowedAt: '加入時間', LastSeenAt: '最後使用時間',
     // 帳號
     LineUserId: '使用者ID（主鍵）', PhoneNumber: '電話（登入帳號）', Email: 'Email', IdCardNumber: '身分證字號',
     PassWord: '密碼雜湊（請勿修改）', BirthdayYear: '生日-年', BirthdayMonth: '生日-月', BirthdayDay: '生日-日',
@@ -519,7 +530,8 @@ const PUBLIC_ACTIONS = {
     importData: importData_,
     login: login_,
     register: register_,
-    forgetPassword: forgetPassword_
+    forgetPassword: forgetPassword_,
+    bot: botApi_
 };
 
 const PRIVATE_ACTIONS = {
@@ -558,11 +570,15 @@ const PRIVATE_ACTIONS = {
     dbBackup: dbBackup_,
     dbTrim: dbTrim_,
     dbArchive: dbArchive_,
-    linkOrderProducts: linkOrderProducts_
+    linkOrderProducts: linkOrderProducts_,
+    lineUsers: lineUsers_,
+    setLineUsers: setLineUsers_,
+    removeLineUser: removeLineUser_,
+    setLineBot: setLineBot_
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
-const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary', 'dbStatus'];
+const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary', 'dbStatus', 'lineUsers'];
 // loginLogConfig 不帶 keep 時只是讀取；帶 keep 會修改（由 reqId 防重複）
 
 function handle_(req) {
@@ -2590,9 +2606,9 @@ function aiGenerate_(req, ctx) {
     return callAI_(ctx, system, [{ role: 'user', text: prompt }]);
 }
 
-// messages：[{ role: 'user' | 'assistant', text }]
-function callAI_(ctx, system, messages) {
-    const cfg = resolveAiConfig_(ctx);
+// messages：[{ role: 'user' | 'assistant', text }]；override = 指定要用的 AI 設定（LINE 管理的測試）
+function callAI_(ctx, system, messages, override) {
+    const cfg = override || resolveAiConfig_(ctx);
 
     if (!cfg) fail_('尚未設定 AI：請到「帳號設定 → AI 設定」輸入自己的 API Key');
 
@@ -2657,11 +2673,443 @@ function callAI_(ctx, system, messages) {
     if (code < 200 || code >= 300) {
         const err = body.error;
         const msg = (err && (err.message || (typeof err === 'string' ? err : ''))) || ('HTTP ' + code);
-        const who = cfg.source === 'system' ? '系統共用' : '你的';
+        const who = cfg.source === 'system' ? '系統共用' : cfg.source === 'bot' ? '機器人' : '你的';
         fail_('AI 服務錯誤（' + who + ' ' + AI_PROVIDERS[cfg.provider].name + '）：' + String(msg).split(cfg.apiKey).join('••••').slice(0, 300));
     }
 
     return String(pick(body) || '').trim() || '（AI 沒有回應內容）';
+}
+
+// ============================================================
+// LINE 員工機器人（LINE 管理）
+//   LINE Bot 伺服器（linebot/ 資料夾，部署在 Vercel）用「Bot 金鑰」呼叫：
+//     { action: 'bot', secret, op, lineUserId, ... }
+//   1. 員工加官方帳號好友或傳訊息 → LineUsers 新增一列（待開通、沒有任何權限），首頁備忘錄通知系統管理員
+//   2. 系統管理員在「LINE 管理」頁開通並設定權限（跟網站帳號同一套權限代碼與角色）
+//   3. 可綁定網站帳號：備忘錄、私人行程等個人資料跟著那個帳號（權限仍以 LINE 管理設定的為準）
+//   Bot 只能查詢（LINE_BOT.ACTIONS），不能新增、修改、刪除資料
+// ============================================================
+const LINE_BOT = {
+    SECRET_PROP: 'LINE_BOT_SECRET',
+    CFG_PROP: 'LINE_BOT_CFG',
+    ACTIONS: ['me', 'list', 'getMany', 'get', 'financeSummary'],
+    HISTORY_TURNS: 12,           // 對話記憶：最近幾則（存在快取，6 小時沒對話就忘記）
+    HISTORY_CHARS: 1500,         // 每則最多記幾個字
+    SEEN_UPDATE_MINUTES: 10      // 最後使用時間的更新間隔（避免每則訊息都寫入試算表）
+};
+
+const LINE_STATUS = { PENDING: '待開通', ACTIVE: '已開通', OFF: '停用' };
+
+function botApi_(req) {
+    const secret = PropertiesService.getScriptProperties().getProperty(LINE_BOT.SECRET_PROP);
+
+    if (!secret) fail_('LINE 機器人尚未啟用：請到「LINE 管理」產生 Bot 金鑰', 'BOT_OFF');
+    // 比對雜湊值：長度固定，不會因為比對到第幾個字才不同而洩漏金鑰
+    if (hash_('bot:' + String(req.secret || '')) !== hash_('bot:' + secret)) fail_('Bot 金鑰錯誤', 'BOT_AUTH');
+
+    const op = String(req.op || '');
+    const id = String(req.lineUserId || '');
+
+    if (!/^U[0-9a-f]{32}$/.test(id)) fail_('LINE 使用者編號格式錯誤');
+
+    if (op === 'start') return botStart_(id, req);
+    if (op === 'unfollow') return botUnfollow_(id);
+    if (op === 'remember') return botRemember_(id, req.turns);
+
+    if (op === 'forget') {
+        cacheRemove_(['lineh:' + id]);
+        return true;
+    }
+
+    if (op === 'call') {
+        const action = String(req.call || '');
+        if (LINE_BOT.ACTIONS.indexOf(action) < 0) fail_('LINE 機器人不能使用：' + action);
+        const found = findRow_(tbl_('LineUsers'), id);
+        return PRIVATE_ACTIONS[action](req.params || {}, lineCtx_(found && found.obj));
+    }
+
+    fail_('未知的 Bot 操作：' + op);
+}
+
+// LINE 使用者的權限：已開通才能用；綁定網站帳號時以那個帳號的身分讀取個人資料
+function lineCtx_(lu) {
+    if (!lu || lu.Status !== LINE_STATUS.ACTIVE) fail_('LINE 帳號尚未開通', 'LINE_PENDING');
+
+    let user = { LineUserId: lu.LineUserId, Name: lu.DisplayName || 'LINE 使用者' };
+
+    if (lu.LinkedUserId) {
+        user = getUser_(lu.LinkedUserId);
+        if (!user || user.IsActive === false) fail_('綁定的網站帳號已停用，請聯絡系統管理員', 'LINE_PENDING');
+    }
+
+    return { token: '', userId: user.LineUserId, user, perms: parsePerms_(lu.RoleList), expireAt: 0, lineUserId: lu.LineUserId };
+}
+
+// 每則訊息開頭呼叫：登記 / 更新 LINE 使用者，回傳狀態、權限、可查的資料表、AI 設定與對話記憶
+function botStart_(id, req) {
+    const t = tbl_('LineUsers');
+    const name = clip_(req.displayName, 80);
+    const picture = /^https:\/\//.test(String(req.pictureUrl || '')) ? clip_(req.pictureUrl, 500) : '';
+    const found = findRow_(t, id);
+    let lu = found && found.obj;
+    let isNew = false;
+
+    if (!lu) {
+        lu = withLock_(() => {
+            const again = findRow_(t, id);
+            if (again) return again.obj;
+
+            const obj = {
+                LineUserId: id, DisplayName: name, PictureUrl: picture, Status: LINE_STATUS.PENDING, RoleList: '',
+                IsFollowing: true, FollowedAt: now_(), LastSeenAt: now_(), UpdatedAt: now_(), UpdatedBy: 'LINE'
+            };
+            appendRow_(t, obj);
+            isNew = true;
+
+            // 通知系統管理員（出現在首頁備忘錄）
+            const memos = tbl_('Memos');
+            appendRow_(memos, {
+                ID: nextSeq_(memos),
+                Title: '💬 LINE 新成員：' + (name || id),
+                Content: '加入時間 ' + now_() + '，請到「LINE 管理」確認身分後開通並設定權限',
+                Priority: '高',
+                IsDone: false,
+                IsShared: false,
+                Audience: 'perm:' + PERM.SYSTEM,
+                LinkType: 'lineUser',
+                LinkId: id,
+                CreatedBy: 'SYSTEM',
+                CreatedAt: now_()
+            });
+
+            return obj;
+        });
+        cachePut_('lines:' + id, 1, LINE_BOT.SEEN_UPDATE_MINUTES * 60);
+    } else {
+        const patch = {};
+        if (name && name !== lu.DisplayName) patch.DisplayName = name;
+        if (picture && picture !== lu.PictureUrl) patch.PictureUrl = picture;
+        if (lu.IsFollowing === false) patch.IsFollowing = true;
+        if (!cacheGet_('lines:' + id)) patch.LastSeenAt = now_();
+
+        if (Object.keys(patch).length) {
+            withLock_(() => {
+                const again = findRow_(t, id);
+                if (again) writeRow_(t, again, patch);
+            });
+            cachePut_('lines:' + id, 1, LINE_BOT.SEEN_UPDATE_MINUTES * 60);
+            Object.assign(lu, patch);
+        }
+    }
+
+    let ctx = null, problem = '';
+
+    if (lu.Status === LINE_STATUS.ACTIVE) {
+        try {
+            ctx = lineCtx_(lu);
+        } catch (e) {
+            if (!e.userMessage) throw e;
+            problem = e.message;
+        }
+    }
+
+    const cfg = lineBotConfig_();
+    const out = {
+        status: lu.Status || LINE_STATUS.PENDING,
+        allowed: !!ctx,
+        problem,
+        isNew,
+        name: (ctx && ctx.user.Name) || lu.DisplayName || '',
+        appName: appName_(),
+        texts: { welcome: cfg.welcome, pending: cfg.pendingText }
+    };
+
+    if (!ctx) return out;
+
+    // 可以讀取的資料表（給 AI 的「查詢資料表」工具），欄位中文說明
+    const canRead = n => {
+        const r = (TABLE_PERMS[n] || {}).read;
+        const list = r === undefined ? 'all' : r;
+        return list === 'all' || (Array.isArray(list) && hasPerm_(ctx, list));
+    };
+    const tables = Object.keys(SCHEMA)
+        .filter(n => !SCHEMA[n].internal && canRead(n))
+        .map(n => ({ name: n, title: (TABLE_INFO[n] || [])[1] || n, cols: SCHEMA[n].cols.split(/\s+/).filter(Boolean).map(c => c.split(':')[0]) }));
+
+    return Object.assign(out, {
+        userId: ctx.userId,
+        linked: !!lu.LinkedUserId,
+        perms: ctx.perms,
+        permNames: PERMISSION_CODES.filter(p => hasPerm_(ctx, [p.ID])).map(p => p.Permission),
+        tables,
+        labels: COLUMN_LABELS,
+        prompt: cfg.prompt,
+        ai: botAi_(cfg),
+        history: cacheGet_('lineh:' + id) || []
+    });
+}
+
+function botUnfollow_(id) {
+    return withLock_(() => {
+        const t = tbl_('LineUsers');
+        const found = findRow_(t, id);
+        if (found) writeRow_(t, found, { IsFollowing: false, UpdatedAt: now_(), UpdatedBy: 'LINE' });
+        cacheRemove_(['lineh:' + id]);
+        return !!found;
+    });
+}
+
+// 對話記憶：turns = [{ u: true/false, t: '文字' }]
+function botRemember_(id, turns) {
+    const add = (Array.isArray(turns) ? turns : [])
+        .map(x => ({ u: x && x.u === true, t: String((x && x.t) || '').trim().slice(0, LINE_BOT.HISTORY_CHARS) }))
+        .filter(x => x.t);
+    const list = (cacheGet_('lineh:' + id) || []).concat(add).slice(-LINE_BOT.HISTORY_TURNS);
+
+    cachePut_('lineh:' + id, list, 21600);
+
+    return list.length;
+}
+
+// 機器人設定（Script Properties，金鑰不會出現在試算表）：歡迎詞、等待開通的回覆、給 AI 的補充說明、AI 服務
+function lineBotConfig_() {
+    let c = {};
+    try {
+        c = JSON.parse(PropertiesService.getScriptProperties().getProperty(LINE_BOT.CFG_PROP) || '{}') || {};
+    } catch (e) { }
+
+    return { welcome: c.welcome || '', pendingText: c.pendingText || '', prompt: c.prompt || '', ai: c.ai || null };
+}
+
+// 機器人用的 AI：LINE 管理設定的 → 系統共用 Gemini → 沒有
+function botAi_(cfg) {
+    const own = cfg.ai;
+
+    if (own && own.apiKey) {
+        const def = AI_PROVIDERS[own.provider] || AI_PROVIDERS.gemini;
+        return { source: 'bot', provider: own.provider, apiKey: own.apiKey, model: own.model || def.model, endpoint: own.endpoint || def.endpoint };
+    }
+
+    const sys = resolveAiConfig_({ userId: '' });
+    return sys && sys.source === 'system' ? sys : null;
+}
+
+// ------------------------------------------------------------
+// LINE 管理頁（系統管理權限）
+// ------------------------------------------------------------
+function lineUsers_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const accounts = readRows_(tbl_('Users'))
+        .map(x => x.obj)
+        .filter(u => u.IsActive !== false && u.ApprovalStatus !== '待審核' && u.ApprovalStatus !== '已拒絕')
+        .map(u => ({ id: u.LineUserId, name: u.Name || '', phone: u.PhoneNumber || '' }));
+    const nameOf = {};
+    accounts.forEach(a => nameOf[a.id] = a.name);
+
+    const users = readRows_(tbl_('LineUsers')).map(x => {
+        const u = x.obj;
+        return {
+            LineUserId: u.LineUserId,
+            DisplayName: u.DisplayName || '',
+            PictureUrl: u.PictureUrl || '',
+            Status: u.Status || LINE_STATUS.PENDING,
+            RoleList: parsePerms_(u.RoleList),
+            RoleTemplateId: u.RoleTemplateId === null || u.RoleTemplateId === undefined ? null : u.RoleTemplateId,
+            LinkedUserId: u.LinkedUserId || '',
+            LinkedName: u.LinkedUserId ? (nameOf[u.LinkedUserId] || '（帳號已停用或不存在）') : '',
+            Note: u.Note || '',
+            IsFollowing: u.IsFollowing !== false,
+            FollowedAt: u.FollowedAt || '',
+            LastSeenAt: u.LastSeenAt || '',
+            ApprovedBy: u.ApprovedBy || '',
+            ApprovedAt: u.ApprovedAt || ''
+        };
+    });
+
+    const secret = PropertiesService.getScriptProperties().getProperty(LINE_BOT.SECRET_PROP) || '';
+    const cfg = lineBotConfig_();
+    const own = cfg.ai || {};
+    const use = botAi_(cfg);
+
+    return {
+        users,
+        accounts,
+        canLinkOthers: isAdmin_(ctx),
+        me: ctx.userId,
+        bot: {
+            enabled: !!secret,
+            secretHint: secret ? '••••' + secret.slice(-4) : '',
+            welcome: cfg.welcome,
+            pendingText: cfg.pendingText,
+            prompt: cfg.prompt,
+            ai: { provider: own.provider || 'gemini', model: own.model || '', endpoint: own.endpoint || '', hasKey: !!own.apiKey, keyHint: own.apiKey ? '••••' + String(own.apiKey).slice(-4) : '' },
+            using: use ? { source: use.source, name: AI_PROVIDERS[use.provider].name, model: use.model } : null,
+            providers: AI_PROVIDERS
+        }
+    };
+}
+
+// changes：[{ lineUserId, status, roleList: [..], roleId, linkedUserId, note }]（沒帶的欄位不改）
+function setLineUsers_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const changes = req.changes || [];
+    if (!changes.length) fail_('沒有要儲存的變更');
+
+    const statuses = Object.keys(LINE_STATUS).map(k => LINE_STATUS[k]);
+
+    return withLock_(() => {
+        const t = tbl_('LineUsers');
+        let count = 0;
+
+        changes.forEach(c => {
+            const found = findRow_(t, c.lineUserId);
+            if (!found) fail_('找不到 LINE 使用者：' + c.lineUserId);
+
+            const old = found.obj;
+            const patch = { UpdatedAt: now_(), UpdatedBy: ctx.userId };
+
+            if (Array.isArray(c.roleList)) {
+                const list = c.roleList.map(Number).filter(n => !isNaN(n) && n > 0);
+                const text = list.filter((n, i) => list.indexOf(n) === i).sort((a, b) => a - b).join('|');
+                assertRoleChange_(ctx, old.RoleList, text, '');
+                patch.RoleList = text;
+            }
+
+            if (c.roleId !== undefined) patch.RoleTemplateId = c.roleId === null || c.roleId === '' ? '' : Number(c.roleId);
+
+            if (c.status !== undefined) {
+                const s = String(c.status);
+                if (statuses.indexOf(s) < 0) fail_('狀態錯誤：' + s);
+                patch.Status = s;
+                if (s === LINE_STATUS.ACTIVE && old.Status !== LINE_STATUS.ACTIVE) {
+                    patch.ApprovedBy = ctx.user.Name || ctx.userId;
+                    patch.ApprovedAt = now_();
+                }
+            }
+
+            if (c.linkedUserId !== undefined) {
+                const link = String(c.linkedUserId || '');
+                if (link !== String(old.LinkedUserId || '')) {
+                    const u = link ? getUser_(link) : null;
+                    if (link && !u) fail_('找不到網站帳號');
+                    if (u && u.IsActive === false) fail_('網站帳號已停用：' + (u.Name || link));
+                    // 綁定別人的帳號 = 看得到那個人的個人備忘錄與私人行程：只有最高管理員可以；系統管理員只能綁定自己的帳號
+                    if (link && link !== ctx.userId && !isAdmin_(ctx))
+                        fail_('🔐 只有最高系統管理員可以綁定其他人的網站帳號（系統管理員只能綁定自己的）');
+                    patch.LinkedUserId = link;
+                }
+            }
+
+            if (c.note !== undefined) patch.Note = clip_(c.note, 300);
+
+            writeRow_(t, found, patch);
+            count++;
+
+            // 開通 / 停用後，新成員通知標記為已完成
+            if (patch.Status && patch.Status !== LINE_STATUS.PENDING) lineMemosDone_(old.LineUserId, patch.Status, ctx);
+        });
+
+        return count;
+    });
+}
+
+// 移除 LINE 使用者（對方再傳訊息會重新登記為待開通）
+function removeLineUser_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+    requirePerm_(ctx, [PERM.DELETE]);
+
+    return withLock_(() => {
+        const t = tbl_('LineUsers');
+        const found = findRow_(t, req.lineUserId);
+        if (!found) fail_('找不到 LINE 使用者');
+
+        deleteRow_(t, found.row);
+        lineMemosDone_(found.obj.LineUserId, '已移除', ctx);
+        cacheRemove_(['lineh:' + found.obj.LineUserId, 'lines:' + found.obj.LineUserId]);
+
+        return true;
+    });
+}
+
+function lineMemosDone_(lineUserId, result, ctx) {
+    const memos = tbl_('Memos');
+    readRows_(memos)
+        .filter(x => x.obj.LinkType === 'lineUser' && x.obj.LinkId === lineUserId && x.obj.IsDone !== true)
+        .forEach(x => writeRow_(memos, x, {
+            IsDone: true,
+            Content: (x.obj.Content || '') + '\n→ ' + result + '（' + (ctx.user.Name || ctx.userId) + '，' + now_() + '）',
+            UpdatedAt: now_(),
+            UpdatedBy: ctx.userId
+        }));
+}
+
+// 機器人設定：
+//   { op: 'secret' }  產生新的 Bot 金鑰（只顯示這一次，要貼到 Vercel 的 BOT_SECRET；舊金鑰立即失效）
+//   { op: 'off' }     停用機器人（刪除金鑰）
+//   { op: 'save', welcome, pendingText, prompt, ai: { provider, apiKey（留空 = 保留原本的）, model, endpoint } | aiClear: true }
+//   { op: 'test' }    用機器人的 AI 設定送一句話測試
+function setLineBot_(req, ctx) {
+    requirePerm_(ctx, [PERM.SYSTEM]);
+
+    const props = PropertiesService.getScriptProperties();
+    const op = String(req.op || '');
+
+    if (op === 'secret') {
+        const secret = 'fb' + Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+        props.setProperty(LINE_BOT.SECRET_PROP, secret);
+        return { secret };
+    }
+
+    if (op === 'off') {
+        props.deleteProperty(LINE_BOT.SECRET_PROP);
+        return true;
+    }
+
+    if (op === 'test') {
+        const ai = botAi_(lineBotConfig_());
+        if (!ai) fail_('機器人還沒有可用的 AI：請設定 API Key，或在 Script Properties 設定系統共用的 GEMINI_API_KEY');
+        const reply = callAI_(ctx, '你是連線測試程式，只回覆「OK」。', [{ role: 'user', text: '連線測試，請回覆 OK' }], ai);
+        return { reply: String(reply).slice(0, 200), name: AI_PROVIDERS[ai.provider].name, model: ai.model, source: ai.source };
+    }
+
+    if (op !== 'save') fail_('未知的操作：' + op);
+
+    const old = lineBotConfig_();
+    const text = (v, n) => String(v === undefined || v === null ? '' : v).trim().slice(0, n);
+    const cfg = {
+        welcome: req.welcome === undefined ? old.welcome : text(req.welcome, 1000),
+        pendingText: req.pendingText === undefined ? old.pendingText : text(req.pendingText, 500),
+        prompt: req.prompt === undefined ? old.prompt : text(req.prompt, 4000),
+        ai: old.ai
+    };
+
+    if (req.aiClear) {
+        cfg.ai = null;
+    } else if (req.ai && req.ai.provider) {
+        const a = req.ai;
+        const provider = String(a.provider);
+        if (!AI_PROVIDERS[provider]) fail_('不支援的 AI 服務：' + provider);
+
+        const prev = old.ai || {};
+        const apiKey = String(a.apiKey || '').trim() || (prev.provider === provider ? prev.apiKey : '');
+        const model = String(a.model || '').trim().slice(0, 100);
+        let endpoint = String(a.endpoint || '').trim().replace(/\/+$/, '').slice(0, 300);
+
+        if (!apiKey) fail_('請輸入 API Key');
+        if (apiKey.length > 300 || /\s/.test(apiKey)) fail_('API Key 格式不正確');
+        if (endpoint && !/^https:\/\/[^\s\/]+/.test(endpoint)) fail_('Endpoint 必須是 https:// 開頭的網址');
+        if (endpoint === AI_PROVIDERS[provider].endpoint) endpoint = '';
+        if (!model && !AI_PROVIDERS[provider].model) fail_('請輸入 Model 名稱');
+        if (model && !/^[\w.:\/@-]+$/.test(model)) fail_('Model 名稱格式不正確');
+
+        cfg.ai = { provider, apiKey, model, endpoint, updatedAt: now_() };
+    }
+
+    props.setProperty(LINE_BOT.CFG_PROP, JSON.stringify(cfg));
+
+    return lineUsers_(req, ctx).bot;
 }
 
 // ============================================================

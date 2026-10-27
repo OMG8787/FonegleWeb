@@ -189,7 +189,9 @@ const API = {
         setFavorite: ["Users"],
         register: ["Users", "Memos"],
         forgetPassword: ["Memos"],
-        linkOrderProducts: ["Orders"]
+        linkOrderProducts: ["Orders"],
+        setLineUsers: ["Memos"],
+        removeLineUser: ["Memos"]
     },
 
     // 資料表主鍵（與 gas/Code.gs 的 SCHEMA 相同）

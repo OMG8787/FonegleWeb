@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>內部管理系統｜LINE 管理</title>
+    <link rel="icon" type="image/png" href="../img/logoicon.png">
+    <link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
+    <link rel="manifest" href="../manifest.webmanifest">
+    <meta name="theme-color" content="#c48b6a">
+    <script src="../js/theme.js?v=202610271343"></script>
+    <link href="../css/dark.css?v=202610271343" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/layout.css?v=202610271343" rel="stylesheet">
+
+    <style>
+        .lu-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #e9ecef;
+            flex: none;
+        }
+
+        .lu-avatar.ph {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+
+        .table td,
+        .table th {
+            vertical-align: middle;
+        }
+
+        .perm-chip {
+            font-weight: normal;
+        }
+
+        .secret-box {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: .85rem;
+        }
+
+        .steps li {
+            margin-bottom: .35rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="headerArea"></div>
+
+    <div id="erp-layout">
+
+        <div id="sidebarArea"></div>
+
+        <div id="erp-main">
+
+            <div class="container-fluid">
+
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="mb-1">💬 LINE 管理</h2>
+                        <p class="text-muted mb-0">
+                            員工加入「員工專用 LINE 官方帳號」後會出現在這裡，一開始是<b>待開通、沒有任何權限</b>。確認身分後開通並設定權限，就能在 LINE 上問 AI 查詢備忘錄、行事曆、配方等資料（依權限只看得到可以看的）。
+                            機器人只能查詢，不能新增、修改或刪除資料。
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 待開通 -->
+                <div id="pendingCard" class="card border-0 shadow-sm mb-3 d-none">
+                    <div class="card-body">
+                        <h5 class="mb-2">🟡 待開通 <span id="pendingCount" class="badge bg-warning text-dark">0</span></h5>
+                        <div class="small text-muted mb-2">請先向本人確認 LINE 名稱，再選角色開通（之後可以按「編輯」細調權限、綁定網站帳號）。</div>
+                        <div id="pendingList" class="d-flex flex-column gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- 成員列表 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <h5 class="mb-0">👥 LINE 成員 <span id="listCount" class="text-muted small"></span></h5>
+                            <div class="d-flex flex-wrap gap-2">
+                                <input id="qKeyword" class="form-control form-control-sm" style="width:180px" placeholder="搜尋名稱 / 帳號 / 備註">
+                                <select id="qStatus" class="form-select form-select-sm" style="width:auto">
+                                    <option value="">全部狀態</option>
+                                    <option>待開通</option>
+                                    <option>已開通</option>
+                                    <option>停用</option>
+                                </select>
+                                <button id="btnRefresh" class="btn btn-sm btn-outline-secondary">重新整理</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>LINE 名稱</th>
+                                        <th>狀態</th>
+                                        <th>綁定網站帳號</th>
+                                        <th>權限</th>
+                                        <th>最後使用</th>
+                                        <th>備註</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="userBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="small text-muted mt-2">
+                            權限跟網站帳號是同一套（見「帳號審核與權限」的說明），但各自設定：LINE 的權限只影響機器人能查什麼。
+                            綁定網站帳號後，個人備忘錄與私人行程會用那個帳號的；只有最高系統管理員可以綁定別人的帳號。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 機器人設定 -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="mb-2">🤖 機器人設定</h5>
+
+                        <div class="border rounded-3 p-3 mb-3">
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <b>狀態：</b><span id="botState" class="badge bg-secondary">讀取中</span>
+                                <span id="botHint" class="small text-muted"></span>
+                                <div class="ms-auto d-flex flex-wrap gap-2">
+                                    <button id="btnSecret" class="btn btn-sm btn-primary">🔑 產生 Bot 金鑰</button>
+                                    <button id="btnBotOff" class="btn btn-sm btn-outline-danger">停用機器人</button>
+                                </div>
+                            </div>
+                            <div id="secretBox" class="alert alert-warning mt-3 mb-0 d-none">
+                                <div class="fw-bold mb-1">新的 Bot 金鑰（只會顯示這一次，請馬上貼到 Vercel 的 BOT_SECRET）</div>
+                                <div class="input-group input-group-sm">
+                                    <input id="secretText" class="form-control secret-box" readonly>
+                                    <button class="btn btn-outline-dark" data-copy="secretText">📋 複製</button>
+                                </div>
+                                <div class="small mt-1">舊的金鑰已經失效；Vercel 換成新金鑰並重新部署（Redeploy）後機器人才會恢復。</div>
+                            </div>
+                            <div class="mt-3">
+                                <label class="form-label small mb-1">系統網址（貼到 Vercel 的 GAS_URL）</label>
+                                <div class="input-group input-group-sm">
+                                    <input id="gasUrl" class="form-control secret-box" readonly>
+                                    <button class="btn btn-outline-secondary" data-copy="gasUrl">📋 複製</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border rounded-3 p-3 mb-3">
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                <b>🧠 AI 服務</b><span id="aiUsing" class="small text-muted"></span>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label small mb-1">服務</label>
+                                    <select id="aiProvider" class="form-select form-select-sm"></select>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label small mb-1">Model</label>
+                                    <input id="aiModel" class="form-control form-control-sm" placeholder="留空使用預設">
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <label class="form-label small mb-1">API Key <span id="aiKeyHint" class="text-muted"></span></label>
+                                    <input id="aiKey" type="password" class="form-control form-control-sm" autocomplete="off" placeholder="留空 = 保留原本的">
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <label class="form-label small mb-1">Endpoint（選填）</label>
+                                    <input id="aiEndpoint" class="form-control form-control-sm" placeholder="留空使用官方網址">
+                                </div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <button id="btnAiSave" class="btn btn-sm btn-primary">💾 儲存 AI 設定</button>
+                                <button id="btnAiTest" class="btn btn-sm btn-outline-primary">🧪 測試連線</button>
+                                <button id="btnAiClear" class="btn btn-sm btn-outline-secondary">清除（改用系統共用 Gemini）</button>
+                            </div>
+                            <div class="small text-muted mt-2">金鑰存在 Apps Script 的 Script Properties，不會出現在試算表，也不會傳回網頁。沒有設定時使用系統共用的 GEMINI_API_KEY。</div>
+                        </div>
+
+                        <div class="border rounded-3 p-3">
+                            <b>💬 回覆文字</b>
+                            <div class="row g-2 mt-1">
+                                <div class="col-md-6">
+                                    <label class="form-label small mb-1">歡迎詞（加好友時；留空使用預設）</label>
+                                    <textarea id="txtWelcome" class="form-control form-control-sm" rows="3" maxlength="1000"></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small mb-1">還沒開通時的回覆（留空使用預設）</label>
+                                    <textarea id="txtPending" class="form-control form-control-sm" rows="3" maxlength="500"></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small mb-1">給 AI 的補充說明（公司規定、常見問題、用語；每次回答都會參考）</label>
+                                    <textarea id="txtPrompt" class="form-control form-control-sm" rows="4" maxlength="4000" placeholder="例如：出貨日是每週二、四；冰淇淋保存期限 30 天；「古典」是指古典可可"></textarea>
+                                </div>
+                            </div>
+                            <button id="btnTextSave" class="btn btn-sm btn-primary mt-2">💾 儲存回覆文字</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 設定步驟 -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <details>
+                            <summary class="fw-bold">📖 第一次設定步驟（LINE Developers + Vercel）</summary>
+                            <ol class="steps mt-3 mb-0 small">
+                                <li>到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers</a> 建立 Provider → 建立 <b>Messaging API</b> Channel（這就是員工專用官方帳號）。</li>
+                                <li>Channel 的 <b>Basic settings</b> 複製 <b>Channel secret</b>；<b>Messaging API</b> 分頁最下方發行 <b>Channel access token</b>。</li>
+                                <li>在這頁按「🔑 產生 Bot 金鑰」，複製金鑰與上方的系統網址。</li>
+                                <li>到 <a href="https://vercel.com/new" target="_blank" rel="noopener">Vercel</a> 匯入 GitHub 專案，<b>Root Directory</b> 選 <code>linebot</code>；Environment Variables 填：
+                                    <code>LINE_CHANNEL_SECRET</code>、<code>LINE_CHANNEL_ACCESS_TOKEN</code>、<code>GAS_URL</code>（系統網址）、<code>BOT_SECRET</code>（Bot 金鑰），然後 Deploy。</li>
+                                <li>回到 LINE Developers 的 Messaging API 分頁：Webhook URL 填 <code>https://你的專案.vercel.app/api/line</code>，打開 <b>Use webhook</b>，按 Verify。</li>
+                                <li>到 <a href="https://manager.line.biz/" target="_blank" rel="noopener">LINE Official Account Manager</a> → 回應設定：關閉「自動回應訊息」與「加入好友的歡迎訊息」（改由機器人回覆）；聊天的「群組」功能建議關閉。</li>
+                                <li>用手機加官方帳號好友、傳一句話 → 這頁的「待開通」會出現你自己 → 開通後就可以開始問了。</li>
+                            </ol>
+                        </details>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 編輯成員 -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="edAvatar"></span>
+                        <h5 class="modal-title" id="edTitle">編輯 LINE 成員</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-6 col-md-4">
+                            <label class="form-label small mb-1">狀態</label>
+                            <select id="edStatus" class="form-select form-select-sm">
+                                <option>待開通</option>
+                                <option>已開通</option>
+                                <option>停用</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <label class="form-label small mb-1">角色（套用權限）</label>
+                            <select id="edRole" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small mb-1">綁定網站帳號</label>
+                            <select id="edLink" class="form-select form-select-sm"></select>
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-3 mb-1">機器人可以查詢的資料（權限）</div>
+                    <div id="edPerms" class="d-flex flex-wrap gap-3"></div>
+                    <div class="mt-3">
+                        <label class="form-label small mb-1">備註</label>
+                        <input id="edNote" class="form-control form-control-sm" maxlength="300" placeholder="例如：本名、部門">
+                    </div>
+                    <div id="edInfo" class="small text-muted mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button id="edRemove" class="btn btn-sm btn-outline-danger me-auto">移除</button>
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button id="edSave" class="btn btn-sm btn-primary">💾 儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="footerArea"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/settings.js?v=202610271343"></script>
+    <script src="../js/site.js?v=202610271343"></script>
+    <script src="../js/auth.js?v=202610271343"></script>
+    <script>
+        Auth.checkLogin();
+    </script>
+    <script src="../js/config.js?v=202610271343"></script>
+    <script src="../js/api.js?v=202610271343"></script>
+    <script src="../js/layout.js?v=202610271343"></script>
+    <script src="../js/core.js?v=202610271343"></script>
+    <script src="../js/ai-chat.js?v=202610271343"></script>
+    <script src="../js/favorite.js?v=202610271343"></script>
+    <script src="../js/pages/line.js?v=202610271343"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            App.init("Line");
+        });
+    </script>
+
+</body>
+
+</html>
