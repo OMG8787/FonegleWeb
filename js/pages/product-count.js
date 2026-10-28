@@ -3,7 +3,7 @@ window.Pages = window.Pages || {};
 // =========================================================
 // 產品月盤點（ProductCounts）
 //   製作：ProductionLog.ProducedQty（依製造日 MfgDate）
-//   出貨：Shipment.ShippingQty（依出貨日 ShippingDate）
+//   出貨：出貨單 Shipment.ShippingQty（依出貨日）＋ 已出貨的訂單 Orders.Qty（依預計出貨日；有開出貨單的訂單不重複算）
 //   應有庫存 = 期初 + 製作 - 出貨 - 其他出庫 - 損耗
 //   本月使用量 = 期初 + 製作 - 實盤（未盤點時 = 出貨 + 其他出庫 + 損耗）
 // =========================================================
@@ -16,7 +16,7 @@ Pages.ProductCount = (() => {
 
     let products = [];
     let productions = [];
-    let shipments = [];
+    let shipments = [];     // StockUtil.shippedRows：出貨單 + 已出貨的訂單
     let counts = [];
     let rows = [];          // 目前月份的計算結果
     let edits = new Map();  // ProductID → 使用者輸入 { OpeningQty, OtherOutQty, WasteQty, CountedQty }
@@ -55,11 +55,11 @@ Pages.ProductCount = (() => {
         dom.countBody.innerHTML = `<tr><td colspan="13" class="text-muted">載入中…</td></tr>`;
 
         try {
-            const data = await API.getMany(["Products", "ProductionLog", "Shipment", "ProductCounts"]);
+            const data = await API.getMany(["Products", "ProductionLog", "Shipment", "Orders", "ProductCounts"]);
 
             products = data.Products || [];
             productions = data.ProductionLog || [];
-            shipments = data.Shipment || [];
+            shipments = U.shippedRows(data.Orders, data.Shipment);
             counts = data.ProductCounts || [];
 
             render();
@@ -97,7 +97,7 @@ Pages.ProductCount = (() => {
             const prods = productions.filter(x => String(x.ProductID) === pid);
             const prodDate = x => U.date(x.MfgDate || x.StartTime || x.CreatedAt);
             const monthProds = prods.filter(x => inMonth(prodDate(x)));
-            const monthShips = shipments.filter(x => String(x.ProductID) === pid && inMonth(U.date(x.ShippingDate || x.CreatedAt)));
+            const monthShips = shipments.filter(x => x.pid === pid && inMonth(x.date));
 
             // 最近製造日（月底前）、最近到期日（月初後仍有效的批次）
             const mfgDates = prods.map(prodDate).filter(d => d && d <= end).sort();
@@ -117,7 +117,8 @@ Pages.ProductCount = (() => {
                 saved,
                 auto,
                 ProducedQty: sum(monthProds, "ProducedQty"),
-                ShippedQty: sum(monthShips, "ShippingQty"),
+                ShippedQty: sum(monthShips, "qty"),
+                shipRefs: monthShips.map(x => `${x.date} ${x.source} ${x.ref} × ${x.qty}`),
                 LatestMfgDate: mfgDates[mfgDates.length - 1] || "",
                 NearestExpDate: expDates[0] || ""
             };
@@ -194,7 +195,7 @@ Pages.ProductCount = (() => {
     <td>${esc(r.product.Unit || "")}</td>
     <td class="text-end">${input("OpeningQty")}</td>
     <td class="text-end">${U.qty(r.ProducedQty)}</td>
-    <td class="text-end">${U.qty(r.ShippedQty)}</td>
+    <td class="text-end" title="${esc(r.shipRefs.join("\n"))}">${U.qty(r.ShippedQty)}</td>
     <td class="text-end">${input("OtherOutQty")}</td>
     <td class="text-end">${input("WasteQty")}</td>
     <td class="text-end calc" data-c="ExpectedQty"></td>

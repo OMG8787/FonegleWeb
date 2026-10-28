@@ -2,7 +2,8 @@
 // 庫存助手（庫存盤點頁最上方）
 //   ⏰ 30 日內過期：進貨批次（Inventory，數量 > 0）與生產批次（ProductionLog，產品目前有庫存）
 //   📦 追蹤清單無庫存：ProductWatch 中，產品目前庫存 ≤ 提醒數量（預設 0）
-//   目前庫存以 Products.CurrentStock 為準（快速盤點、產品月盤點會更新）
+//   目前庫存：有生產紀錄或盤點過的產品自動推算（最近一次實盤 + 之後製作 − 之後出貨，出貨含已出貨的訂單）；
+//            其他產品用 Products.CurrentStock（快速盤點、產品月盤點會更新）
 // =========================================================
 const StockAlert = (() => {
 
@@ -15,6 +16,10 @@ const StockAlert = (() => {
     let inventory = [];
     let productions = [];
     let watch = [];
+    let orders = null;
+    let shipmentRows = [];
+    let counts = [];
+    let shipped = [];
 
     function init() {
 
@@ -38,12 +43,17 @@ const StockAlert = (() => {
     // =========================
     async function load() {
         try {
-            await API.getMany(["Products", "Inventory", "ProductionLog", "ProductWatch"], {
+            await API.getMany(["Products", "Inventory", "ProductionLog", "ProductWatch", "Orders", "Shipment", "ProductCounts"], {
                 onTable(name, rows) {
                     if (name === "Products") products = rows || [];
                     if (name === "Inventory") inventory = rows || [];
                     if (name === "ProductionLog") productions = rows || [];
                     if (name === "ProductWatch") watch = rows || [];
+                    // 沒有訂單權限（null）時只算出貨單
+                    if (name === "Orders") orders = rows;
+                    if (name === "Shipment") shipmentRows = rows || [];
+                    if (name === "ProductCounts") counts = rows || [];
+                    shipped = StockUtil.shippedRows(orders, shipmentRows);
                     render();
                 }
             });
@@ -66,7 +76,7 @@ const StockAlert = (() => {
     }
 
     function stockOf(id) {
-        return num(productOf(id)?.CurrentStock) ?? 0;
+        return StockUtil.stockNow(id, { productions, shipped, counts }) ?? num(productOf(id)?.CurrentStock) ?? 0;
     }
 
     function daysLeft(date) {
