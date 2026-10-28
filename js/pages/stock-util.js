@@ -94,6 +94,16 @@ const StockUtil = {
         return out;
     },
 
+    // 盤點用的出貨資料（訂單 + 出貨單，只有產品、數量、狀態、日期）；Code.gs 還沒更新時改讀整張表（需要銷售權限）
+    async loadMoves() {
+        try {
+            return await API.call("stockMoves", {}, { silent: true });
+        } catch (err) {
+            if (!/未知的操作/.test(err.message)) throw err;
+            return API.getMany(["Orders", "Shipment"]);
+        }
+    },
+
     // 推算目前庫存：最近一次有實盤的月份（月底的實盤數量）＋ 之後製作 − 之後出貨
     //   沒有盤點過：從第一次生產開始算（之前的舊訂單不算）；沒有生產紀錄也沒有盤點 → null（用產品頁填的庫存）
     stockNow(pid, { productions, shipped, counts }) {

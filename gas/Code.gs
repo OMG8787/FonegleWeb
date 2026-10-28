@@ -553,6 +553,7 @@ const PRIVATE_ACTIONS = {
     aiGenerate: aiGenerate_,
     getAiConfig: getAiConfig_,
     financeSummary: financeSummary_,
+    stockMoves: stockMoves_,
     setAiConfig: setAiConfig_,
     testAiConfig: testAiConfig_,
     loginSessions: loginSessions_,
@@ -578,7 +579,7 @@ const PRIVATE_ACTIONS = {
 };
 
 // 會修改資料的操作：前端重試時用 reqId 避免重複執行
-const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary', 'dbStatus', 'lineUsers'];
+const READ_ACTIONS = ['ping', 'publicConfig', 'me', 'list', 'getMany', 'get', 'loginSessions', 'loginLog', 'accessList', 'getAiConfig', 'financeSummary', 'dbStatus', 'lineUsers', 'stockMoves'];
 // loginLogConfig 不帶 keep 時只是讀取；帶 keep 會修改（由 reqId 防重複）
 
 function handle_(req) {
@@ -1505,6 +1506,22 @@ function financeSummary_(req, ctx) {
         Orders: pick('Orders', ['OrderNo', 'SalesChannel', 'TotalAmount', 'ShippingFee', 'PaymentStatus', 'ProductID', 'Qty', 'OrderDate', 'UnitCost']),
         Products: pick('Products', ['ID', 'CostPrice']),
         ArchiveSummary: pick('ArchiveSummary', ['Period', 'Source', 'Label', 'Key', 'Count', 'Amount'])
+    };
+}
+
+// 盤點用的出貨資料：商品與生產也要算得到訂單出貨，但看不到客戶、地址、金額（只回傳產品、數量、狀態、日期）
+function stockMoves_(req, ctx) {
+    requirePerm_(ctx, PRODUCT.concat(SALES, FINANCE));
+
+    const pick = (name, cols) => cachedObjs_(tbl_(name)).map(o => {
+        const x = {};
+        cols.forEach(c => x[c] = o[c] === undefined ? null : o[c]);
+        return x;
+    });
+
+    return {
+        Orders: pick('Orders', ['OrderID', 'OrderNo', 'ProductID', 'Qty', 'Unit', 'OrderStatus', 'ShippingStatus', 'PaymentStatus', 'OrderDate', 'ExpectedShippingDate', 'UpdatedAt']),
+        Shipment: pick('Shipment', ['ShipmentNo', 'OrderID', 'ProductID', 'ShippingQty', 'ShippingDate', 'CreatedAt'])
     };
 }
 

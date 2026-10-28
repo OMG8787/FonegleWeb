@@ -55,11 +55,14 @@ Pages.ProductCount = (() => {
         dom.countBody.innerHTML = `<tr><td colspan="13" class="text-muted">載入中…</td></tr>`;
 
         try {
-            const data = await API.getMany(["Products", "ProductionLog", "Shipment", "Orders", "ProductCounts"]);
+            const [data, moves] = await Promise.all([
+                API.getMany(["Products", "ProductionLog", "ProductCounts"]),
+                U.loadMoves()
+            ]);
 
             products = data.Products || [];
             productions = data.ProductionLog || [];
-            shipments = U.shippedRows(data.Orders, data.Shipment);
+            shipments = U.shippedRows(moves.Orders, moves.Shipment);
             counts = data.ProductCounts || [];
 
             render();

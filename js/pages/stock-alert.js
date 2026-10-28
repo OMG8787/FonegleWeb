@@ -43,20 +43,21 @@ const StockAlert = (() => {
     // =========================
     async function load() {
         try {
-            await API.getMany(["Products", "Inventory", "ProductionLog", "ProductWatch", "Orders", "Shipment", "ProductCounts"], {
+            // 出貨（訂單 + 出貨單）：只取盤點需要的欄位，商品與生產權限也讀得到
+            const moves = StockUtil.loadMoves()
+                .then(m => { orders = m.Orders; shipmentRows = m.Shipment || []; shipped = StockUtil.shippedRows(orders, shipmentRows); render(); })
+                .catch(err => console.warn("讀取出貨資料失敗", err));
+            await API.getMany(["Products", "Inventory", "ProductionLog", "ProductWatch", "ProductCounts"], {
                 onTable(name, rows) {
                     if (name === "Products") products = rows || [];
                     if (name === "Inventory") inventory = rows || [];
                     if (name === "ProductionLog") productions = rows || [];
                     if (name === "ProductWatch") watch = rows || [];
-                    // 沒有訂單權限（null）時只算出貨單
-                    if (name === "Orders") orders = rows;
-                    if (name === "Shipment") shipmentRows = rows || [];
                     if (name === "ProductCounts") counts = rows || [];
-                    shipped = StockUtil.shippedRows(orders, shipmentRows);
                     render();
                 }
             });
+            await moves;
             const t = new Date();
             dom.saUpdated.textContent = `（${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")} 檢查）`;
         } catch (err) {
