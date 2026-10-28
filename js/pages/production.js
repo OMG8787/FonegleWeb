@@ -66,7 +66,7 @@ Pages.ProductionLog = (() => {
         });
 
         dom.BatchNo.addEventListener("input", () => { batchAuto = false; renderBatchHint(); });
-        dom.btnBatchNo.addEventListener("click", () => { batchAuto = true; refreshBatchNo(); });
+        dom.btnBatchNo.addEventListener("click", regenerateBatchNo);
 
         dom.Unit.addEventListener("input", () => { unitAuto = false; });
 
@@ -247,9 +247,9 @@ Pages.ProductionLog = (() => {
         return prefix + String(max + 1).padStart(2, "0");
     }
 
-    function refreshBatchNo() {
+    function refreshBatchNo(hintPrefix = "") {
         dom.BatchNo.value = nextBatchNo(dom.MfgDate.value);
-        renderBatchHint();
+        renderBatchHint(hintPrefix);
     }
 
     function duplicateBatch(no) {
@@ -258,12 +258,29 @@ Pages.ProductionLog = (() => {
         return key && rows.find(r => String(r.ProductionID) !== self && String(r.BatchNo || "").trim().toUpperCase() === key);
     }
 
-    function renderBatchHint() {
-        const dup = duplicateBatch(dom.BatchNo.value);
-        dom.batchHint.className = "form-text" + (dup ? " text-danger" : "");
+    // 重新產生：先向伺服器讀最新的生產紀錄（別人剛新增的也算進去），再依製造日期編下一號
+    async function regenerateBatchNo() {
+        dom.btnBatchNo.disabled = true;
+        try {
+            await loadData({ cache: false });
+        } catch (err) {
+            console.warn("讀取最新生產紀錄失敗，用目前資料產生", err);
+        } finally {
+            dom.btnBatchNo.disabled = false;
+        }
+        batchAuto = true;
+        refreshBatchNo("✅ 已更新　");
+    }
+
+    function renderBatchHint(prefix = "") {
+        const no = dom.BatchNo.value.trim();
+        const dup = duplicateBatch(no);
+        const m = no.match(/^P(\d{2})(\d{2})(\d{2})(\d{2,})$/i);
+        dom.batchHint.className = "form-text" + (dup ? " text-danger" : prefix ? " text-success" : "");
         dom.batchHint.textContent = dup
             ? `⚠️ 這個批號已經用過（${productById(dup.ProductID)?.ProductName || "生產編號 " + dup.ProductionID}），請按「重新產生」`
-            : "格式：P + 製造日期（年月日）+ 當天序號，例如 P26102701";
+            : m ? `${prefix}製造日期 20${m[1]}/${m[2]}/${m[3]} 的第 ${Number(m[4])} 批（P + 製造日期 + 當天序號；換製造日期會自動重編）`
+                : "格式：P + 製造日期（年月日）+ 當天序號，例如 P26102701";
     }
 
     // =========================
